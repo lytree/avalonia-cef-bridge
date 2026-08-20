@@ -15,6 +15,7 @@ dotnet run --project tests/Tarui.Ipc.Tests --no-build
 dotnet run --project tests/Tarui.WebView.Tests --no-build
 dotnet run --project tests/Tarui.Shell.Tests --no-build
 dotnet run --project tests/Tarui.Plugins.Tests --no-build
+dotnet run --project tests/Tarui.Hosting.Tests --no-build
 dotnet run --project tests/Tarui.Architecture.Tests --no-build
 
 # Web (run from web/)
@@ -35,7 +36,7 @@ pnpm build
 ## Architecture invariants
 
 - No runtime reflection, assembly scanning, dynamic plugin loading, or JSON reflection fallback. Wire DTOs use `JsonSerializerContext` source generation; register new DTOs in `TaruiJsonContext`.
-- Plugins are project references registered explicitly in `ShellBootstrap`. Adding a command means: DTO record in `Tarui.Contracts`, `TaruiJsonContext` registration, handler on the plugin service, `commands.Add` with its permission, and the permission in the target capability file.
+- Plugins are project references registered explicitly at the composition root via `AddPlugin<T>()` / `Add*Plugin()` — compile-time registration, no assembly scanning. Adding a command means: DTO record in `Tarui.Contracts`, `TaruiJsonContext` registration, handler wired in the plugin class's `ConfigureCommands(CommandRouterBuilder)`, `commands.Add` with its permission, and the permission in the target capability file.
 - The shell-side `CommandContext` label is authoritative; never trust the Web envelope's window label for routing decisions.
 - Every command is permission-checked against the calling window's capability set (`capabilities/*.json`). Unknown permissions in capability files fail startup.
 - Closing is cooperative: OS close requests are cancelled and delivered as `window://close-requested`; only `core:window|close` destroys the window.

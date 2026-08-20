@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
 
@@ -13,12 +14,9 @@ public interface IEventSender
         CancellationToken cancellationToken);
 }
 
-public static class EventPlugin
+public sealed class EventPlugin(IEventSender sender) : ITaruiPlugin
 {
-    public static void Register(
-        CommandRouterBuilder commands,
-        Action<string> registerPermission,
-        IEventSender sender)
+    public void ConfigureCommands(CommandRouterBuilder commands)
     {
         commands.Add(
             "core:event|emit",
@@ -30,6 +28,11 @@ public static class EventPlugin
                 return new Unit();
             },
             "core:event|emit");
-        registerPermission("core:event|emit");
     }
+}
+
+public static class EventPluginServiceCollectionExtensions
+{
+    public static IServiceCollection AddEventPlugin(this IServiceCollection services)
+        => services.AddPlugin<EventPlugin>();
 }

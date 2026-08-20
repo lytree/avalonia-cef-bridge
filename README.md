@@ -8,14 +8,18 @@
 - CefGlue.Next managed sources are vendored under `src/webview/cefglue` and adapted to Avalonia 12.1.1.
 - IPC follows the Tauri shape: Command, Event, Channel, and Capability.
 - Runtime reflection, assembly scanning, dynamic plugin loading, and JSON reflection fallback are prohibited.
-- Plugins are project references registered explicitly in the composition root.
+- Hosting follows the ASP.NET Core pattern: `TaruiHost.CreateApplicationBuilder` composes the shell through `AddTaruiShell()` / `Add*Plugin()` DI extensions on top of `Microsoft.Extensions.Hosting`.
+- Plugins are project references registered explicitly at the composition root via `AddPlugin<T>()` / `Add*Plugin()` — compile-time registration, no assembly scanning.
 
 ## Repository layout
 
 ```text
 src/
   core/                    Reflection-free contracts and IPC runtime
-  desktop/                 Avalonia application and declarative shell
+  desktop/
+    Tarui.Hosting/          ASP.NET Core style host: builder, DI, configuration, logging, host lifetime
+    Tarui.Shell/            Declarative shell and window composition
+    Tarui.App/              Application composition root
   generators/              Compile-time Roslyn generators
   plugins/                 Explicit native capability modules
   webview/
@@ -43,6 +47,7 @@ dotnet run --project tests/Tarui.Ipc.Tests --no-build
 dotnet run --project tests/Tarui.WebView.Tests --no-build
 dotnet run --project tests/Tarui.Shell.Tests --no-build
 dotnet run --project tests/Tarui.Plugins.Tests --no-build
+dotnet run --project tests/Tarui.Hosting.Tests --no-build
 dotnet run --project tests/Tarui.Architecture.Tests --no-build
 
 cd web
@@ -61,6 +66,42 @@ For CI and reproducible local setup, use the pinned pnpm 11 toolchain declared b
 cd web
 pnpm install --frozen-lockfile
 ```
+
+## Hosting and runtime configuration
+
+`Tarui.App` boots through the Tarui.Hosting builder, which wraps `Microsoft.Extensions.Hosting` and exposes the familiar `Configuration` / `Logging` / `Services` / `Window` members:
+
+```csharp
+CefGlueRuntimeBootstrap.RunSubProcess(args); // CEF subprocess dispatch, must run first
+
+var builder = TaruiHost.CreateApplicationBuilder(args);
+
+builder.Services
+    .AddTaruiShell()
+    .AddCefGlueWebView()
+    .AddCorePlugin()
+    .AddWindowPlugin()
+    .AddEventPlugin()
+    .AddDialogPlugin()
+    .AddSystemPlugin();
+
+builder.Window.Configure(window =>
+{
+    window.Title = "tarui.net";
+    window.Width = 1280;
+    window.Height = 820;
+});
+
+builder.Build().Run();
+```
+
+Runtime settings load from `appsettings.json` next to the executable, environment variables, and the command line:
+
+- `Tarui:Window:*` — main window title, size, minimum size, centering, and URL. Merge precedence is defaults < configuration < `builder.Window` code.
+- `Tarui:Web:*` — WebView resource mode parameters (`Mode`, `Url`, `Root`, `Scheme`, `Host`, `SpaFallback`, `Csp`, `MaxAssetBytes`). The `TARUI_WEB_*` environment variables below remain supported as a fallback.
+- `Logging:LogLevel:*` — standard `Microsoft.Extensions.Logging` configuration.
+
+The `capabilities/` directory lives at the repository root; the build copies `capabilities/*.json` into the application output next to `appsettings.json`, and the host resolves both from `AppContext.BaseDirectory`. See `docs/hosting.md` for the full design and the complete configuration key table.
 
 ## Web resource modes
 
@@ -83,7 +124,7 @@ $env:TARUI_WEB_MODE = "scheme"
 dotnet run --project src/desktop/Tarui.App/Tarui.App.csproj
 ```
 
-Scheme mode serves `tarui://localhost/index.html`. The build copies Web `dist` files into the application output. Override the defaults with:
+Scheme mode serves `tarui://localhost/index.html`. The build copies Web `dist` files into the application output. Override the defaults with the `Tarui:Web:*` configuration keys or the equivalent environment variables:
 
 - `TARUI_WEB_ROOT`: static asset directory containing `index.html`.
 - `TARUI_WEB_SCHEME` / `TARUI_WEB_HOST`: custom origin.
@@ -95,7 +136,7 @@ When no mode is specified, a configured `TARUI_WEB_URL` selects HTTP; otherwise 
 
 ## Native capability surface
 
-`ShellBootstrap` composes the shell from explicitly registered plugins. Every command is permission-checked against the capability file of the calling window (`capabilities/main.json`):
+`AddTaruiShell()` composes the shell from explicitly registered plugins. Every command is permission-checked against the capability file of the calling window (`capabilities/main.json`):
 
 | Plugin | Commands | Surface |
 | --- | --- | --- |

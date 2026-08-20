@@ -1,13 +1,12 @@
+using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
 
 namespace Tarui.Plugins.Core;
 
-public static class CorePlugin
+public sealed class CorePlugin : ITaruiPlugin
 {
-    public static void Register(
-        CommandRouterBuilder commands,
-        Action<string> registerPermission)
+    public void ConfigureCommands(CommandRouterBuilder commands)
     {
         commands.Add(
             "core:app|get-info",
@@ -15,7 +14,6 @@ public static class CorePlugin
             TaruiJsonContext.Default.AppHandshake,
             static (_, context, cancellationToken) => GetInfoAsync(context, cancellationToken),
             "core:app|get-info");
-        registerPermission("core:app|get-info");
     }
 
     [TaruiCommand("core:app|get-info")]
@@ -31,4 +29,10 @@ public static class CorePlugin
             Environment.OSVersion.Platform.ToString(),
             [.. context.Capabilities.Permissions]));
     }
+}
+
+public static class CorePluginServiceCollectionExtensions
+{
+    public static IServiceCollection AddCorePlugin(this IServiceCollection services)
+        => services.AddPlugin<CorePlugin>();
 }

@@ -1,12 +1,12 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Themes.Fluent;
+using Microsoft.Extensions.DependencyInjection;
 using Tarui.Shell;
-using Tarui.WebView.CefGlueNext;
 
-namespace Tarui.App;
+namespace Tarui.Hosting;
 
-public sealed class App : Application
+internal sealed class TaruiAvaloniaApp(IServiceProvider services) : Application
 {
     public override void Initialize()
     {
@@ -17,11 +17,8 @@ public sealed class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var webAppOptions = CefGlueNextWebAppOptions.FromEnvironment();
-            var webViewFactory = new CefGlueNextWebViewFactory(webAppOptions);
-            desktop.MainWindow = ShellBootstrap.CreateWindow(
-                webViewFactory,
-                webAppOptions.StartUri);
+            services.GetRequiredService<TaruiLifetimeBridge>().Register(desktop);
+            desktop.MainWindow = services.GetRequiredService<IMainWindowLauncher>().LaunchMainWindow();
         }
 
         base.OnFrameworkInitializationCompleted();

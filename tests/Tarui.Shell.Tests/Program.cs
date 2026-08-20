@@ -1,6 +1,12 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
+using Tarui.Plugins.Dialog;
+using Tarui.Plugins.Events;
+using Tarui.Plugins.System;
+using Tarui.Plugins.Window;
+using Tarui.WebView.Abstractions;
 
 namespace Tarui.Shell.Tests;
 
@@ -15,6 +21,10 @@ internal static class Program
         await RouterRoutesByTargetWindowPresence();
         await CapabilityLoaderMergesWindowPermissions();
         await CapabilityLoaderHandlesMissingDirectory();
+        ComposerRegistersPluginCommands();
+        ComposerRejectsUnregisteredPermissions();
+        CapabilitySetProviderCachesDirectorySnapshot();
+        AddTaruiShellRegistersShellServices();
         Console.WriteLine("Tarui.Shell self-tests passed.");
         return 0;
     }
@@ -207,6 +217,152 @@ internal static class Program
     {
         var capabilities = CapabilityLoader.Load(Path.Combine(Path.GetTempPath(), $"tarui-missing-{Guid.NewGuid():N}"));
         Assert(capabilities.Count == 0, "A missing capability directory must yield no capabilities.");
+    }
+
+    private static void ComposerRegistersPluginCommands()
+    {
+        using var directory = new TempDirectory();
+        directory.Write(
+            "main.json",
+            """
+            {
+              "identifier": "main",
+              "windows": ["main"],
+              "permissions": ["test:shell|one", "test:shell|two"]
+            }
+            """);
+
+        var services = new ServiceCollection();
+        services.AddPlugin<TestShellPlugin>();
+        services.AddSingleton<ICapabilityProvider>(new CapabilitySetProvider(directory.Path));
+        using var provider = services.BuildServiceProvider();
+
+        var router = CommandRouterComposer.Compose(provider);
+
+        Assert(
+            router.Commands.Contains("test:shell|one") && router.Commands.Contains("test:shell|two"),
+            "Compose must route every plugin command.");
+        Assert(
+            router.RegisteredPermissions.Contains("test:shell|one") &&
+            router.RegisteredPermissions.Contains("test:shell|two"),
+            "Compose must expose every plugin permission.");
+    }
+
+    private static void ComposerRejectsUnregisteredPermissions()
+    {
+        using var directory = new TempDirectory();
+        directory.Write(
+            "main.json",
+            """
+            {
+              "identifier": "main",
+              "windows": ["main"],
+              "permissions": ["test:shell|one", "test:shell|missing"]
+            }
+            """);
+
+        var services = new ServiceCollection();
+        services.AddPlugin<TestShellPlugin>();
+        services.AddSingleton<ICapabilityProvider>(new CapabilitySetProvider(directory.Path));
+        using var provider = services.BuildServiceProvider();
+
+        var rejected = false;
+        try
+        {
+            CommandRouterComposer.Compose(provider);
+        }
+        catch (InvalidOperationException exception)
+        {
+            rejected = exception.Message.Contains("test:shell|missing");
+        }
+
+        Assert(rejected, "Compose must reject capability files that reference unregistered permissions.");
+    }
+
+    private static void CapabilitySetProviderCachesDirectorySnapshot()
+    {
+        using var directory = new TempDirectory();
+        directory.Write(
+            "main.json",
+            """
+            {
+              "identifier": "main",
+              "windows": ["main"],
+              "permissions": ["test:shell|one"]
+            }
+            """);
+        var provider = new CapabilitySetProvider(directory.Path);
+
+        var first = provider.Capabilities;
+        Assert(first.ContainsKey("main"), "The provider must read the configured directory.");
+        Assert(
+            first["main"].Allows("test:shell|one"),
+            "The provider must expose the granted permission.");
+
+        directory.Write(
+            "extra.json",
+            """
+            {
+              "identifier": "extra",
+              "windows": ["main"],
+              "permissions": ["test:shell|two"]
+            }
+            """);
+
+        var second = provider.Capabilities;
+        Assert(ReferenceEquals(first, second), "Repeated access must return the cached snapshot.");
+        Assert(!second["main"].Allows("test:shell|two"), "The capability directory must only be read once.");
+    }
+
+    private static void AddTaruiShellRegistersShellServices()
+    {
+        var services = new ServiceCollection();
+        services.AddTaruiShell();
+        services.AddSingleton(new TaruiAppOrigin(new Uri("http://127.0.0.1:5173/")));
+        services.AddSingleton(new WindowOptions("main"));
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert(
+            provider.GetRequiredService<IMainWindowLauncher>() is MainWindowLauncher,
+            "AddTaruiShell must register the main window launcher.");
+        Assert(
+            provider.GetRequiredService<IWindowService>() is AvaloniaWindowService,
+            "AddTaruiShell must register the window service.");
+        Assert(
+            provider.GetRequiredService<IEventSender>() is not null,
+            "AddTaruiShell must register the event sender.");
+        Assert(
+            provider.GetRequiredService<IDialogService>() is not null,
+            "AddTaruiShell must register the dialog service.");
+        Assert(
+            provider.GetRequiredService<IClipboardService>() is not null,
+            "AddTaruiShell must register the clipboard service.");
+        Assert(
+            provider.GetRequiredService<IpcDispatcher>() is not null,
+            "AddTaruiShell must compose an empty plugin set without failing.");
+        Assert(
+            provider.GetRequiredService<CommandRouter>() is not null,
+            "AddTaruiShell must register the command router.");
+    }
+
+    private sealed class TestShellPlugin : ITaruiPlugin
+    {
+        public void ConfigureCommands(CommandRouterBuilder commands)
+        {
+            commands.Add(
+                "test:shell|one",
+                TaruiJsonContext.Default.EmptyArgs,
+                TaruiJsonContext.Default.Unit,
+                static (_, _, _) => ValueTask.FromResult(new Unit()),
+                "test:shell|one");
+            commands.Add(
+                "test:shell|two",
+                TaruiJsonContext.Default.EmptyArgs,
+                TaruiJsonContext.Default.Unit,
+                static (_, _, _) => ValueTask.FromResult(new Unit()),
+                "test:shell|two");
+        }
     }
 
     private static WindowRegistry.Entry CreateEntry(FakeSink sink, CommandContext context) =>

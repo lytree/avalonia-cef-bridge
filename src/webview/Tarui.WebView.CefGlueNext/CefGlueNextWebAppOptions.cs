@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Extensions.Configuration;
 
 namespace Tarui.WebView.CefGlueNext;
 
@@ -49,20 +50,31 @@ public sealed record CefGlueNextWebAppOptions
 
     public long MaxAssetBytes { get; }
 
-    public static CefGlueNextWebAppOptions FromEnvironment()
+    public static CefGlueNextWebAppOptions FromConfiguration(IConfiguration configuration)
     {
-        var configuredMode = Environment.GetEnvironmentVariable("TARUI_WEB_MODE");
-        if (string.IsNullOrWhiteSpace(configuredMode))
+        var url = ReadConfigurationValue(configuration, "Url");
+        var mode = ReadConfigurationValue(configuration, "Mode");
+        if (mode is null)
         {
-            configuredMode = Environment.GetEnvironmentVariable("TARUI_WEB_URL") is not null
+            mode = url is not null
                 ? "http"
                 : FindContentRoot() is not null ? "scheme" : "http";
         }
 
-        return configuredMode.Trim().ToLowerInvariant() switch
+        return mode.Trim().ToLowerInvariant() switch
         {
-            "http" => CreateHttp(),
-            "scheme" => CreateScheme(),
+            "http" => CreateHttp(url is null ? null : new Uri(url, UriKind.Absolute)),
+            "scheme" => CreateScheme(
+                ReadConfigurationValue(configuration, "Root"),
+                ReadConfigurationValue(configuration, "Scheme"),
+                ReadConfigurationValue(configuration, "Host"),
+                ParseConfigurationBoolean(
+                    ReadConfigurationValue(configuration, "SpaFallback"),
+                    "TARUI_WEB_SPA_FALLBACK"),
+                ReadConfigurationValue(configuration, "Csp"),
+                ParseConfigurationPositiveInt64(
+                    ReadConfigurationValue(configuration, "MaxAssetBytes"),
+                    "TARUI_WEB_MAX_ASSET_BYTES")),
             _ => throw new InvalidOperationException(
                 "TARUI_WEB_MODE must be either 'http' or 'scheme'.")
         };
@@ -167,6 +179,48 @@ public sealed record CefGlueNextWebAppOptions
         }
 
         return value;
+    }
+
+    private static string? ReadConfigurationValue(IConfiguration configuration, string key)
+    {
+        var value = configuration[$"Tarui:Web:{key}"];
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            value = configuration[$"TARUI_WEB_{key.ToUpperInvariant()}"];
+        }
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static bool? ParseConfigurationBoolean(string? value, string key)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (bool.TryParse(value, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new InvalidOperationException($"{key} must be either 'true' or 'false'.");
+    }
+
+    private static long? ParseConfigurationPositiveInt64(string? value, string key)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) &&
+            parsed > 0)
+        {
+            return parsed;
+        }
+
+        throw new InvalidOperationException($"{key} must be a positive integer.");
     }
 
     private static string? FindContentRoot()

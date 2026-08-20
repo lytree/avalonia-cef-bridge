@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
 
@@ -16,12 +17,9 @@ public interface IDialogService
         CancellationToken cancellationToken);
 }
 
-public static class DialogPlugin
+public sealed class DialogPlugin(IDialogService service) : ITaruiPlugin
 {
-    public static void Register(
-        CommandRouterBuilder commands,
-        Action<string> registerPermission,
-        IDialogService service)
+    public void ConfigureCommands(CommandRouterBuilder commands)
     {
         var handlers = new DialogCommands(service);
 
@@ -31,7 +29,6 @@ public static class DialogPlugin
             TaruiJsonContext.Default.OpenDialogResult,
             handlers.OpenAsync,
             "plugin:dialog|open");
-        registerPermission("plugin:dialog|open");
 
         commands.Add(
             "plugin:dialog|save",
@@ -39,7 +36,6 @@ public static class DialogPlugin
             TaruiJsonContext.Default.SaveDialogResult,
             handlers.SaveAsync,
             "plugin:dialog|save");
-        registerPermission("plugin:dialog|save");
     }
 
     private sealed class DialogCommands(IDialogService service)
@@ -58,4 +54,10 @@ public static class DialogPlugin
             CancellationToken cancellationToken) =>
             service.SaveAsync(options, context.WindowLabel, cancellationToken);
     }
+}
+
+public static class DialogPluginServiceCollectionExtensions
+{
+    public static IServiceCollection AddDialogPlugin(this IServiceCollection services)
+        => services.AddPlugin<DialogPlugin>();
 }

@@ -8,13 +8,17 @@
     <RootNamespace>Tarui.App</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
-  </ItemGroup>
-  <ItemGroup>
+    <ProjectReference Include="..\Tarui.Hosting\Tarui.Hosting.csproj" />
     <ProjectReference Include="..\Tarui.Shell\Tarui.Shell.csproj" />
     <ProjectReference Include="..\..\webview\Tarui.WebView.CefGlueNext\Tarui.WebView.CefGlueNext.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Core\Tarui.Plugins.Core.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Dialog\Tarui.Plugins.Dialog.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Event\Tarui.Plugins.Event.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.System\Tarui.Plugins.System.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Window\Tarui.Plugins.Window.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <PropertyGroup>
     <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(PlatformTarget)' != 'arm64'">win-x64</TaruiCefRid>
@@ -33,6 +37,6 @@
     <Content Include="$(TaruiWebDistRoot)\**\*" Link="web\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\..\capabilities\*.json" Link="capabilities\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\capabilities\*.json" Link="capabilities\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

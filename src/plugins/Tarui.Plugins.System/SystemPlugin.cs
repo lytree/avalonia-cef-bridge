@@ -1,18 +1,17 @@
+using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
 
 namespace Tarui.Plugins.System;
 
-public static class SystemPlugin
+public sealed class SystemPlugin(
+    IPathService pathService,
+    IOsService osService,
+    IProcessService processService,
+    IShellService shellService,
+    IClipboardService clipboardService) : ITaruiPlugin
 {
-    public static void Register(
-        CommandRouterBuilder commands,
-        Action<string> registerPermission,
-        IPathService pathService,
-        IOsService osService,
-        IProcessService processService,
-        IShellService shellService,
-        IClipboardService clipboardService)
+    public void ConfigureCommands(CommandRouterBuilder commands)
     {
         var handlers = new SystemCommands(pathService, osService, processService, shellService, clipboardService);
 
@@ -22,7 +21,6 @@ public static class SystemPlugin
             TaruiJsonContext.Default.PathResolveResult,
             handlers.ResolvePathAsync,
             "core:path|resolve");
-        registerPermission("core:path|resolve");
 
         commands.Add(
             "core:os|info",
@@ -30,7 +28,6 @@ public static class SystemPlugin
             TaruiJsonContext.Default.OsInfo,
             handlers.GetOsInfoAsync,
             "core:os|info");
-        registerPermission("core:os|info");
 
         commands.Add(
             "core:process|exit",
@@ -38,7 +35,6 @@ public static class SystemPlugin
             TaruiJsonContext.Default.Unit,
             handlers.ExitAsync,
             "core:process|exit");
-        registerPermission("core:process|exit");
 
         commands.Add(
             "core:process|relaunch",
@@ -46,7 +42,6 @@ public static class SystemPlugin
             TaruiJsonContext.Default.Unit,
             handlers.RelaunchAsync,
             "core:process|relaunch");
-        registerPermission("core:process|relaunch");
 
         commands.Add(
             "core:shell|open",
@@ -54,7 +49,6 @@ public static class SystemPlugin
             TaruiJsonContext.Default.ShellOpenResult,
             handlers.OpenAsync,
             "core:shell|open");
-        registerPermission("core:shell|open");
 
         commands.Add(
             "core:clipboard|read-text",
@@ -62,7 +56,6 @@ public static class SystemPlugin
             TaruiJsonContext.Default.ClipboardReadTextResult,
             handlers.ReadClipboardAsync,
             "core:clipboard|read-text");
-        registerPermission("core:clipboard|read-text");
 
         commands.Add(
             "core:clipboard|write-text",
@@ -70,7 +63,6 @@ public static class SystemPlugin
             TaruiJsonContext.Default.Unit,
             handlers.WriteClipboardAsync,
             "core:clipboard|write-text");
-        registerPermission("core:clipboard|write-text");
     }
 
     private sealed class SystemCommands(
@@ -152,4 +144,14 @@ public static class SystemPlugin
             return new Unit();
         }
     }
+}
+
+public static class SystemPluginServiceCollectionExtensions
+{
+    public static IServiceCollection AddSystemPlugin(this IServiceCollection services) => services
+        .AddSingleton<IPathService, PathService>()
+        .AddSingleton<IOsService, OsService>()
+        .AddSingleton<IProcessService, ProcessService>()
+        .AddSingleton<IShellService, ShellService>()
+        .AddPlugin<SystemPlugin>();
 }

@@ -1,14 +1,12 @@
+using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
 
 namespace Tarui.Plugins.Window;
 
-public static class WindowPlugin
+public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
 {
-    public static void Register(
-        CommandRouterBuilder commands,
-        Action<string> registerPermission,
-        IWindowService service)
+    public void ConfigureCommands(CommandRouterBuilder commands)
     {
         var handlers = new WindowCommands(service);
 
@@ -18,7 +16,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.CreateAsync,
             "core:window|create");
-        registerPermission("core:window|create");
 
         commands.Add(
             "core:window|close",
@@ -26,7 +23,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.CloseAsync,
             "core:window|close");
-        registerPermission("core:window|close");
 
         commands.Add(
             "core:window|minimize",
@@ -34,7 +30,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.MinimizeAsync,
             "core:window|minimize");
-        registerPermission("core:window|minimize");
 
         commands.Add(
             "core:window|maximize",
@@ -42,7 +37,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.MaximizeAsync,
             "core:window|maximize");
-        registerPermission("core:window|maximize");
 
         commands.Add(
             "core:window|unmaximize",
@@ -50,7 +44,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.UnmaximizeAsync,
             "core:window|unmaximize");
-        registerPermission("core:window|unmaximize");
 
         commands.Add(
             "core:window|toggle-maximize",
@@ -58,7 +51,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.ToggleMaximizeAsync,
             "core:window|toggle-maximize");
-        registerPermission("core:window|toggle-maximize");
 
         commands.Add(
             "core:window|hide",
@@ -66,7 +58,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.HideAsync,
             "core:window|hide");
-        registerPermission("core:window|hide");
 
         commands.Add(
             "core:window|show",
@@ -74,7 +65,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.ShowAsync,
             "core:window|show");
-        registerPermission("core:window|show");
 
         commands.Add(
             "core:window|focus",
@@ -82,7 +72,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.FocusAsync,
             "core:window|focus");
-        registerPermission("core:window|focus");
 
         commands.Add(
             "core:window|center",
@@ -90,7 +79,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.CenterAsync,
             "core:window|center");
-        registerPermission("core:window|center");
 
         commands.Add(
             "core:window|set-title",
@@ -98,7 +86,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetTitleAsync,
             "core:window|set-title");
-        registerPermission("core:window|set-title");
 
         commands.Add(
             "core:window|set-size",
@@ -106,7 +93,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetSizeAsync,
             "core:window|set-size");
-        registerPermission("core:window|set-size");
 
         commands.Add(
             "core:window|set-position",
@@ -114,7 +100,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetPositionAsync,
             "core:window|set-position");
-        registerPermission("core:window|set-position");
 
         commands.Add(
             "core:window|set-min-size",
@@ -122,7 +107,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetMinSizeAsync,
             "core:window|set-min-size");
-        registerPermission("core:window|set-min-size");
 
         commands.Add(
             "core:window|set-max-size",
@@ -130,7 +114,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetMaxSizeAsync,
             "core:window|set-max-size");
-        registerPermission("core:window|set-max-size");
 
         commands.Add(
             "core:window|set-always-on-top",
@@ -138,7 +121,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetAlwaysOnTopAsync,
             "core:window|set-always-on-top");
-        registerPermission("core:window|set-always-on-top");
 
         commands.Add(
             "core:window|set-resizable",
@@ -146,7 +128,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetResizableAsync,
             "core:window|set-resizable");
-        registerPermission("core:window|set-resizable");
 
         commands.Add(
             "core:window|set-decorations",
@@ -154,7 +135,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetDecorationsAsync,
             "core:window|set-decorations");
-        registerPermission("core:window|set-decorations");
 
         commands.Add(
             "core:window|set-fullscreen",
@@ -162,7 +142,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetFullscreenAsync,
             "core:window|set-fullscreen");
-        registerPermission("core:window|set-fullscreen");
 
         commands.Add(
             "core:window|get-state",
@@ -170,7 +149,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.WindowStateInfo,
             handlers.GetStateAsync,
             "core:window|get-state");
-        registerPermission("core:window|get-state");
 
         commands.Add(
             "core:window|current-monitor",
@@ -178,7 +156,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.MonitorInfo,
             handlers.GetCurrentMonitorAsync,
             "core:window|current-monitor");
-        registerPermission("core:window|current-monitor");
 
         commands.Add(
             "core:window|primary-monitor",
@@ -186,7 +163,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.MonitorInfo,
             handlers.GetPrimaryMonitorAsync,
             "core:window|primary-monitor");
-        registerPermission("core:window|primary-monitor");
 
         commands.Add(
             "core:window|monitors",
@@ -194,7 +170,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.MonitorInfoArray,
             handlers.GetMonitorsAsync,
             "core:window|monitors");
-        registerPermission("core:window|monitors");
 
         commands.Add(
             "core:window|list",
@@ -202,7 +177,6 @@ public static class WindowPlugin
             TaruiJsonContext.Default.WindowLabels,
             handlers.ListAsync,
             "core:window|list");
-        registerPermission("core:window|list");
     }
 
     private sealed class WindowCommands(IWindowService service)
@@ -381,4 +355,10 @@ public static class WindowPlugin
             return new WindowLabels([.. labels]);
         }
     }
+}
+
+public static class WindowPluginServiceCollectionExtensions
+{
+    public static IServiceCollection AddWindowPlugin(this IServiceCollection services)
+        => services.AddPlugin<WindowPlugin>();
 }

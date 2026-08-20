@@ -4,7 +4,13 @@
 
 Avalonia owns the window, native dialogs, platform services, WebView lifecycle, and recovery UI. The Web application owns routes, forms, tables, and business state.
 
-The Shell depends only on `Tarui.WebView.Abstractions`. `Tarui.App` explicitly creates `CefGlueNextWebViewFactory`. Plugins are referenced and registered explicitly; there is no plugin scan, runtime type lookup, or reflection-based dependency injection.
+The Shell depends only on `Tarui.WebView.Abstractions`. `Tarui.App` registers the CefGlue WebView through `AddCefGlueWebView()`. Plugins are referenced and registered explicitly at the composition root through `AddPlugin<T>()` / `Add*Plugin()`; there is no plugin scan, runtime type lookup, or reflection-based dependency injection.
+
+## Hosting
+
+`Tarui.Hosting` owns the host layer: `TaruiHost.CreateApplicationBuilder()` returns a `TaruiApplicationBuilder` (`Configuration`, `Logging`, `Services`, `Window`) built on `Microsoft.Extensions.Hosting`. The content root is fixed to `AppContext.BaseDirectory`, so `appsettings.json` and the copied `capabilities/*.json` resolve from the application output. `TaruiApplication.Run()` starts the host, uses the Avalonia classic desktop lifetime as the blocking run loop, and stops and disposes the host on exit. `IHostApplicationLifetime.StopApplication()` (including the Ctrl+C console-lifetime semantics) closes the UI through `TaruiLifetimeBridge` and `HostShutdownWatcher`; closing the window lets Avalonia exit and stops the host cooperatively.
+
+`Tarui.App` is the composition root: it registers the shell and plugins explicitly through `AddTaruiShell()` and the `Add*Plugin()` extensions, and configures the main window through `builder.Window`, merged over the `Tarui:Window:*` configuration keys (defaults < configuration < code). `tests/Tarui.Hosting.Tests` covers the builder, configuration merging, and the lifetime bridge. See `docs/hosting.md` for the full design and the configuration key table.
 
 ## Managed browser stack
 
@@ -20,7 +26,7 @@ No CefGlue, ReactiveUI, System.Reactive, Avalonia WebView, or CEF runtime NuGet 
 
 ## IPC
 
-The renderer injects `window.invokeCSharpAction(json)`. Calls become a fixed `__taruiIpc` CEF process message, are raised by the adapter as `TaruiWebMessage`, then flow through the static Tarui command router. Host responses use encoded JavaScript dispatch through the existing WebView abstraction.
+The renderer injects `window.invokeCSharpAction(json)`. Calls become a fixed `__taruiIpc` CEF process message, are raised by the adapter as `TaruiWebMessage`, then flow through the DI-composed `CommandRouter`. Host responses use encoded JavaScript dispatch through the existing WebView abstraction.
 
 - Command: request/response work.
 - Event: low-frequency notifications.
@@ -31,14 +37,16 @@ The upstream reflection-based ObjectBinding and generic JavaScript serializer we
 
 ## Shell composition
 
-`ShellBootstrap.CreateWindow` is the composition root. It builds, in order:
+`Tarui.App.Program` composes the application on `TaruiHost.CreateApplicationBuilder`. `AddTaruiShell()` registers the shell services and each `Add*Plugin()` extension registers one plugin through `AddPlugin<T>()` — explicit, compile-time registration with no plugin scan, runtime type lookup, or reflection-based dependency injection.
+
+`AddTaruiShell()` builds, in order:
 
 1. `WindowRegistry` — label-to-entry map for live windows.
 2. `EventRouter` — fan-out of routed (window-targeted) and broadcast events over `EventHub`.
-3. `CapabilityLoader` — reads `capabilities/*.json`; windows without a dedicated file fall back to the `main` capability set. Startup fails when a capability references a permission no plugin registered.
-4. Plugin registration — Core, Window, Event, Dialog, System register their commands and permissions on a `CommandRouterBuilder`.
+3. `ICapabilityProvider` (`CapabilitySetProvider`) — reads `capabilities/*.json`; windows without a dedicated file fall back to the `main` capability set.
+4. `CommandRouter` — composed by `CommandRouterComposer` from every registered `ITaruiPlugin`: each plugin's `ConfigureCommands(CommandRouterBuilder)` adds its commands and permissions, then capability validation fails startup when a capability references a permission no plugin registered.
 5. `IpcDispatcher` — wraps the frozen command router; every `WebViewHost` dispatches with the `CommandContext` of its own window, so the shell-side label is authoritative even when the Web envelope carries a stale one.
-6. The `main` window entry and window lifecycle wiring.
+6. Window services — `ShellWindowFactory`, `AvaloniaWindowService`, `AvaloniaDialogService`, `AvaloniaClipboardService`, and `MainWindowLauncher` for the `main` window entry and lifecycle wiring.
 
 `AvaloniaWindowService` implements the 24 `core:window|*` commands over `WindowRegistry` and `ShellWindow`, including monitor discovery. `AvaloniaDialogService` and `AvaloniaClipboardService` resolve the owner window from the registry so dialogs and clipboard access stay attached to the requesting window.
 
@@ -54,7 +62,7 @@ Window lifecycle events are wired per entry: `window://moved`, `window://resized
 | Dialog | `plugin:dialog|open`, `plugin:dialog|save` |
 | System | `core:path|resolve`, `core:os|info`, `core:process|exit`, `core:process|relaunch`, `core:shell|open`, `core:clipboard|read-text`, `core:clipboard|write-text` |
 
-Adding a command means: DTO record in `Tarui.Contracts` (plus `TaruiJsonContext` registration), a handler on the plugin's service interface, a `commands.Add` entry with its permission, and the permission listed in the target capability file.
+Adding a command means: DTO record in `Tarui.Contracts` (plus `TaruiJsonContext` registration), a handler wired in the plugin class's `ConfigureCommands(CommandRouterBuilder)`, a `commands.Add` entry with its permission, and the permission listed in the target capability file.
 
 ## Frontend bridge
 
@@ -62,7 +70,7 @@ Adding a command means: DTO record in `Tarui.Contracts` (plus `TaruiJsonContext`
 
 ## Process model
 
-`Tarui.App.Program` calls `CefSubProcess.Run(args)` before Avalonia starts. CEF renderer and utility process launches therefore reuse the same executable, while the normal browser process continues into Avalonia.
+`Tarui.App.Program` calls `CefGlueRuntimeBootstrap.RunSubProcess(args)` before the host builder is created. CEF renderer and utility process launches therefore reuse the same executable, while the normal browser process continues into the host and Avalonia.
 
 ## Native runtime
 
@@ -70,7 +78,7 @@ CEF native binaries are installed with `eng/cef/install-runtime.ps1` into `runti
 
 ## Web resource transport
 
-`CefGlueNextWebAppOptions` selects one of two explicit modes before CEF initialization:
+`CefGlueNextWebAppOptions` (built from the `Tarui:Web:*` configuration keys, with `TARUI_WEB_*` environment variables as fallback) selects one of two explicit modes before CEF initialization:
 
 - HTTP: navigate to an exact `http://` or `https://` origin, primarily for Vite development or a managed local server.
 - Scheme: register `tarui://localhost` in browser and renderer processes and serve packaged files directly through `CefSchemeHandlerFactory`. No HTTP listener is created.

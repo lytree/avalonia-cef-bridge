@@ -1,7 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
+using Tarui.Plugins.Core;
 using Tarui.Plugins.Dialog;
 using Tarui.Plugins.Events;
 using Tarui.Plugins.System;
@@ -24,15 +26,19 @@ internal static class Program
         await OpensShellTargetsAndReportsOsInfo();
         await OpensDialogsForRequestingWindow();
         await DeniesCommandsOutsideCapability();
+        ResolvesCorePluginThroughServiceCollection();
+        ResolvesWindowPluginThroughServiceCollection();
+        ResolvesEventPluginThroughServiceCollection();
+        ResolvesDialogPluginThroughServiceCollection();
+        ResolvesSystemPluginThroughServiceCollection();
         Console.WriteLine("Tarui.Plugins self-tests passed.");
         return 0;
     }
 
     private static async Task RegistersWindowCommandsWithPermissions()
     {
-        var permissions = new List<string>();
         var builder = new CommandRouterBuilder();
-        WindowPlugin.Register(builder, permissions.Add, new FakeWindowService());
+        new WindowPlugin(new FakeWindowService()).ConfigureCommands(builder);
 
         var expected = new[]
         {
@@ -66,7 +72,7 @@ internal static class Program
             expected.All(router.Commands.Contains),
             "Every window command must be routed.");
         Assert(
-            expected.All(permission => permissions.Contains(permission)),
+            expected.All(permission => builder.RegisteredPermissions.Contains(permission)),
             "Every window command must register its permission.");
     }
 
@@ -280,36 +286,101 @@ internal static class Program
     private static CommandRouter BuildRouter(FakeWindowService service)
     {
         var builder = new CommandRouterBuilder();
-        WindowPlugin.Register(builder, static _ => { }, service);
+        new WindowPlugin(service).ConfigureCommands(builder);
         return builder.Build();
     }
 
     private static CommandRouter BuildRouter(FakeEventSender sender)
     {
         var builder = new CommandRouterBuilder();
-        EventPlugin.Register(builder, static _ => { }, sender);
+        new EventPlugin(sender).ConfigureCommands(builder);
         return builder.Build();
     }
 
     private static CommandRouter BuildRouter(FakeSystemServices services)
     {
         var builder = new CommandRouterBuilder();
-        SystemPlugin.Register(
-            builder,
-            static _ => { },
-            services.Paths,
-            services.Os,
-            services.Process,
-            services.Shell,
-            services.Clipboard);
+        new SystemPlugin(services.Paths, services.Os, services.Process, services.Shell, services.Clipboard)
+            .ConfigureCommands(builder);
         return builder.Build();
     }
 
     private static CommandRouter BuildRouter(FakeDialogService dialog)
     {
         var builder = new CommandRouterBuilder();
-        DialogPlugin.Register(builder, static _ => { }, dialog);
+        new DialogPlugin(dialog).ConfigureCommands(builder);
         return builder.Build();
+    }
+
+    private static void ResolvesCorePluginThroughServiceCollection()
+    {
+        using var provider = new ServiceCollection()
+            .AddCorePlugin()
+            .BuildServiceProvider();
+
+        Assert(
+            provider.GetRequiredService<ITaruiPlugin>() is CorePlugin,
+            "AddCorePlugin must resolve the core plugin.");
+    }
+
+    private static void ResolvesWindowPluginThroughServiceCollection()
+    {
+        using var provider = new ServiceCollection()
+            .AddWindowPlugin()
+            .AddSingleton<IWindowService>(new FakeWindowService())
+            .BuildServiceProvider();
+
+        Assert(
+            provider.GetRequiredService<ITaruiPlugin>() is WindowPlugin,
+            "AddWindowPlugin must resolve the window plugin.");
+    }
+
+    private static void ResolvesEventPluginThroughServiceCollection()
+    {
+        using var provider = new ServiceCollection()
+            .AddEventPlugin()
+            .AddSingleton<IEventSender>(new FakeEventSender())
+            .BuildServiceProvider();
+
+        Assert(
+            provider.GetRequiredService<ITaruiPlugin>() is EventPlugin,
+            "AddEventPlugin must resolve the event plugin.");
+    }
+
+    private static void ResolvesDialogPluginThroughServiceCollection()
+    {
+        using var provider = new ServiceCollection()
+            .AddDialogPlugin()
+            .AddSingleton<IDialogService>(new FakeDialogService())
+            .BuildServiceProvider();
+
+        Assert(
+            provider.GetRequiredService<ITaruiPlugin>() is DialogPlugin,
+            "AddDialogPlugin must resolve the dialog plugin.");
+    }
+
+    private static void ResolvesSystemPluginThroughServiceCollection()
+    {
+        using var provider = new ServiceCollection()
+            .AddSystemPlugin()
+            .AddSingleton<IClipboardService>(new FakeClipboardService())
+            .BuildServiceProvider();
+
+        Assert(
+            provider.GetRequiredService<ITaruiPlugin>() is SystemPlugin,
+            "AddSystemPlugin must resolve the system plugin.");
+        Assert(
+            provider.GetRequiredService<IPathService>() is PathService,
+            "AddSystemPlugin must register the path service.");
+        Assert(
+            provider.GetRequiredService<IOsService>() is OsService,
+            "AddSystemPlugin must register the OS service.");
+        Assert(
+            provider.GetRequiredService<IProcessService>() is ProcessService,
+            "AddSystemPlugin must register the process service.");
+        Assert(
+            provider.GetRequiredService<IShellService>() is ShellService,
+            "AddSystemPlugin must register the shell service.");
     }
 
     private static CommandContext AllowAll() => new("main", "main", new CapabilitySet(["*"]));

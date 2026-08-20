@@ -1,4 +1,7 @@
 using System.Text;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Tarui.WebView.Abstractions;
 using Tarui.WebView.CefGlueNext;
 
 namespace Tarui.WebView.Tests;
@@ -11,6 +14,13 @@ internal static class Program
 
         TestHttpOptions();
         TestSchemeOptions(fixture);
+        TestFromConfigurationHttp();
+        TestFromConfigurationScheme(fixture);
+        TestFromConfigurationEnvironmentKeyFallback(fixture);
+        TestFromConfigurationInvalidMode();
+        TestFromConfigurationSchemeSettings(fixture);
+        TestAddCefGlueWebView();
+        TestTaruiAppOrigin();
         TestGetMimeAndQuery(fixture);
         TestHeadLength(fixture);
         TestMethodAndAuthorityRejection(fixture);
@@ -57,6 +67,149 @@ internal static class Program
         AssertEqual("localhost", options.DomainName, "Scheme domain should be preserved.");
         AssertEqual("tarui://localhost/index.html", options.StartUri.ToString(), "Scheme start URI should target index.html.");
         AssertEqual(1024L, options.MaxAssetBytes, "Configured asset limit should be preserved.");
+    }
+
+    private static void TestFromConfigurationHttp()
+    {
+        var configuration = CreateConfiguration(
+            ("Tarui:Web:Mode", "http"),
+            ("Tarui:Web:Url", "http://127.0.0.1:9999"));
+        var options = CefGlueNextWebAppOptions.FromConfiguration(configuration);
+
+        AssertEqual(TaruiWebResourceMode.Http, options.Mode, "Configured HTTP mode should be selected.");
+        AssertEqual(
+            new Uri("http://127.0.0.1:9999"),
+            options.StartUri,
+            "Configured URL should become the HTTP start URI.");
+    }
+
+    private static void TestFromConfigurationScheme(TestFixture fixture)
+    {
+        var configuration = CreateConfiguration(
+            ("Tarui:Web:Mode", "scheme"),
+            ("Tarui:Web:Root", fixture.Root),
+            ("Tarui:Web:Scheme", "app"),
+            ("Tarui:Web:Host", "local"));
+        var options = CefGlueNextWebAppOptions.FromConfiguration(configuration);
+
+        AssertEqual(TaruiWebResourceMode.Scheme, options.Mode, "Configured scheme mode should be selected.");
+        AssertEqual(
+            "app://local/index.html",
+            options.StartUri.ToString(),
+            "Configured scheme and host should form the start URI.");
+        AssertEqual(
+            Path.GetFullPath(fixture.Root),
+            options.ContentRoot,
+            "Configured root should be normalized as the content root.");
+    }
+
+    private static void TestFromConfigurationEnvironmentKeyFallback(TestFixture fixture)
+    {
+        var configuration = CreateConfiguration(
+            ("TARUI_WEB_MODE", "scheme"),
+            ("TARUI_WEB_ROOT", fixture.Root));
+        var options = CefGlueNextWebAppOptions.FromConfiguration(configuration);
+
+        AssertEqual(
+            TaruiWebResourceMode.Scheme,
+            options.Mode,
+            "Flat environment-style keys should be honored when hierarchical keys are absent.");
+        AssertEqual(
+            Path.GetFullPath(fixture.Root),
+            options.ContentRoot,
+            "Flat TARUI_WEB_ROOT key should configure the content root.");
+    }
+
+    private static void TestFromConfigurationInvalidMode()
+    {
+        var configuration = CreateConfiguration(("Tarui:Web:Mode", "ftp"));
+
+        AssertThrows<InvalidOperationException>(
+            () => CefGlueNextWebAppOptions.FromConfiguration(configuration),
+            exception => exception.Message.Contains("TARUI_WEB_MODE", StringComparison.Ordinal),
+            "Invalid configured mode must be rejected with a TARUI_WEB_MODE message.");
+    }
+
+    private static void TestFromConfigurationSchemeSettings(TestFixture fixture)
+    {
+        var configuration = CreateConfiguration(
+            ("Tarui:Web:Mode", "scheme"),
+            ("Tarui:Web:Root", fixture.Root),
+            ("Tarui:Web:SpaFallback", "False"),
+            ("Tarui:Web:Csp", "default-src 'self'"),
+            ("Tarui:Web:MaxAssetBytes", "2048"));
+        var options = CefGlueNextWebAppOptions.FromConfiguration(configuration);
+
+        AssertEqual(false, options.SpaFallback, "Configured SpaFallback should be parsed case-insensitively.");
+        AssertEqual(
+            "default-src 'self'",
+            options.ContentSecurityPolicy,
+            "Configured CSP should be preserved.");
+        AssertEqual(2048L, options.MaxAssetBytes, "Configured asset limit should be parsed.");
+
+        AssertThrows<InvalidOperationException>(
+            () => CefGlueNextWebAppOptions.FromConfiguration(CreateConfiguration(
+                ("Tarui:Web:Mode", "scheme"),
+                ("Tarui:Web:Root", fixture.Root),
+                ("Tarui:Web:SpaFallback", "yes"))),
+            "Invalid SpaFallback values must be rejected.");
+        AssertThrows<InvalidOperationException>(
+            () => CefGlueNextWebAppOptions.FromConfiguration(CreateConfiguration(
+                ("Tarui:Web:Mode", "scheme"),
+                ("Tarui:Web:Root", fixture.Root),
+                ("Tarui:Web:MaxAssetBytes", "-1"))),
+            "Non-positive MaxAssetBytes values must be rejected.");
+    }
+
+    private static void TestAddCefGlueWebView()
+    {
+        var configuration = CreateConfiguration(
+            ("Tarui:Web:Mode", "http"),
+            ("Tarui:Web:Url", "http://127.0.0.1:4321"));
+        var services = new ServiceCollection()
+            .AddSingleton<IConfiguration>(configuration)
+            .AddCefGlueWebView();
+        using (var provider = services.BuildServiceProvider())
+        {
+            var options = provider.GetRequiredService<CefGlueNextWebAppOptions>();
+            var origin = provider.GetRequiredService<TaruiAppOrigin>();
+
+            AssertEqual(
+                new Uri("http://127.0.0.1:4321"),
+                options.StartUri,
+                "AddCefGlueWebView should build options from IConfiguration.");
+            AssertEqual(
+                options.StartUri,
+                origin.StartUri,
+                "AddCefGlueWebView should register TaruiAppOrigin from the configured options.");
+        }
+
+        var explicitOptions = CefGlueNextWebAppOptions.CreateHttp(new Uri("http://127.0.0.1:7777"));
+        using (var provider = new ServiceCollection()
+            .AddCefGlueWebView(explicitOptions)
+            .BuildServiceProvider())
+        {
+            var options = provider.GetRequiredService<CefGlueNextWebAppOptions>();
+            var origin = provider.GetRequiredService<TaruiAppOrigin>();
+
+            Assert(
+                ReferenceEquals(explicitOptions, options),
+                "The explicit AddCefGlueWebView overload should register the provided options instance.");
+            AssertEqual(
+                explicitOptions.StartUri,
+                origin.StartUri,
+                "The explicit AddCefGlueWebView overload should derive TaruiAppOrigin from the provided instance.");
+        }
+    }
+
+    private static void TestTaruiAppOrigin()
+    {
+        var uri = new Uri("tarui://localhost/index.html");
+
+        AssertEqual(
+            uri,
+            new TaruiAppOrigin(uri).StartUri,
+            "TaruiAppOrigin should expose the configured start URI.");
     }
 
     private static void TestGetMimeAndQuery(TestFixture fixture)
@@ -157,6 +310,17 @@ internal static class Program
     private static string Describe(string value) =>
         value.Replace("\0", "\\0", StringComparison.Ordinal).Replace("\u0001", "\\u0001", StringComparison.Ordinal);
 
+    private static IConfigurationRoot CreateConfiguration(params (string Key, string? Value)[] settings)
+    {
+        var values = new Dictionary<string, string?>();
+        foreach (var (key, value) in settings)
+        {
+            values[key] = value;
+        }
+
+        return new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+    }
+
     private static void AssertThrows<TException>(Action action, string message)
         where TException : Exception
     {
@@ -167,6 +331,26 @@ internal static class Program
         catch (TException)
         {
             return;
+        }
+
+        throw new InvalidOperationException(message);
+    }
+
+    private static void AssertThrows<TException>(Action action, Func<TException, bool> predicate, string message)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+        }
+        catch (TException exception)
+        {
+            if (predicate(exception))
+            {
+                return;
+            }
+
+            throw new InvalidOperationException($"{message} Unexpected message: {exception.Message}");
         }
 
         throw new InvalidOperationException(message);

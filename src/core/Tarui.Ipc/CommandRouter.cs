@@ -17,6 +17,9 @@ public sealed class CommandRouterBuilder
 {
     private readonly Dictionary<string, ICommandInvoker> _commands = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _permissions = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _registeredPermissions = new(StringComparer.Ordinal);
+
+    public IReadOnlyCollection<string> RegisteredPermissions => _registeredPermissions;
 
     public CommandRouterBuilder Add<TArgs, TResult>(
         string command,
@@ -31,19 +34,24 @@ public sealed class CommandRouterBuilder
         }
 
         _permissions.Add(command, permission);
+        _registeredPermissions.Add(permission);
         return this;
     }
 
     public CommandRouter Build() => new(
         _commands.ToFrozenDictionary(StringComparer.Ordinal),
-        _permissions.ToFrozenDictionary(StringComparer.Ordinal));
+        _permissions.ToFrozenDictionary(StringComparer.Ordinal),
+        _registeredPermissions.ToFrozenSet(StringComparer.Ordinal));
 }
 
 public sealed class CommandRouter(
     FrozenDictionary<string, ICommandInvoker> commands,
-    FrozenDictionary<string, string> permissions)
+    FrozenDictionary<string, string> permissions,
+    FrozenSet<string> registeredPermissions)
 {
     public IReadOnlyCollection<string> Commands => commands.Keys;
+
+    public IReadOnlyCollection<string> RegisteredPermissions => registeredPermissions;
 
     public async ValueTask<InvokeResponse> InvokeAsync(
         InvokeRequest request,
