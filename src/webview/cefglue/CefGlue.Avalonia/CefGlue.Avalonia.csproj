@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Xilium.CefGlue.Avalonia</AssemblyName>
+    <RootNamespace>Xilium.CefGlue.Avalonia</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <NoWarn>$(NoWarn);CS0649</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="AvaloniaRenderSurface.cs" />
+    <Compile Remove="CursorsProvider.cs" />
+    <Compile Remove="InputExtensions.cs" />
+    <Compile Remove="KeyInterop.cs" />
+    <Compile Remove="Platform/AvaloniaOffScreenControlHost.cs" />
+    <Compile Remove="Platform/AvaloniaOffScreenKeyboardHandler.cs" />
+    <Compile Remove="Platform/AvaloniaPopup.cs" />
+    <Compile Remove="Platform/ExtendedAvaloniaPopup.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../CefGlue.Common/BaseCefBrowser.cs" Link="Common/BaseCefBrowser.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../CefGlue.Core/CefGlue.Core.csproj" />
+    <ProjectReference Include="../CefGlue.Common/CefGlue.Common.csproj" />
+    <ProjectReference Include="../CefGlue.BrowserProcess.Core/CefGlue.BrowserProcess.Core.csproj" />
+  </ItemGroup>
+</Project>

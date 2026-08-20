@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Markup.Declarative" Version="12.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\core\Tarui.Contracts\Tarui.Contracts.csproj" />
+    <ProjectReference Include="..\..\core\Tarui.Ipc\Tarui.Ipc.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Core\Tarui.Plugins.Core.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Dialog\Tarui.Plugins.Dialog.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Event\Tarui.Plugins.Event.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.System\Tarui.Plugins.System.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Window\Tarui.Plugins.Window.csproj" />
+    <ProjectReference Include="..\..\webview\Tarui.WebView.Abstractions\Tarui.WebView.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

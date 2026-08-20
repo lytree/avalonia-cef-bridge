@@ -1,48 +1,118 @@
 # tarui.net
 
-`tarui.net` is a desktop application skeleton that combines an Avalonia native shell with a React/TypeScript business UI.
+`tarui.net` combines an Avalonia native shell with a React/TypeScript business UI and an in-repository CefGlue browser backend.
 
 ## Architecture
 
-- Avalonia is the native window shell and component layer.
-- `Tarui.WebView.Native` is the working NativeWebView backend; `Tarui.WebView.CefGlueNext` is the browser source-port boundary, and the Shell only sees `Tarui.WebView.Abstractions`.
-- IPC follows the Tauri shape: `Command`, `Event`, `Channel`, and `Capability`.
-- Runtime reflection, assembly scanning, `Activator`, `dynamic`, `DynamicInvoke`, dynamic plugin loading, and JSON reflection fallback are prohibited in application code.
-- Discovery and binding use source generation; JSON uses `System.Text.Json` source generation.
-- Plugins are referenced by project and registered explicitly in the composition root.
+- Avalonia owns the native window shell and platform components.
+- CefGlue.Next managed sources are vendored under `src/webview/cefglue` and adapted to Avalonia 12.1.1.
+- IPC follows the Tauri shape: Command, Event, Channel, and Capability.
+- Runtime reflection, assembly scanning, dynamic plugin loading, and JSON reflection fallback are prohibited.
+- Plugins are project references registered explicitly in the composition root.
 
-## Projects
+## Repository layout
 
 ```text
-src/Tarui.Contracts       Shared IPC contracts and generated JSON metadata
-src/Tarui.Ipc             Static command router, events, channels, capabilities
-src/Tarui.Ipc.Generators  Roslyn incremental generator for command catalogs
-src/Tarui.Plugins.Core    Explicit core plugin registration
-src/Tarui.Plugins.Dialog  Explicit dialog plugin registration
-src/Tarui.WebView.Abstractions  Engine-neutral WebView contract
-src/Tarui.WebView.Native        Working NativeWebView backend
-src/Tarui.WebView.CefGlueNext   Pinned CefGlue source adapter boundary
-src/Tarui.Shell                 Avalonia.Markup.Declarative shell, depends only on WebView abstractions
-src/Tarui.App                   Composition root and explicit backend selection
-src/Tarui.Web             React/TypeScript business UI and @tarui/api bridge
-tests/Tarui.Ipc.Tests     Contract and router tests
+src/
+  core/                    Reflection-free contracts and IPC runtime
+  desktop/                 Avalonia application and declarative shell
+  generators/              Compile-time Roslyn generators
+  plugins/                 Explicit native capability modules
+  webview/
+    cefglue/                Vendored CefGlue managed source projects
+    Tarui.WebView.*         Tarui browser abstraction and adapter
+web/
+  apps/Tarui.Web/          React business application
+  packages/api/            @tarui/api bridge package
+tests/                     Executable and integration tests
+capabilities/              Window/WebView permission manifests
+runtime/cef/               Locally installed native CEF distributions
+eng/cef/                   Native runtime installation tooling
+docs/                      Architecture and implementation notes
 ```
 
 ## Build
 
 ```powershell
+./eng/cef/install-runtime.ps1 -RuntimeIdentifier win-x64
+
 dotnet restore tarui.net.sln --configfile NuGet.Config
 dotnet build tarui.net.sln --no-restore
-dotnet run --project tests/Tarui.Ipc.Tests/Tarui.Ipc.Tests.csproj --no-restore
-cd src/Tarui.Web
-pnpm install
+
+dotnet run --project tests/Tarui.Ipc.Tests --no-build
+dotnet run --project tests/Tarui.WebView.Tests --no-build
+dotnet run --project tests/Tarui.Shell.Tests --no-build
+dotnet run --project tests/Tarui.Plugins.Tests --no-build
+dotnet run --project tests/Tarui.Architecture.Tests --no-build
+
+cd web
+pnpm install --frozen-lockfile
+pnpm lint
 pnpm build
 ```
 
-The repository-level `NuGet.Config` intentionally clears the machine's invalid local Avalonia source without changing user-wide configuration.
+The Web workspace uses pnpm 11. `web/pnpm-workspace.yaml` defines the `apps/*` and `packages/*` members, and the shared `web/pnpm-lock.yaml` keeps dependency resolution reproducible. The application consumes `@tarui/api` through the `workspace:*` dependency specifier. Run all Web commands from the `web` directory.
 
-## WebView backend
+CefGlue managed assemblies and native CEF runtime assets are not restored from NuGet. The native runtime installer downloads the official CEF minimal distribution and verifies its published SHA-1. Avalonia itself remains a normal framework package dependency.
 
-`Tarui.App` explicitly selects `NativeWebViewFactory` by default. Set `TARUI_WEBVIEW_BACKEND=cefglue` to exercise `CefGlueNextWebViewFactory`. The CefGlue implementation is a compiling stub because the pinned upstream source targets Avalonia 11.3.14 while tarui.net targets Avalonia 12.1.1.
+For CI and reproducible local setup, use the pinned pnpm 11 toolchain declared by `web/package.json` and install from the lockfile:
 
-When the port is ready, set `EnableCefGlueNextSourcePort=true` and provide `CefGlueNextReviewedSourceFiles` as an explicit semicolon-separated file list. Do not use wildcard `Compile` items. Upstream ObjectBinding and serializer code uses reflection and must not be compiled into tarui.net; IPC continues to use its own static source-generated binding and JSON chain. Do not add runtime redists, demo projects, or the upstream solution.
+```powershell
+cd web
+pnpm install --frozen-lockfile
+```
+
+## Web resource modes
+
+HTTP development mode:
+
+```powershell
+$env:TARUI_WEB_MODE = "http"
+$env:TARUI_WEB_URL = "http://127.0.0.1:5173"
+cd web
+pnpm dev
+```
+
+Local Scheme mode without an HTTP server:
+
+```powershell
+cd web
+pnpm build
+cd ..
+$env:TARUI_WEB_MODE = "scheme"
+dotnet run --project src/desktop/Tarui.App/Tarui.App.csproj
+```
+
+Scheme mode serves `tarui://localhost/index.html`. The build copies Web `dist` files into the application output. Override the defaults with:
+
+- `TARUI_WEB_ROOT`: static asset directory containing `index.html`.
+- `TARUI_WEB_SCHEME` / `TARUI_WEB_HOST`: custom origin.
+- `TARUI_WEB_SPA_FALLBACK=false`: disable main-frame SPA fallback.
+- `TARUI_WEB_CSP`: override the production Content-Security-Policy.
+- `TARUI_WEB_MAX_ASSET_BYTES`: maximum asset size, default 64 MiB.
+
+When no mode is specified, a configured `TARUI_WEB_URL` selects HTTP; otherwise a packaged Web directory selects Scheme, falling back to the local development HTTP URL only when no packaged assets exist.
+
+## Native capability surface
+
+`ShellBootstrap` composes the shell from explicitly registered plugins. Every command is permission-checked against the capability file of the calling window (`capabilities/main.json`):
+
+| Plugin | Commands | Surface |
+| --- | --- | --- |
+| Core | `core:app|get-info` | Shell handshake: product, version, capabilities. |
+| Window | `core:window|*` (24) | Create/close/minimize/maximize/hide/show/focus/center, title, size, position, min/max size, always-on-top, resizable, decorations, fullscreen, state, monitors, list. |
+| Event | `core:event|emit` | Emit routed or broadcast events from the Web side. |
+| Dialog | `plugin:dialog|open`, `plugin:dialog|save` | Native file/directory pickers attached to the requesting window. |
+| System | `core:path|resolve`, `core:os|info`, `core:process|exit`, `core:process|relaunch`, `core:shell|open`, `core:clipboard|read-text`, `core:clipboard|write-text` | Path resolution with escape protection, OS info, process lifecycle, OS default handler, clipboard text. |
+
+The shell routes window lifecycle events to the owning Webview (`window://moved`, `window://resized`, `window://focus-changed`, `window://close-requested`) and broadcasts `window://destroyed` and `shell://theme-changed` to every window. Closing is cooperative: the title-bar close request is delivered as an event and the Web side confirms by invoking `core:window|close`.
+
+## Frontend bridge
+
+`web/packages/api` (`@tarui/api`) ships one typed module per plugin contract: `ipc`, `app`, `window`, `event`, `dialog`, `os`, `path`, `process`, `shell`, and `clipboard`. `Window.getCurrent()` returns a handle whose label-less calls target the window hosting the calling Webview; `Window.getByLabel`/`Window.create` address other windows. The barrel export renames the two `open` helpers to `openDialog` and `openExternal`; subpath exports such as `@tarui/api/window` keep the Tauri-style short names.
+
+## CefGlue port
+
+The source port is based on upstream commit `e3389315dad795374be1a1e52c42d4e49cb6fe7b`, CEF `150.0.11`, and targets Avalonia `12.1.1`. Reflection-based ObjectBinding, generic JavaScript evaluation, ReactiveUI, and System.Reactive were removed. Tarui IPC enters through the fixed `window.invokeCSharpAction` CEF process-message bridge.
+
+The current port supports native windowed rendering. OSR and its Avalonia 11 drag-and-drop layer are intentionally excluded.

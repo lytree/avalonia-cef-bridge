@@ -1,0 +1,19 @@
+{
+  "name": "@tarui/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./ipc": "./ipc.ts",
+    "./app": "./app.ts",
+    "./window": "./window.ts",
+    "./event": "./event.ts",
+    "./dialog": "./dialog.ts",
+    "./os": "./os.ts",
+    "./path": "./path.ts",
+    "./process": "./process.ts",
+    "./shell": "./shell.ts",
+    "./clipboard": "./clipboard.ts"
+  }
+}

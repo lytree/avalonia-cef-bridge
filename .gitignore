@@ -5,3 +5,6 @@ dist/
 .pnpm-store/
 *.user
 *.suo
+
+runtime/cef/*
+!runtime/cef/README.md

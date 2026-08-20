@@ -1,0 +1,332 @@
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
+using Tarui.Contracts;
+using Tarui.Ipc;
+using Tarui.Plugins.Dialog;
+using Tarui.Plugins.Events;
+using Tarui.Plugins.System;
+using Tarui.Plugins.Window;
+
+namespace Tarui.Plugins.Tests;
+
+internal static class Program
+{
+    public static async Task<int> Main()
+    {
+        await RegistersWindowCommandsWithPermissions();
+        await DispatchesWindowCreateWithOptions();
+        await FallsBackToContextWindowLabel();
+        await ReturnsWindowStateAndLabels();
+        await EmitsEventsThroughEventPlugin();
+        await ResolvesPathsThroughSystemPlugin();
+        await ReadsAndWritesClipboard();
+        await ExitsAndRelaunchesThroughProcessCommands();
+        await OpensShellTargetsAndReportsOsInfo();
+        await OpensDialogsForRequestingWindow();
+        await DeniesCommandsOutsideCapability();
+        Console.WriteLine("Tarui.Plugins self-tests passed.");
+        return 0;
+    }
+
+    private static async Task RegistersWindowCommandsWithPermissions()
+    {
+        var permissions = new List<string>();
+        var builder = new CommandRouterBuilder();
+        WindowPlugin.Register(builder, permissions.Add, new FakeWindowService());
+
+        var expected = new[]
+        {
+            "core:window|create",
+            "core:window|close",
+            "core:window|minimize",
+            "core:window|maximize",
+            "core:window|unmaximize",
+            "core:window|toggle-maximize",
+            "core:window|hide",
+            "core:window|show",
+            "core:window|focus",
+            "core:window|center",
+            "core:window|set-title",
+            "core:window|set-size",
+            "core:window|set-position",
+            "core:window|set-min-size",
+            "core:window|set-max-size",
+            "core:window|set-always-on-top",
+            "core:window|set-resizable",
+            "core:window|set-decorations",
+            "core:window|set-fullscreen",
+            "core:window|get-state",
+            "core:window|current-monitor",
+            "core:window|primary-monitor",
+            "core:window|monitors",
+            "core:window|list",
+        };
+        var router = builder.Build();
+        Assert(
+            expected.All(router.Commands.Contains),
+            "Every window command must be routed.");
+        Assert(
+            expected.All(permission => permissions.Contains(permission)),
+            "Every window command must register its permission.");
+    }
+
+    private static async Task DispatchesWindowCreateWithOptions()
+    {
+        var service = new FakeWindowService();
+        var router = BuildRouter(service);
+        var response = await router.InvokeAsync(
+            Request(
+                "core:window|create",
+                new WindowOptions("editor") { Title = "Editor", Width = 640, Height = 480 },
+                TaruiJsonContext.Default.WindowOptions),
+            AllowAll());
+
+        Assert(response.Success, "Window creation must succeed.");
+        Assert(
+            service.Calls.Contains("create|editor|Editor|640x480"),
+            "The service must receive the deserialized window options.");
+    }
+
+    private static async Task FallsBackToContextWindowLabel()
+    {
+        var service = new FakeWindowService();
+        var router = BuildRouter(service);
+        var response = await router.InvokeAsync(
+            Request("core:window|minimize", new WindowLabelOptions(), TaruiJsonContext.Default.WindowLabelOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["*"])));
+
+        Assert(response.Success, "Minimize must succeed.");
+        Assert(
+            service.Calls.Contains("minimize|editor"),
+            "A missing label must fall back to the context window label.");
+    }
+
+    private static async Task ReturnsWindowStateAndLabels()
+    {
+        var service = new FakeWindowService
+        {
+            Labels = ["main", "editor"],
+            Monitors =
+            [
+                new MonitorInfo(
+                    "Primary",
+                    new LogicalPosition(0, 0),
+                    new LogicalSize(1920, 1080),
+                    new LogicalPosition(0, 0),
+                    new LogicalSize(1920, 1040),
+                    1.25,
+                    IsPrimary: true,
+                    IsCurrent: true),
+            ],
+        };
+        var router = BuildRouter(service);
+
+        var stateResponse = await router.InvokeAsync(
+            Request("core:window|get-state", new WindowLabelOptions("editor"), TaruiJsonContext.Default.WindowLabelOptions),
+            AllowAll());
+        var state = Result(stateResponse, TaruiJsonContext.Default.WindowStateInfo);
+        Assert(state.Label == "editor", "The state must be scoped to the requested window.");
+        Assert(state.Title == "main-title", "The state must carry the window title.");
+
+        var listResponse = await router.InvokeAsync(
+            Request("core:window|list", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
+            AllowAll());
+        var labels = Result(listResponse, TaruiJsonContext.Default.WindowLabels);
+        Assert(
+            labels.Labels.SequenceEqual(["main", "editor"]),
+            "The label list must match the service response.");
+
+        var monitorsResponse = await router.InvokeAsync(
+            Request("core:window|monitors", new WindowLabelOptions("main"), TaruiJsonContext.Default.WindowLabelOptions),
+            AllowAll());
+        var monitors = Result(monitorsResponse, TaruiJsonContext.Default.MonitorInfoArray);
+        Assert(monitors.Length == 1 && monitors[0].ScaleFactor == 1.25, "Monitor details must round-trip.");
+    }
+
+    private static async Task EmitsEventsThroughEventPlugin()
+    {
+        var sender = new FakeEventSender();
+        var router = BuildRouter(sender);
+        var payload = JsonSerializer.SerializeToElement(new ThemeChanged("dark"), TaruiJsonContext.Default.ThemeChanged);
+        var response = await router.InvokeAsync(
+            Request(
+                "core:event|emit",
+                new EventEmitOptions("theme://changed", payload, "editor"),
+                TaruiJsonContext.Default.EventEmitOptions),
+            AllowAll());
+
+        Assert(response.Success, "Event emission must succeed.");
+        Assert(sender.Emitted.Count == 1, "The sender must receive exactly one event.");
+        Assert(
+            sender.Emitted[0].Event == "theme://changed" && sender.Emitted[0].TargetWindow == "editor",
+            "The event name and target window must round-trip.");
+        Assert(
+            sender.Emitted[0].Payload.GetProperty("theme").GetString() == "dark",
+            "The event payload must round-trip.");
+    }
+
+    private static async Task ResolvesPathsThroughSystemPlugin()
+    {
+        var services = new FakeSystemServices();
+        var router = BuildRouter(services);
+        var response = await router.InvokeAsync(
+            Request(
+                "core:path|resolve",
+                new PathResolveOptions("appdata", "cache/db.sqlite"),
+                TaruiJsonContext.Default.PathResolveOptions),
+            AllowAll());
+
+        var result = Result(response, TaruiJsonContext.Default.PathResolveResult);
+        Assert(
+            result.Path == "/resolved/appdata/cache/db.sqlite",
+            "Path resolution must delegate to the path service.");
+    }
+
+    private static async Task ReadsAndWritesClipboard()
+    {
+        var services = new FakeSystemServices();
+        var router = BuildRouter(services);
+        var writeResponse = await router.InvokeAsync(
+            Request(
+                "core:clipboard|write-text",
+                new ClipboardWriteTextOptions("hello tarui"),
+                TaruiJsonContext.Default.ClipboardWriteTextOptions),
+            AllowAll());
+        Assert(writeResponse.Success, "Clipboard writes must succeed.");
+
+        var readResponse = await router.InvokeAsync(
+            Request("core:clipboard|read-text", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
+            AllowAll());
+        var read = Result(readResponse, TaruiJsonContext.Default.ClipboardReadTextResult);
+        Assert(
+            read.Text == "hello tarui",
+            "Clipboard reads must return the previously written text.");
+    }
+
+    private static async Task ExitsAndRelaunchesThroughProcessCommands()
+    {
+        var services = new FakeSystemServices();
+        var router = BuildRouter(services);
+        var exitResponse = await router.InvokeAsync(
+            Request("core:process|exit", new ProcessExitOptions(3), TaruiJsonContext.Default.ProcessExitOptions),
+            AllowAll());
+        Assert(exitResponse.Success, "Process exit must succeed.");
+
+        var relaunchResponse = await router.InvokeAsync(
+            Request("core:process|relaunch", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
+            AllowAll());
+        Assert(relaunchResponse.Success, "Process relaunch must succeed.");
+        Assert(
+            services.Process.Calls.SequenceEqual(["shutdown:3", "relaunch"]),
+            "The process service must observe exit and relaunch calls.");
+    }
+
+    private static async Task OpensShellTargetsAndReportsOsInfo()
+    {
+        var services = new FakeSystemServices();
+        var router = BuildRouter(services);
+        var shellResponse = await router.InvokeAsync(
+            Request("core:shell|open", new ShellOpenOptions("https://example.com"), TaruiJsonContext.Default.ShellOpenOptions),
+            AllowAll());
+        var shell = Result(shellResponse, TaruiJsonContext.Default.ShellOpenResult);
+        Assert(shell.Opened, "Shell opens must report success.");
+
+        var osResponse = await router.InvokeAsync(
+            Request("core:os|info", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
+            AllowAll());
+        var os = Result(osResponse, TaruiJsonContext.Default.OsInfo);
+        Assert(os.Platform == "windows", "OS info must round-trip from the OS service.");
+    }
+
+    private static async Task OpensDialogsForRequestingWindow()
+    {
+        var dialog = new FakeDialogService();
+        var router = BuildRouter(dialog);
+        var openResponse = await router.InvokeAsync(
+            Request(
+                "plugin:dialog|open",
+                new OpenDialogOptions(Multiple: false, Directory: false),
+                TaruiJsonContext.Default.OpenDialogOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:dialog|open"])));
+        var opened = Result(openResponse, TaruiJsonContext.Default.OpenDialogResult);
+        Assert(
+            opened.Paths.SequenceEqual(["C:/tmp/a.txt"]),
+            "Dialog open results must round-trip.");
+        Assert(
+            dialog.WindowLabels.Contains("editor"),
+            "Dialogs must run against the requesting window.");
+
+        var saveResponse = await router.InvokeAsync(
+            Request(
+                "plugin:dialog|save",
+                new SaveDialogOptions("notes.txt"),
+                TaruiJsonContext.Default.SaveDialogOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:dialog|open", "plugin:dialog|save"])));
+        var saved = Result(saveResponse, TaruiJsonContext.Default.SaveDialogResult);
+        Assert(saved.Path == "C:/tmp/notes.txt", "Dialog save results must round-trip.");
+    }
+
+    private static async Task DeniesCommandsOutsideCapability()
+    {
+        var router = BuildRouter(new FakeWindowService());
+        var response = await router.InvokeAsync(
+            Request("core:window|list", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
+            new CommandContext("main", "main", new CapabilitySet([])));
+
+        Assert(!response.Success, "A command outside the capability must fail.");
+        Assert(response.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
+    }
+
+    private static CommandRouter BuildRouter(FakeWindowService service)
+    {
+        var builder = new CommandRouterBuilder();
+        WindowPlugin.Register(builder, static _ => { }, service);
+        return builder.Build();
+    }
+
+    private static CommandRouter BuildRouter(FakeEventSender sender)
+    {
+        var builder = new CommandRouterBuilder();
+        EventPlugin.Register(builder, static _ => { }, sender);
+        return builder.Build();
+    }
+
+    private static CommandRouter BuildRouter(FakeSystemServices services)
+    {
+        var builder = new CommandRouterBuilder();
+        SystemPlugin.Register(
+            builder,
+            static _ => { },
+            services.Paths,
+            services.Os,
+            services.Process,
+            services.Shell,
+            services.Clipboard);
+        return builder.Build();
+    }
+
+    private static CommandRouter BuildRouter(FakeDialogService dialog)
+    {
+        var builder = new CommandRouterBuilder();
+        DialogPlugin.Register(builder, static _ => { }, dialog);
+        return builder.Build();
+    }
+
+    private static CommandContext AllowAll() => new("main", "main", new CapabilitySet(["*"]));
+
+    private static InvokeRequest Request<T>(string command, T payload, JsonTypeInfo<T> payloadType) =>
+        new(1, $"t-{Guid.NewGuid():N}", command, JsonSerializer.SerializeToElement(payload, payloadType));
+
+    private static T Result<T>(InvokeResponse response, JsonTypeInfo<T> resultType) =>
+        response.Payload is { } payload
+            ? payload.Deserialize(resultType) ?? throw new InvalidOperationException("The result payload is null.")
+            : throw new InvalidOperationException("The response has no payload.");
+
+    private static void Assert(bool condition, string message)
+    {
+        if (!condition)
+        {
+            throw new InvalidOperationException(message);
+        }
+    }
+}

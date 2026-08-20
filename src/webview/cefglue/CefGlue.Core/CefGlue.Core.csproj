@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>Xilium.CefGlue</AssemblyName>
+    <RootNamespace>Xilium.CefGlue</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>false</EnableNETAnalyzers>
+    <NoWarn>$(NoWarn);CS0414;CS8500;CS8632;CS8981</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Wrapper/**/*.cs" />
+    <Compile Remove="Interop/Base/cef_string_t.disabled.cs" />
+  </ItemGroup>
+</Project>

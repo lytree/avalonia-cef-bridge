@@ -1,0 +1,12 @@
+{
+  "name": "@tarui/workspace",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "pnpm --filter @tarui/web dev",
+    "build": "pnpm --filter @tarui/web build",
+    "lint": "pnpm --filter @tarui/web lint",
+    "preview": "pnpm --filter @tarui/web preview"
+  },
+  "packageManager": "pnpm@11.15.1"
+}

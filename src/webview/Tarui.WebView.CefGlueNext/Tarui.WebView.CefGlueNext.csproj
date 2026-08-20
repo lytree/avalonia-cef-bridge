@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Tarui.WebView.CefGlueNext</RootNamespace>
+    <AssemblyName>Tarui.WebView.CefGlueNext</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Tarui.WebView.Abstractions/Tarui.WebView.Abstractions.csproj" />
+    <ProjectReference Include="../cefglue/CefGlue.Avalonia/CefGlue.Avalonia.csproj" />
+    <ProjectReference Include="../cefglue/CefGlue.BrowserProcess.Core/CefGlue.BrowserProcess.Core.csproj" />
+    <ProjectReference Include="../cefglue/CefGlue.Common/CefGlue.Common.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tarui.WebView.Tests" />
+  </ItemGroup>
+</Project>
