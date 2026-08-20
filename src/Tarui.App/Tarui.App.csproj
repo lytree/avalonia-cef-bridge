@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>tarui.net</AssemblyName>
+    <RootNamespace>Tarui.App</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tarui.Shell\Tarui.Shell.csproj" />
+    <ProjectReference Include="..\Tarui.WebView.CefGlueNext\Tarui.WebView.CefGlueNext.csproj" />
+    <ProjectReference Include="..\Tarui.WebView.Native\Tarui.WebView.Native.csproj" />
+  </ItemGroup>
+</Project>

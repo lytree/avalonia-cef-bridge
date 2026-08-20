@@ -1,0 +1,9 @@
+{
+  "identifier": "main",
+  "windows": ["main"],
+  "permissions": [
+    "core:app|get-info",
+    "core:window|minimize",
+    "plugin:dialog|open"
+  ]
+}
