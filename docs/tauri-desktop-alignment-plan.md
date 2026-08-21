@@ -617,7 +617,7 @@ plugin:deep-link|get-current     // 返回 DeepLinkCurrentResult
 | --- | --- | --- | --- | --- |
 | Windows | `HKCU\Software\Classes\<scheme>` | 启动 argv → get-current | 新进程 argv → 走单实例转发 → 观察者 | 已完成(Windows)/已验证 |
 | macOS | `CFBundleURLTypes`(Info.plist) | 启动 argv | AppKit `openURLs` delegate 桥（不经 argv）| 待实现/未验证 |
-| Linux | `.desktop` `x-scheme-handler/<scheme>` | 启动 argv | 新进程 argv → 单实例转发 → 观察者 | 待实现/未验证 |
+| Linux | `.desktop` `x-scheme-handler/<scheme>`（`~/.local/share/applications`，`xdg-mime default`）| 启动 argv（平台无关，已实现）| 新进程 argv → 单实例转发 → 观察者 | 内容生成已单测；xdg/真机待验 |
 
 **退出标准**
 
@@ -642,9 +642,34 @@ plugin:deep-link|get-current     // 返回 DeepLinkCurrentResult
 - 插件：`Tarui.Plugins.DeepLink` 暴露 `IDeepLinkService`；`DeepLinkPlugin` 注册 `plugin:deep-link|get-current`、`plugin:deep-link|feed` 两命令与两权限；`AddDeepLinkPlugin()` 组合根注册。
 - Shell：`DeepLinkUri`（scheme 校验 + URL 提取，拒绝控制字符/超长）、`DeepLinkConfiguration`（读取 `Tarui:Application:DeepLinkSchemes` 并去重/过滤非法）、`DeepLinkService`（cold argv 播种 + warm 观察者 + `Deliver` 发 `deeplink://<scheme>` 事件 + get-current/feed）、`WindowsDeepLinkRegistrar`（`HKCU\Software\Classes` 每用户注册）、`DeepLinkRegistrarHostedService`。
 - 接线：`Program.cs` 增 `AddDeepLinkPlugin()`；`appsettings.json` 配 `Tarui:Application:DeepLinkSchemes: ["tarui"]`；`capabilities/main.json` 授权 `plugin:deep-link|*` 与 `deeplink://tarui` 事件。
+- 跨平台：新增 `LinuxDeepLinkRegistrar`（`~/.local/share/applications/tarui.net/<scheme>.desktop` 声明 `x-scheme-handler/<scheme>`，`Exec="<exe>" %u`，best-effort `xdg-mime default`），接入 `DeepLinkRegistrarHostedService`；`.desktop` 内容生成已加单测。cold 播种与 warm 观察者路径平台无关，Linux/macOS 复用同一 `DeepLinkService`。
 - Web API：`web/packages/api/deep-link.ts`（`getCurrent`/`feed`/`onDeepLink`/`deepLink`）+ `index.ts` barrel（`getCurrentDeepLink`/`feedDeepLink`/`onDeepLink`）+ `package.json` 导出 `./deep-link`。
-- 测试：`tests/Tarui.DeepLink.Tests` 覆盖 URL 提取/拒绝、scheme 校验、配置过滤去重、cold 播种、warm 观察者投递、按 scheme 事件、feed 复现校验路径、插件命令/权限注册；`Tarui.SingleInstance.Tests` 增 `CoordinatorNotifiesSecondActivationSinksAsync`。
-- 验收：`dotnet build` 0 警告/0 错误；18 个自测套件全部通过（含 Architecture gate 扫描 806 文件）；`pnpm lint` 0 错误；`pnpm build` 成功。仅 Windows 真机验证，macOS（delegate 桥）与 Linux（`.desktop` 注册）待后续真机验收。
+- 测试：`tests/Tarui.DeepLink.Tests` 覆盖 URL 提取/拒绝、scheme 校验、配置过滤去重、cold 播种、warm 观察者投递、按 scheme 事件、feed 复现校验路径、插件命令/权限注册、Linux `.desktop` 内容；`Tarui.SingleInstance.Tests` 增 `CoordinatorNotifiesSecondActivationSinksAsync`。
+- 验收：`dotnet build` 0 警告/0 错误；自测套件全部通过（含 Architecture gate 扫描 807 文件）；`pnpm lint` 0 错误；`pnpm build` 成功。Windows 真机已验证；Linux（`.desktop` 内容已单测，`xdg-mime`/真机）与 macOS（delegate 桥）需各自平台真机验收。
+
+**macOS warm 接线（待 macOS 真机实现/验证）**：
+
+macOS 的 warm 激活**不经 argv**，需 AppKit `application(_:openURLs:)` delegate。做两件事：
+
+1. `Info.plist` 声明协议（打包期配置）：
+   ```xml
+   <key>CFBundleURLTypes</key>
+   <array>
+     <dict>
+       <key>CFBundleURLName</key> <string>tarui.net</string>
+       <key>CFBundleURLSchemes</key> <array><string>tarui</string></array>
+     </dict>
+   </array>
+   ```
+2. 在 Cocoa AppDelegate 中把 `openURLs` 的 URL 交给现有 `DeepLinkService`（此类已暴露 `Deliver`，且实现 `ISecondActivationSink`，勿新增第二个 URL 入口）：
+   ```swift
+   func application(_ app: NSApplication, open urls: [URL]) {
+       for url in urls {
+           deepLinkBridge.deliver(url.absoluteString)   // → DeepLinkService.Deliver
+       }
+   }
+   ```
+   由于 `Deliver` 对未注册 scheme/控制字符/超长一律拒绝且不产生事件，`openURLs` 注入与 cold/转发路径共用同一校验与 `deeplink://<scheme>` 事件通道，风险面一致。cold 启动（`applicationWillFinishLaunching` 前已在 argv）由 `DeepLinkService` 构造播种覆盖，无需额外处理。
 
 ## 11. 项目与依赖落点
 

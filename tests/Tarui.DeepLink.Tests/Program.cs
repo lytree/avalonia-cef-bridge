@@ -27,6 +27,8 @@ internal static class Program
             await DeliverIgnoresInvalidUrlAsync();
             await FeedAsyncReproducesValidationPathAsync();
             PluginRegistersGetCurrentAndFeedCommands();
+            LinuxDesktopEntryAdvertisesScheme();
+            LinuxDesktopEntryQuotesExecAndUrlPlaceholder();
         }
         catch (Exception exception)
         {
@@ -187,6 +189,24 @@ internal static class Program
         Assert(router.Commands.Contains("plugin:deep-link|get-current"), "get-current must be registered.");
         Assert(router.Commands.Contains("plugin:deep-link|feed"), "feed must be registered.");
         Assert(router.RegisteredPermissions.Count == 2, "Two deep-link permissions must be registered.");
+    }
+
+    private static void LinuxDesktopEntryAdvertisesScheme()
+    {
+        var entry = LinuxDeepLinkRegistrar.BuildDesktopEntry("tarui", "/opt/tarui.net");
+
+        Assert(entry.Contains("x-scheme-handler/tarui;", StringComparison.Ordinal),
+            "The desktop entry must advertise x-scheme-handler for the scheme.");
+        Assert(entry.Contains("[Desktop Entry]", StringComparison.Ordinal), "A [Desktop Entry] header is required.");
+    }
+
+    private static void LinuxDesktopEntryQuotesExecAndUrlPlaceholder()
+    {
+        var entry = LinuxDeepLinkRegistrar.BuildDesktopEntry("market", "/opt/tarui.net");
+
+        Assert(entry.Contains("Exec=\"/opt/tarui.net\" %u", StringComparison.Ordinal),
+            "The Exec line must quote the executable and forward the URL via %u.");
+        Assert(!entry.Contains("%U", StringComparison.Ordinal), "A single URL placeholder (%u) is expected.");
     }
 
     private static (EventRouter Router, List<string> Captured) BuildRouter()
