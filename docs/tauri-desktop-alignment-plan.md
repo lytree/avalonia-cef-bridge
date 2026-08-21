@@ -65,7 +65,7 @@ Tarui 的目标不是逐行复刻 Tauri 的 Rust 内部实现，而是在 .NET�
 | Global Shortcut | 未实现 | 尚无系统级快捷键注册 |
 | Window State | 未实现 | 尚无窗口位置和状态持久化 |
 | Deep Link | 已实现(Windows) | Windows cold/warm 全链路已接；macOS delegate / Linux .desktop 待真机验收 |
-| Updater | 未实现 | 尚无签名校验、回滚与安装策略 |
+| Updater | 已评估(§10.6)，check/download 待实现 | 前置：签名 PKI、升级服务器、安装器策略未就绪；apply 默认关闭 |
 | File Drop / Drag Region | 未实现 | 当前 Avalonia 12 windowed CEF 适配未暴露对应事件 |
 
 现有 5 个插件共注册 35 个权限匹配命令。新增能力必须继续沿用以下链路：
@@ -670,6 +670,79 @@ macOS 的 warm 激活**不经 argv**，需 AppKit `application(_:openURLs:)` del
    }
    ```
    由于 `Deliver` 对未注册 scheme/控制字符/超长一律拒绝且不产生事件，`openURLs` 注入与 cold/转发路径共用同一校验与 `deeplink://<scheme>` 事件通道，风险面一致。cold 启动（`applicationWillFinishLaunching` 前已在 argv）由 `DeepLinkService` 构造播种覆盖，无需额外处理。
+
+### 10.6 Updater 评估（工作项）
+
+**目标定义**：让应用能够从可信来源（HTTPS 升级服务器）核对是否有新版本，并在经过签名校验后把整包升级到新版本，同时保留回滚能力。它不是 web-only 热更（那是开发期机制），而是对**应用整体包**（宿主 exe + CEF 原生运行时 + web dist + capabilities/schemas）的版本切换。
+
+**候选项目**：`Tarui.Plugins.Updater`（命令/事件）+ `Tarui.Shell/UpdaterService`（清单拉取、签名校验、staging、apply 编排）+ 外部引导器/安装器策略（独立工作项）。
+
+**复用点与界限**：
+
+- 复用信任先例：CEF 运行时安装脚本 `eng/cef/install-runtime.ps1` 已经确立「从发布源下载并对公布哈希（SHA-1）逐份校验」的信任模式；Updater 同样以「签名清单 + 逐资产哈希」为校验基础，但把哈希校验升级为对整份清单做签名验证，才能防止仅校验不签名被中间人篡改哈希本身。
+- 复用托管与配置：与 Store 一致的配置来源（`Tarui:Application:Update...`）、与 DeepLink 一致的 capability 授权与事件通道（`updater://*` 保留前缀）、与 `EventRouter` 一致的按窗口授权。
+- 界限：Updater 只负责「检测 / 核验 / 编排替换」，**不得**承担插件热加载（仓库已禁运行时反射/动态加载）；升级对象是整包版本，不是进程内某个插件或某份 web 资源的 alt 切换。升级后的启动校验与回滚归属 Updater，但“以哪份包为准”必须配合单实例锁，避免多进程各换各的。
+
+**当前事实（决定方案的前提）**：
+
+- 发布形态：`Tarui.App` 为 framework-dependent WinExe（net10.0），CEF `win-x64` 原生运行时与 web dist 均拷贝进输出目录；无 self-contained、无安装器、无发布脚本 → 部署即”整目录拷贝“。
+- 签名基础设施：仓库尚无一例代码签名证书、Ed25519 私钥治理（public key 注入）或升级服务器/TLS pin。**这三样在 apply 之前必须就位。**
+- 信任先例：仅 CEF 运行时安装脚本做“官方 SHA-1 + 固定来源”，不足以支撑对宿主 exe 的自动替换，因为运行中的 exe/CEF DLL 在 Windows 上被锁定，无法就地原子替换。
+
+**契约草稿**（注册 `TaruiJsonContext`）：
+
+```csharp
+public sealed record UpdateManifest(int SchemaVersion, string Version,
+    string[] Files, Dictionary<string, string> Sha256, string Signature);
+public sealed record UpdateCheckResult(bool UpdateAvailable, string? Version,
+    string? Error);
+public sealed record UpdateApplyResult(bool Succeeded, string? Error);
+```
+
+**命令与事件**：
+
+```text
+plugin:updater|check      // 拉取并校验签名清单，返回 UpdateCheckResult（只读）
+plugin:updater|download   // 下载新包到受控 staging 并核验，不执行替换
+plugin:updater|apply      // 在满足前置时原子替换整包并重启（默认 NOT_SUPPORTED）
+事件：updater://status      // check/download/apply 状态上报（capability 显式授权）
+```
+
+**威胁模型**
+
+| 威胁 | 缓解措施 |
+| --- | --- |
+| 中间人/伪造服务器下发篡改包 | HTTPS + 对整份 `UpdateManifest` 做 Ed25519 签名验证（公钥编译期注入，私钥离线治理）；随后逐文件 `Sha256` 复校，双重校验后才允许 staging |
+| 校验与实际执行分离被绕过（检查到即执行） | `check` 只读无副作用；`download` 只写受控 staging；`apply` 单独授权且默认 `NOT_SUPPORTED`，未就绪不执行（对齐 §10 门槛“没有签名校验、回滚和安装器策略前不得交付”）。策略由 capability 控制，生产不授予 `apply` |
+| CEF/DLL 运行中锁定导致替换不完整 | Windows 上就地替换不可行 → 必须走“外部引导器先关旧进程再 swap”或“安装器包”之一（见决策）；不作为 `apply` 的偷懒实现 |
+| 替换过程中断导致应用不可用 | 替换前写“即将切换”清单快照；swap 双目录 + 原子改名；启动自检失败触发回滚旧包；回滚同样经签名校验 |
+| 升级服务器/公钥失陷 | 公钥注入而非运行时下载；清单版本单调递增，拒绝降级；下载限速与重试有限且幂等 |
+| 跨进程换版本不一致 | 复用单实例锁：只有主实例可驱动 apply，`apply` 前确认无次实例 |
+| 测试/文档里伪造“已验证” | 平台矩阵只记录真机运行证据；签名 PKI、安装器、升级服务器任一未就绪时，`apply` 保持关闭而非展示通过 |
+
+**平台矩阵**
+
+| 平台 | 升级通道 | CEF 替换 | apply 状态 |
+| --- | --- | --- | --- |
+| Windows | 引导器 staged swap 或 NSIS/MSIX 安装器（未定） | 运行中 DLL 锁定，需外部进程先退出再换 | 未实现（前置未就绪） |
+| macOS | `.app`/`Sparkle` 式 | Spotlight/App 更新受门禁约束 | 未实现 |
+| Linux | AppImage/dpkg + 用户写权限 | 文件布局可写，相对容易 | 未实现 |
+
+**退出标准**（apply 解锁前的前置门禁）
+
+- `plugin:updater|check` 具有独立权限，未授权拒绝；签名/哈希核验失败返回错误而非“可更新”。
+- `download` 仅写入 staging，不触碰运行目录。
+- 签名 PKI（编译期注入公钥 + 离线私钥治理）、升级服务器（HTTPS + 发布清单）、安装器/引导器策略三者**全部就绪并经真机验证**，`apply` 才可被 capability 解锁。
+- 回滚契约（清单快照 + 双目录 + 启动自检回滚）实现并有针对性测试。
+- 事件 `updater://status` 为保留前缀，未授权窗口不接收。
+
+**已定决策**：
+
+- 本轮范围：实现 `check` + `download` 的完整链路（拉取、Ed25519 签名验证、逐文件哈希核验、受控 staging、`updater://status` 事件、capability 授权、Web 绑定与测试），并在文档明确 `apply` 为“默认关闭、前置未就绪”。**不**在签名 PKI、安装器、升级服务器就位前落地“检测到即替换”。
+- 签名算法：Ed25519；公钥编译期注入，私钥离线持有；清单递增版本禁止降级。
+- 升级对象：整包（exe + CEF 原生运行时 + web dist + capabilities/schemas），staging 目录受 `IFileAccessPolicy` 类似的白名单约束，升级流程不引入运行时反射/动态加载。
+
+（升级通道中“外部引导器 swap”与“OS 安装器包”的方案对比、签名私钥治理与发布流水线，属于本工作项的后续设计，需在 `apply` 解锁前另立小节收敛。）
 
 ## 11. 项目与依赖落点
 
