@@ -11,6 +11,9 @@
 - Hosting follows the ASP.NET Core pattern: `TaruiHost.CreateApplicationBuilder` composes the shell through `AddTaruiShell()` / `Add*Plugin()` DI extensions on top of `Microsoft.Extensions.Hosting`.
 - Plugins are project references registered explicitly at the composition root via `AddPlugin<T>()` / `Add*Plugin()` — compile-time registration, no assembly scanning.
 
+Desktop capability expansion and Tauri v2 alignment are tracked in
+[`docs/tauri-desktop-alignment-plan.md`](docs/tauri-desktop-alignment-plan.md).
+
 ## Repository layout
 
 ```text
