@@ -17,6 +17,12 @@ public interface IWindowSinkRegistry
     IReadOnlyCollection<string> Labels { get; }
 
     bool TryGetSink(string label, out IEventSink sink);
+
+    /// <summary>
+    /// Resolves the capability set of a registered window, used to gate delivery of reserved
+    /// native events to only the windows that declared receive authorization for them.
+    /// </summary>
+    bool TryGetCapabilities(string label, out CapabilitySet capabilities);
 }
 
 public sealed class WindowRegistry : IWindowSinkRegistry
@@ -92,6 +98,21 @@ public sealed class WindowRegistry : IWindowSinkRegistry
         }
 
         sink = null!;
+        return false;
+    }
+
+    public bool TryGetCapabilities(string label, out CapabilitySet capabilities)
+    {
+        lock (_gate)
+        {
+            if (_entries.TryGetValue(label, out var entry))
+            {
+                capabilities = entry.Context.Capabilities;
+                return true;
+            }
+        }
+
+        capabilities = null!;
         return false;
     }
 }

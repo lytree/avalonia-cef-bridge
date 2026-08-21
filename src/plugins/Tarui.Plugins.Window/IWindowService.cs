@@ -1,10 +1,11 @@
 using Tarui.Contracts;
+using Tarui.Ipc;
 
 namespace Tarui.Plugins.Window;
 
 public interface IWindowService
 {
-    ValueTask<Unit> CreateAsync(WindowOptions options, CancellationToken cancellationToken);
+    ValueTask<Unit> CreateAsync(WindowOptions options, CommandContext callerContext, CancellationToken cancellationToken);
 
     ValueTask<Unit> CloseAsync(string label, bool force, CancellationToken cancellationToken);
 

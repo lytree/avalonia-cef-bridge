@@ -42,8 +42,8 @@ The upstream reflection-based ObjectBinding and generic JavaScript serializer we
 `AddTaruiShell()` builds, in order:
 
 1. `WindowRegistry` — label-to-entry map for live windows.
-2. `EventRouter` — fan-out of routed (window-targeted) and broadcast events over `EventHub`.
-3. `ICapabilityProvider` (`CapabilitySetProvider`) — reads `capabilities/*.json`; windows without a dedicated file fall back to the `main` capability set.
+2. `EventRouter` — fan-out of routed (window-targeted) and broadcast events over `EventHub`. Web-originated events are confined to the reserved `user://` namespace; reserved native prefixes (`app://`, `window://`, `shell://`, ...) are unreachable from the renderer.
+3. `ICapabilityProvider` (`CapabilitySetProvider`) — reads `capabilities/*.json`; each window resolves its own explicitly declared capability profile, and a window without one is rejected (`CAPABILITY_NOT_FOUND`) rather than inheriting `main`.
 4. `CommandRouter` — composed by `CommandRouterComposer` from every registered `ITaruiPlugin`: each plugin's `ConfigureCommands(CommandRouterBuilder)` adds its commands and permissions, then capability validation fails startup when a capability references a permission no plugin registered.
 5. `IpcDispatcher` — wraps the frozen command router; every `WebViewHost` dispatches with the `CommandContext` of its own window, so the shell-side label is authoritative even when the Web envelope carries a stale one.
 6. Window services — `ShellWindowFactory`, `AvaloniaWindowService`, `AvaloniaDialogService`, `AvaloniaClipboardService`, and `MainWindowLauncher` for the `main` window entry and lifecycle wiring.
@@ -51,6 +51,8 @@ The upstream reflection-based ObjectBinding and generic JavaScript serializer we
 `AvaloniaWindowService` implements the 24 `core:window|*` commands over `WindowRegistry` and `ShellWindow`, including monitor discovery. `AvaloniaDialogService` and `AvaloniaClipboardService` resolve the owner window from the registry so dialogs and clipboard access stay attached to the requesting window.
 
 Window lifecycle events are wired per entry: `window://moved`, `window://resized`, `window://focus-changed`, and `window://close-requested` are routed to the owning window's Webview; `window://destroyed` and `shell://theme-changed` broadcast to all windows. Closing is cooperative — the OS close request is cancelled and surfaced as `window://close-requested`; only `core:window|close` (which sets the entry's close-pending flag) actually destroys the window.
+
+Reserved native events are delivered to a window only when its capability `events` list authorizes receiving them (`capabilities/*.json` declares `window://*` and `shell://theme-changed` for the demo windows); `user://` events carry no native data and reach any window. This prevents second-instance arguments, file paths, and notification actions from leaking to unauthorized windows.
 
 ## Plugin command surface
 

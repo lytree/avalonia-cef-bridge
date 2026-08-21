@@ -11,12 +11,16 @@ public sealed class ShellWindowFactory(
     IServiceProvider services,
     WindowRegistry registry,
     EventRouter eventRouter,
-    ICapabilityProvider capabilities,
-    TaruiAppOrigin appOrigin)
+    WebViewRequestPolicy requestPolicy,
+    WindowCapabilityResolver capabilityResolver,
+    TaruiAppOrigin appOrigin,
+    IAppShutdownCoordinator shutdownCoordinator)
 {
-    public WindowRegistry.Entry CreateEntry(WindowOptions options)
+    public WindowRegistry.Entry CreateEntry(WindowOptions options, CommandContext? callerContext = null)
     {
-        var capability = ResolveCapability(options.Label);
+        var capability = callerContext is null
+            ? capabilityResolver.Resolve(options.Label)
+            : capabilityResolver.ResolveForCreate(options.Label, callerContext);
         var context = new CommandContext(options.Label, options.Label, capability);
 
         // The dispatcher and web view factory resolve lazily; windows are only created
@@ -25,34 +29,20 @@ public sealed class ShellWindowFactory(
         var host = new WebViewHost(
             services.GetRequiredService<ITaruiWebViewFactory>(),
             dispatcher,
+            eventRouter,
+            requestPolicy,
             context,
             ResolveSource(options.Url, appOrigin.StartUri));
         var window = new ShellWindow(host, options);
         var entry = new WindowRegistry.Entry(window, host, context);
-        WireWindowEvents(registry, eventRouter, options.Label, entry);
+        WireWindowEvents(registry, eventRouter, shutdownCoordinator, options.Label, entry);
         return entry;
-    }
-
-    private CapabilitySet ResolveCapability(string label)
-    {
-        var capabilitiesByWindow = capabilities.Capabilities;
-        if (capabilitiesByWindow.TryGetValue(label, out var configured))
-        {
-            return configured;
-        }
-
-        if (capabilitiesByWindow.TryGetValue("main", out var fallback))
-        {
-            return fallback;
-        }
-
-        throw new InvalidOperationException(
-            "No capability file grants permissions to the 'main' window. Add capabilities/main.json.");
     }
 
     private static void WireWindowEvents(
         WindowRegistry registry,
         EventRouter eventRouter,
+        IAppShutdownCoordinator shutdownCoordinator,
         string label,
         WindowRegistry.Entry entry)
     {
@@ -89,6 +79,12 @@ public sealed class ShellWindowFactory(
         window.Closed += (_, _) =>
         {
             registry.Remove(label);
+            if (entry.Sink is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+
+            shutdownCoordinator.NotifyWindowClosed(label, registry.Labels.Count);
             FireAndForget(eventRouter.EmitToAllAsync(
                 "window://destroyed",
                 JsonSerializer.SerializeToElement(new WindowLabelOptions(label), TaruiJsonContext.Default.WindowLabelOptions)));

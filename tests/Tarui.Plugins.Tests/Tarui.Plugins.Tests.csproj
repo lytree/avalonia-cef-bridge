@@ -13,6 +13,7 @@
     <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Core\Tarui.Plugins.Core.csproj" />
     <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Dialog\Tarui.Plugins.Dialog.csproj" />
     <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Event\Tarui.Plugins.Event.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.FileSystem\Tarui.Plugins.FileSystem.csproj" />
     <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.System\Tarui.Plugins.System.csproj" />
     <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Window\Tarui.Plugins.Window.csproj" />
   </ItemGroup>

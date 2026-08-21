@@ -95,7 +95,7 @@ public static IServiceCollection AddTaruiShell(this IServiceCollection services)
 ```
 
 - `CommandRouterComposer.Compose(IServiceProvider)`：遍历 `GetServices<ITaruiPlugin>()` → `ConfigureCommands(builder)` → 能力校验（capability 文件里出现未注册权限即抛 `InvalidOperationException`，跳过 `"*"`）→ `builder.Build()`。旧 ShellBootstrap 的校验语义原样保留。
-- `ShellWindowFactory(IServiceProvider, WindowRegistry, EventRouter, ICapabilityProvider, TaruiAppOrigin)`：`CreateEntry(WindowOptions)` 承接旧 `CreateEntry` 本地函数（能力回退到 main、`CommandContext`、`WebViewHost`、`ShellWindow`、`WireWindowEvents`、`ResolveSource`）。`IpcDispatcher` 与 `ITaruiWebViewFactory` 通过 `IServiceProvider` 惰性解析，保持“窗口只会在分发器构建完成后创建”的既有顺序保证。
+- `ShellWindowFactory(IServiceProvider, WindowRegistry, EventRouter, WindowCapabilityResolver, TaruiAppOrigin)`：`CreateEntry(WindowOptions, CommandContext? caller)` 用 `WindowCapabilityResolver` 解析目标 label 的显式 Capability profile（无 profile 抛 `CapabilityNotFoundException`，不再回退 main；带创建者上下文时执行提权防护），随后构建 `CommandContext`、`WebViewHost`、`ShellWindow`、`WireWindowEvents`、`ResolveSource`。`IpcDispatcher` 与 `ITaruiWebViewFactory` 通过 `IServiceProvider` 惰性解析，保持“窗口只会在分发器构建完成后创建”的既有顺序保证。
 - `MainWindowLauncher(WindowRegistry, ShellWindowFactory, EventRouter, ICapabilityProvider, WindowOptions)`：校验 `main` 能力存在 → 创建主窗口 → 注册到 registry → 挂接 `ActualThemeVariantChanged` 主题广播。
 - 主窗口描述复用契约 `WindowOptions`（Label 固定 `"main"`），由组合根注册为单例。
 - Shell 不再注册任何插件命令；System 插件自有服务（`IPathService` 等 ×4）移入 `AddSystemPlugin()`；剪贴板/窗口/对话框/事件发送的 Avalonia 实现仍归 Shell 注册。

@@ -16,7 +16,7 @@ internal sealed class FakeWindowService : IWindowService
 
     public MonitorInfo[] Monitors { get; set; } = [];
 
-    public ValueTask<Unit> CreateAsync(WindowOptions options, CancellationToken cancellationToken)
+    public ValueTask<Unit> CreateAsync(WindowOptions options, CommandContext callerContext, CancellationToken cancellationToken)
     {
         Calls.Add($"create|{options.Label}|{options.Title}|{options.Width}x{options.Height}");
         return ValueTask.FromResult(new Unit());

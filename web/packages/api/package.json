@@ -14,6 +14,17 @@
     "./path": "./path.ts",
     "./process": "./process.ts",
     "./shell": "./shell.ts",
-    "./clipboard": "./clipboard.ts"
+    "./clipboard": "./clipboard.ts",
+    "./fs": "./fs.ts",
+    "./menu": "./menu.ts",
+    "./tray": "./tray.ts",
+    "./window-state": "./window-state.ts",
+    "./single-instance": "./single-instance.ts",
+    "./notification": "./notification.ts",
+    "./autostart": "./autostart.ts",
+    "./global-shortcut": "./global-shortcut.ts",
+    "./store": "./store.ts",
+    "./log": "./log.ts",
+    "./deep-link": "./deep-link.ts"
   }
 }

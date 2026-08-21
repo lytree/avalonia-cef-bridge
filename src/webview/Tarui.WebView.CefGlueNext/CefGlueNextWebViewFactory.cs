@@ -136,13 +136,29 @@ public sealed class CefGlueNextWebViewFactory : ITaruiWebViewFactory
 public sealed class CefGlueNextWebView : ITaruiWebView
 {
     private readonly AvaloniaCefBrowser _browser;
+    private readonly CefNavigationRequestHandler _navigationHandler;
+    private readonly CefDownloadHandler _downloadHandler;
+    private readonly CefDragHandler _dragHandler;
     private EventHandler<TaruiWebMessage>? _messageReceived;
+    private EventHandler<TaruiWebViewFileDropEventArgs>? _fileDropEntered;
+    private EventHandler<TaruiWebViewFileDropLeftEventArgs>? _fileDropLeft;
+    private EventHandler<TaruiWebViewFileDropEventArgs>? _fileDropped;
+    private EventHandler<TaruiWebViewDownloadEventArgs>? _downloadRequested;
+    private EventHandler<TaruiWebViewNavigationEventArgs>? _navigationRequested;
+    private EventHandler<TaruiWebViewDragRegionEventArgs>? _dragRegionsUpdated;
+    private IReadOnlyList<DraggableRegion> _dragRegions = [];
 
     public CefGlueNextWebView(TaruiWebViewOptions options)
     {
         Source = options.InitialSource;
         _browser = new AvaloniaCefBrowser();
         _browser.WebMessageReceived += OnWebMessageReceived;
+        _navigationHandler = new CefNavigationRequestHandler(this);
+        _downloadHandler = new CefDownloadHandler(this);
+        _dragHandler = new CefDragHandler(this);
+        _browser.RequestHandler = _navigationHandler;
+        _browser.DownloadHandler = _downloadHandler;
+        _browser.DragHandler = _dragHandler;
         _browser.Address = options.InitialSource.AbsoluteUri;
         Control = _browser;
     }
@@ -155,6 +171,42 @@ public sealed class CefGlueNextWebView : ITaruiWebView
     {
         add => _messageReceived += value;
         remove => _messageReceived -= value;
+    }
+
+    public event EventHandler<TaruiWebViewFileDropEventArgs>? FileDropEntered
+    {
+        add => _fileDropEntered += value;
+        remove => _fileDropEntered -= value;
+    }
+
+    public event EventHandler<TaruiWebViewFileDropLeftEventArgs>? FileDropLeft
+    {
+        add => _fileDropLeft += value;
+        remove => _fileDropLeft -= value;
+    }
+
+    public event EventHandler<TaruiWebViewFileDropEventArgs>? FileDropped
+    {
+        add => _fileDropped += value;
+        remove => _fileDropped -= value;
+    }
+
+    public event EventHandler<TaruiWebViewDownloadEventArgs>? DownloadRequested
+    {
+        add => _downloadRequested += value;
+        remove => _downloadRequested -= value;
+    }
+
+    public event EventHandler<TaruiWebViewNavigationEventArgs>? NavigationRequested
+    {
+        add => _navigationRequested += value;
+        remove => _navigationRequested -= value;
+    }
+
+    public event EventHandler<TaruiWebViewDragRegionEventArgs>? DragRegionsUpdated
+    {
+        add => _dragRegionsUpdated += value;
+        remove => _dragRegionsUpdated -= value;
     }
 
     public void Navigate(Uri source)
@@ -173,11 +225,54 @@ public sealed class CefGlueNextWebView : ITaruiWebView
         return null;
     }
 
+    public IReadOnlyList<DraggableRegion> SetDragRegions(IReadOnlyList<DraggableRegion> regions)
+    {
+        var previous = _dragRegions;
+        _dragRegions = regions;
+        return previous;
+    }
+
     public void Dispose()
     {
         _browser.WebMessageReceived -= OnWebMessageReceived;
         _messageReceived = null;
+        _fileDropEntered = null;
+        _fileDropLeft = null;
+        _fileDropped = null;
+        _downloadRequested = null;
+        _navigationRequested = null;
+        _dragRegionsUpdated = null;
+        _browser.RequestHandler = null;
+        _browser.DownloadHandler = null;
+        _browser.DragHandler = null;
         _browser.Dispose();
+    }
+
+    internal TaruiWebViewNavigationAction RaiseNavigation(Uri url, bool isMainFrame)
+    {
+        var args = new TaruiWebViewNavigationEventArgs(url, isMainFrame);
+        _navigationRequested?.Invoke(this, args);
+        return args.Decision ?? TaruiWebViewNavigationAction.Deny;
+    }
+
+    internal TaruiWebViewDownloadAction RaiseDownload(string url, string? suggestedFilename)
+    {
+        var args = new TaruiWebViewDownloadEventArgs(url, suggestedFilename);
+        _downloadRequested?.Invoke(this, args);
+        return args.Decision;
+    }
+
+    internal bool RaiseFileDropEntered(string[] paths, string? text, double x, double y)
+    {
+        var args = new TaruiWebViewFileDropEventArgs(paths, text, x, y);
+        _fileDropEntered?.Invoke(this, args);
+        return args.Accepted;
+    }
+
+    internal void RaiseDragRegionsUpdated(IReadOnlyList<DraggableRegion> regions)
+    {
+        _dragRegions = regions;
+        _dragRegionsUpdated?.Invoke(this, new TaruiWebViewDragRegionEventArgs(regions));
     }
 
     private void OnWebMessageReceived(string message) =>

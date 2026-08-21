@@ -1,6 +1,30 @@
 {
   "identifier": "main",
+  "description": "Main window desktop permissions",
   "windows": ["main"],
+  "platforms": ["windows", "macos", "linux"],
+  "events": [
+    "window://moved",
+    "window://resized",
+    "window://focus-changed",
+    "window://close-requested",
+    "window://destroyed",
+    "shell://theme-changed",
+    "menu://item-clicked",
+    "tray://clicked",
+    "tray://menu-item-clicked",
+    "notification://activated",
+    "notification://dismissed",
+    "global-shortcut://triggered",
+    "app://second-instance",
+    "window://file-drop-entered",
+    "window://file-drop-left",
+    "window://file-dropped",
+    "webview://download-requested",
+    "webview://navigation-requested",
+    "log://entry",
+    "deeplink://tarui"
+  ],
   "permissions": [
     "core:app|get-info",
     "core:event|emit",
@@ -11,7 +35,10 @@
     "core:shell|open",
     "core:clipboard|read-text",
     "core:clipboard|write-text",
-    "core:window|create",
+    {
+      "identifier": "core:window|create",
+      "allow": [{ "path": "editor" }]
+    },
     "core:window|close",
     "core:window|minimize",
     "core:window|maximize",
@@ -35,7 +62,201 @@
     "core:window|primary-monitor",
     "core:window|monitors",
     "core:window|list",
+    "core:window|close-other-window",
+    "core:window|minimize-other-window",
+    "core:window|maximize-other-window",
+    "core:window|unmaximize-other-window",
+    "core:window|toggle-maximize-other-window",
+    "core:window|hide-other-window",
+    "core:window|show-other-window",
+    "core:window|focus-other-window",
+    "core:window|center-other-window",
+    "core:window|set-title-other-window",
+    "core:window|set-size-other-window",
+    "core:window|set-position-other-window",
+    "core:window|set-min-size-other-window",
+    "core:window|set-max-size-other-window",
+    "core:window|set-always-on-top-other-window",
+    "core:window|set-resizable-other-window",
+    "core:window|set-decorations-other-window",
+    "core:window|set-fullscreen-other-window",
+    "core:window|get-state-other-window",
+    "core:window|current-monitor-other-window",
+    "core:window|monitors-other-window",
     "plugin:dialog|open",
-    "plugin:dialog|save"
+    "plugin:dialog|save",
+    "plugin:menu|set-window-menu",
+    "plugin:menu|update-item",
+    "plugin:menu|remove-window-menu",
+    "plugin:window-state|save",
+    "plugin:window-state|restore",
+    "plugin:window-state|clear",
+    "plugin:tray|create",
+    "plugin:tray|set-menu",
+    "plugin:tray|set-icon",
+    "plugin:tray|set-tooltip",
+    "plugin:tray|set-visible",
+    "plugin:tray|remove",
+    "plugin:notification|permission-state",
+    "plugin:notification|request-permission",
+    "plugin:notification|show",
+    "plugin:notification|cancel",
+    "plugin:autostart|is-enabled",
+    "plugin:autostart|enable",
+    "plugin:autostart|disable",
+    {
+      "identifier": "plugin:global-shortcut|register",
+      "allow": [
+        { "path": "Ctrl+Shift+P" },
+        { "path": "Ctrl+Shift+Y" },
+        { "path": "Ctrl+Alt+*" }
+      ],
+      "deny": [
+        { "path": "Ctrl+Alt+F4" }
+      ]
+    },
+    "plugin:global-shortcut|unregister-all",
+    {
+      "identifier": "plugin:store|get",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    {
+      "identifier": "plugin:store|set",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    {
+      "identifier": "plugin:store|has",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    {
+      "identifier": "plugin:store|delete",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    {
+      "identifier": "plugin:store|clear",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    {
+      "identifier": "plugin:store|keys",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    "plugin:log|record",
+    "plugin:deep-link|get-current",
+    "plugin:deep-link|feed",
+    {
+      "identifier": "plugin:global-shortcut|unregister",
+      "allow": [
+        { "path": "Ctrl+Shift+P" },
+        { "path": "Ctrl+Shift+Y" },
+        { "path": "Ctrl+Alt+*" }
+      ],
+      "deny": [
+        { "path": "Ctrl+Alt+F4" }
+      ]
+    },
+    {
+      "identifier": "plugin:global-shortcut|is-registered",
+      "allow": [
+        { "path": "Ctrl+Shift+P" },
+        { "path": "Ctrl+Shift+Y" },
+        { "path": "Ctrl+Alt+*" }
+      ],
+      "deny": [
+        { "path": "Ctrl+Alt+F4" }
+      ]
+    },
+    {
+      "identifier": "plugin:fs|read-text-file",
+      "allow": [
+        { "base": "appData", "path": "documents/**" },
+        { "base": "appConfig", "path": "**/*.json" },
+        { "base": "appLog" },
+        { "base": "temp" },
+        { "base": "resources" }
+      ]
+    },
+    {
+      "identifier": "plugin:fs|write-text-file",
+      "allow": [
+        { "base": "appData", "path": "documents/**" },
+        { "base": "appConfig", "path": "**/*.json" },
+        { "base": "appLog" },
+        { "base": "temp" }
+      ]
+    },
+    {
+      "identifier": "plugin:fs|read-dir",
+      "allow": [
+        { "base": "appData" },
+        { "base": "appConfig" },
+        { "base": "appCache" },
+        { "base": "appLog" },
+        { "base": "temp" },
+        { "base": "resources" }
+      ]
+    },
+    "plugin:fs|stat",
+    "plugin:fs|exists",
+    {
+      "identifier": "plugin:fs|mkdir",
+      "allow": [
+        { "base": "appData" },
+        { "base": "appConfig" },
+        { "base": "appCache" },
+        { "base": "appLog" },
+        { "base": "temp" }
+      ]
+    },
+    {
+      "identifier": "plugin:fs|copy-file",
+      "allow": [
+        { "base": "appData" },
+        { "base": "appConfig" },
+        { "base": "appCache" },
+        { "base": "appLog" },
+        { "base": "temp" }
+      ]
+    },
+    {
+      "identifier": "plugin:fs|rename",
+      "allow": [
+        { "base": "appData" },
+        { "base": "appConfig" },
+        { "base": "appCache" },
+        { "base": "appLog" },
+        { "base": "temp" }
+      ]
+    },
+    {
+      "identifier": "plugin:fs|remove",
+      "allow": [
+        { "base": "appData" },
+        { "base": "appConfig" },
+        { "base": "appCache" },
+        { "base": "appLog" },
+        { "base": "temp" }
+      ],
+      "deny": [
+        { "base": "appConfig", "path": "settings/protected.json" }
+      ]
+    }
   ]
 }

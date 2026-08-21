@@ -24,6 +24,9 @@ public sealed class EventPlugin(IEventSender sender) : ITaruiPlugin
             TaruiJsonContext.Default.Unit,
             async (options, _, cancellationToken) =>
             {
+                // Web-originated events are confined to the user:// namespace so the renderer
+                // can never forge native events (app://, window://, shell://, ...).
+                EventNames.ValidateWebEmit(options.Event);
                 await sender.EmitAsync(options.Event, options.Payload, options.TargetWindow, cancellationToken);
                 return new Unit();
             },

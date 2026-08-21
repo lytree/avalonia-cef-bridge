@@ -16,7 +16,8 @@ public sealed class EventRouter(IWindowSinkRegistry registry, EventHub hub)
         CancellationToken cancellationToken = default)
     {
         hub.Emit(eventName, payload);
-        if (registry.TryGetSink(label, out var sink))
+        if (MayReceive(label, eventName) &&
+            registry.TryGetSink(label, out var sink))
         {
             await sink.SendEventAsync(eventName, payload, cancellationToken);
         }
@@ -30,7 +31,8 @@ public sealed class EventRouter(IWindowSinkRegistry registry, EventHub hub)
         hub.Emit(eventName, payload);
         foreach (var label in registry.Labels)
         {
-            if (registry.TryGetSink(label, out var sink))
+            if (MayReceive(label, eventName) &&
+                registry.TryGetSink(label, out var sink))
             {
                 await sink.SendEventAsync(eventName, payload, cancellationToken);
             }
@@ -45,4 +47,21 @@ public sealed class EventRouter(IWindowSinkRegistry registry, EventHub hub)
         targetWindow is null
             ? EmitToAllAsync(eventName, payload, cancellationToken)
             : EmitToWindowAsync(targetWindow, eventName, payload, cancellationToken);
+
+    /// <summary>
+    /// Reserved native events may carry sensitive system data (window geometry, theme, second-instance
+    /// arguments, file paths, notification actions). They are delivered only to windows that declared
+    /// receive authorization in their capability <c>events</c> list. Application-defined <c>user://</c>
+    /// events carry no native data and reach any window.
+    /// </summary>
+    private bool MayReceive(string label, string eventName)
+    {
+        if (!EventNames.IsReserved(eventName))
+        {
+            return true;
+        }
+
+        return registry.TryGetCapabilities(label, out var capabilities) &&
+               capabilities.AllowsEvent(eventName);
+    }
 }

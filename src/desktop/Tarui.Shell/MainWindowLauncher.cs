@@ -16,6 +16,7 @@ public sealed class MainWindowLauncher(
     ShellWindowFactory factory,
     EventRouter eventRouter,
     ICapabilityProvider capabilities,
+    ISingleInstanceCoordinator singleInstance,
     WindowOptions mainWindowOptions) : IMainWindowLauncher
 {
     public Window LaunchMainWindow()
@@ -28,6 +29,10 @@ public sealed class MainWindowLauncher(
 
         var entry = factory.CreateEntry(mainWindowOptions);
         registry.Add("main", entry);
+
+        // Any second-instance activations that arrived before the main window was registered are now
+        // safe to deliver as app://second-instance events.
+        singleInstance.Flush();
 
         if (Application.Current is { } application)
         {

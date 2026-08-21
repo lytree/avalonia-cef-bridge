@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Tarui.Contracts;
+using Tarui.Ipc;
 
 namespace Tarui.Hosting;
 
@@ -29,6 +30,11 @@ public sealed class TaruiApplicationBuilder(string[]? args)
     {
         _inner.Services.AddSingleton<TaruiLifetimeBridge>();
         _inner.Services.AddHostedService<HostShutdownWatcher>();
+        _inner.Services.AddSingleton<IAppShutdown, HostAppShutdown>();
+        var shutdownMode = ReadShutdownMode() ?? AppShutdownMode.OnMainWindowClose;
+        _inner.Services.AddSingleton<IAppShutdownCoordinator>(sp => new AppShutdownCoordinator(
+            sp.GetRequiredService<IAppShutdown>(),
+            shutdownMode));
         var mainWindowOptions = MaterializeMainWindowOptions();
         _inner.Services.AddSingleton(mainWindowOptions);
         return new TaruiApplication(_inner.Build(), _args);
@@ -94,5 +100,23 @@ public sealed class TaruiApplicationBuilder(string[]? args)
         }
 
         return parsed;
+    }
+
+    private AppShutdownMode? ReadShutdownMode()
+    {
+        var value = Configuration["Tarui:Application:ShutdownMode"];
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (Enum.TryParse<AppShutdownMode>(value, ignoreCase: true, out var parsed))
+        {
+            return parsed;
+        }
+
+        throw new InvalidOperationException(
+            $"Configuration key 'Tarui:Application:ShutdownMode' must be one of "
+            + $"{string.Join(", ", Enum.GetNames<AppShutdownMode>())}, but '{value}' was found.");
     }
 }

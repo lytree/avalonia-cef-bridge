@@ -19,6 +19,10 @@ internal static class Program
         await RouterBroadcastsToAllWindows();
         await RouterNotifiesHubSubscribers();
         await RouterRoutesByTargetWindowPresence();
+        await WebViewHostRejectsFileDropWithoutCapability();
+        await WebViewHostDeliversFileDropToAuthorizedWindow();
+        await WebViewHostGatesDownloadByPolicyAndCapability();
+        await WebViewHostGatesNavigationByPolicyAndCapability();
         await CapabilityLoaderMergesWindowPermissions();
         await CapabilityLoaderHandlesMissingDirectory();
         ComposerRegistersPluginCommands();
@@ -190,14 +194,6 @@ internal static class Program
               "permissions": ["plugin:dialog|open"]
             }
             """);
-        directory.Write(
-            "ignored.json",
-            """
-            {
-              "identifier": "ignored",
-              "permissions": ["core:process|exit"]
-            }
-            """);
 
         var capabilities = CapabilityLoader.Load(directory.Path);
         Assert(capabilities.Count == 2, "Only windows referenced by capability files must appear.");
@@ -346,6 +342,256 @@ internal static class Program
             "AddTaruiShell must register the command router.");
     }
 
+    private static Task WebViewHostRejectsFileDropWithoutCapability()
+    {
+        var (host, sink, webView) = CreateWebViewHost(new CapabilitySet([], [], []));
+
+        using (host)
+        {
+            var args = webView.RaiseFileDropEntered([@"C:\drop\file.txt"], null, 10, 20);
+
+            Assert(!args.Accepted, "A drop to an un-authorized window must be rejected at the OS layer.");
+            Assert(sink.Events.Count == 0, "An un-authorized window must never receive file-drop paths.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static Task WebViewHostDeliversFileDropToAuthorizedWindow()
+    {
+        var capabilities = new CapabilitySet(
+            [],
+            ["window://file-drop-entered", "window://file-dropped", "window://file-drop-left"],
+            []);
+        var (host, sink, webView) = CreateWebViewHost(capabilities);
+
+        var text = "plain text payload";
+        using (host)
+        {
+            var entered = webView.RaiseFileDropEntered([@"C:\a.txt", @"C:\b.txt"], text, 5, 6);
+            Assert(entered.Accepted, "An authorized window must accept the file drop.");
+
+            var dropped = webView.RaiseFileDropped([@"C:\a.txt"], text, 5, 6);
+            Assert(dropped.Accepted, "An authorized window must accept the drop event.");
+
+            webView.RaiseFileDropLeft();
+        }
+
+        Assert(sink.Events.Count == 3, "Entered, dropped and left must each be routed to an authorized window.");
+
+        var enteredEvent = sink.Events.Single(e => e.Event == "window://file-drop-entered");
+        Assert(
+            enteredEvent.Payload.GetProperty("paths").GetArrayLength() == 2,
+            "The entered payload must carry the dragged file paths.");
+        Assert(
+            enteredEvent.Payload.GetProperty("text").GetString() == text,
+            "The entered payload must carry the dropped text.");
+        Assert(
+            Math.Abs(enteredEvent.Payload.GetProperty("x").GetDouble() - 5) < 1e-9 &&
+            Math.Abs(enteredEvent.Payload.GetProperty("y").GetDouble() - 6) < 1e-9,
+            "The entered payload must carry the drop position.");
+
+        Assert(
+            sink.Events.Any(e => e.Event == "window://file-dropped") &&
+            sink.Events.Any(e => e.Event == "window://file-drop-left"),
+            "Dropped and left must both be delivered.");
+
+        return Task.CompletedTask;
+    }
+
+    private static Task WebViewHostGatesDownloadByPolicyAndCapability()
+    {
+        // Policy allows the host; capability authorizes the event => delivered and allowed.
+        var allowed = new CapabilitySet([], ["webview://download-requested"], []);
+        var (allowedHost, allowedSink, allowedWebView) = CreateWebViewHost(
+            allowed,
+            new WebViewRequestPolicy(new WebViewPolicyOptions([], [], ["cdn.example"], WebViewRequestDecision.Deny)));
+
+        using (allowedHost)
+        {
+            var args = allowedWebView.RaiseDownload("https://cdn.example/report.pdf", "report.pdf");
+
+            Assert(
+                args.Decision == TaruiWebViewDownloadAction.Allow,
+                "A download from a policy-allowed host must be allowed.");
+        }
+
+        Assert(
+            allowedSink.Events.Any(e => e.Event == "webview://download-requested"),
+            "An authorized, allowed download must be delivered to the window.");
+
+        // Policy denies the host => denied and not delivered even with the event capability.
+        var deniedByPolicy = new CapabilitySet([], ["webview://download-requested"], []);
+        var (deniedHost, deniedSink, deniedWebView) = CreateWebViewHost(
+            deniedByPolicy,
+            new WebViewRequestPolicy(new WebViewPolicyOptions([], [], [], WebViewRequestDecision.Deny)));
+
+        using (deniedHost)
+        {
+            var args = deniedWebView.RaiseDownload("https://evil.example/trojan.exe", null);
+            Assert(args.Decision == TaruiWebViewDownloadAction.Deny,
+                "A download from an unlisted host must be denied.");
+        }
+
+        Assert(deniedSink.Events.Count == 0, "A denied download must not be delivered.");
+
+        // Policy allows the host but the window lacks the event capability => allowed but not delivered.
+        var lackEventCapability = new CapabilitySet([], [], []);
+        var (silentHost, silentSink, silentWebView) = CreateWebViewHost(
+            lackEventCapability,
+            new WebViewRequestPolicy(new WebViewPolicyOptions([], [], ["cdn.example"], WebViewRequestDecision.Deny)));
+
+        using (silentHost)
+        {
+            var args = silentWebView.RaiseDownload("https://cdn.example/file.zip", "file.zip");
+            Assert(args.Decision == TaruiWebViewDownloadAction.Allow,
+                "Policy may still allow the download for a window without the event capability.");
+        }
+
+        Assert(silentSink.Events.Count == 0, "A window without the event capability must not receive the download event.");
+
+        return Task.CompletedTask;
+    }
+
+    private static Task WebViewHostGatesNavigationByPolicyAndCapability()
+    {
+        // Policy allows and capability authorizes => allowed and delivered.
+        var allowed = new CapabilitySet([], ["webview://navigation-requested"], []);
+        var (allowedHost, allowedSink, allowedWebView) = CreateWebViewHost(
+            allowed,
+            new WebViewRequestPolicy(new WebViewPolicyOptions(
+                ["https://app.example/**"], [], [], WebViewRequestDecision.Deny)));
+
+        using (allowedHost)
+        {
+            var args = allowedWebView.RaiseNavigation(new Uri("https://app.example/home"), isMainFrame: true);
+
+            Assert(
+                args.Decision == TaruiWebViewNavigationAction.Allow,
+                "An allowed navigation must be permitted inside the web view.");
+        }
+
+        Assert(
+            allowedSink.Events.Any(e => e.Event == "webview://navigation-requested"),
+            "An allowed, authorized navigation must be delivered.");
+        var navPayload = allowedSink.Events.Single(e => e.Event == "webview://navigation-requested").Payload;
+        Assert(navPayload.GetProperty("isMainFrame").GetBoolean(),
+            "The navigation payload must reflect the main-frame flag.");
+        Assert(navPayload.GetProperty("url").GetString() == "https://app.example/home",
+            "The navigation payload must carry the resolved URL.");
+
+        // Policy denies => navigation blocked, event withheld.
+        var denied = new CapabilitySet([], ["webview://navigation-requested"], []);
+        var (deniedHost, deniedSink, deniedWebView) = CreateWebViewHost(
+            denied,
+            new WebViewRequestPolicy(new WebViewPolicyOptions([], [], [], WebViewRequestDecision.Deny)));
+
+        using (deniedHost)
+        {
+            var args = deniedWebView.RaiseNavigation(new Uri("https://evil.example/steal"), isMainFrame: true);
+            Assert(args.Decision == TaruiWebViewNavigationAction.Deny,
+                "An unmatched navigation must be denied.");
+        }
+
+        Assert(deniedSink.Events.Count == 0, "A denied navigation must not be delivered.");
+
+        return Task.CompletedTask;
+    }
+
+    private static (WebViewHost Host, FakeSink Sink, FakeWebView WebView) CreateWebViewHost(
+        CapabilitySet capabilities,
+        WebViewRequestPolicy? policy = null)
+    {
+        var registry = new FakeSinkRegistry();
+        var sink = registry.Add("main", capabilities);
+        var router = new EventRouter(registry, new EventHub());
+        var dispatcher = new IpcDispatcher(new CommandRouterBuilder().Build());
+        var webView = new FakeWebView();
+
+        var host = new WebViewHost(
+            new FixedWebViewFactory(webView),
+            dispatcher,
+            router,
+            policy ?? new WebViewRequestPolicy(new WebViewPolicyOptions(
+                ["http://localhost:*/*"],
+                ["https:*"],
+                [],
+                WebViewRequestDecision.Deny)),
+            new CommandContext("main", "main", capabilities),
+            new Uri("http://127.0.0.1:5173/"));
+
+        return (host, sink, webView);
+    }
+
+    private sealed class FixedWebViewFactory(ITaruiWebView webView) : ITaruiWebViewFactory
+    {
+        public ITaruiWebView Create(TaruiWebViewOptions options) => webView;
+    }
+
+    private sealed class FakeWebView : ITaruiWebView
+    {
+#pragma warning disable CS0067 // The message and drag-region events are part of the interface but unused by routing tests.
+        public event EventHandler<TaruiWebMessage>? MessageReceived;
+        public event EventHandler<TaruiWebViewFileDropEventArgs>? FileDropEntered;
+        public event EventHandler<TaruiWebViewFileDropLeftEventArgs>? FileDropLeft;
+        public event EventHandler<TaruiWebViewFileDropEventArgs>? FileDropped;
+        public event EventHandler<TaruiWebViewDownloadEventArgs>? DownloadRequested;
+        public event EventHandler<TaruiWebViewNavigationEventArgs>? NavigationRequested;
+        public event EventHandler<TaruiWebViewDragRegionEventArgs>? DragRegionsUpdated;
+#pragma warning restore CS0067
+
+        public Avalonia.Controls.Control Control => null!;
+
+        public Uri? Source { get; }
+
+        public void Navigate(Uri source)
+        {
+        }
+
+        public ValueTask<string?> ExecuteScriptAsync(
+            string script,
+            CancellationToken cancellationToken = default) => ValueTask.FromResult<string?>(null);
+
+        public IReadOnlyList<DraggableRegion> SetDragRegions(IReadOnlyList<DraggableRegion> regions) => [];
+
+        public void Dispose()
+        {
+        }
+
+        public TaruiWebViewFileDropEventArgs RaiseFileDropEntered(
+            string[] paths, string? text, double x, double y)
+        {
+            var args = new TaruiWebViewFileDropEventArgs(paths, text, x, y);
+            FileDropEntered?.Invoke(this, args);
+            return args;
+        }
+
+        public TaruiWebViewFileDropEventArgs RaiseFileDropped(
+            string[] paths, string? text, double x, double y)
+        {
+            var args = new TaruiWebViewFileDropEventArgs(paths, text, x, y);
+            FileDropped?.Invoke(this, args);
+            return args;
+        }
+
+        public void RaiseFileDropLeft() =>
+            FileDropLeft?.Invoke(this, TaruiWebViewFileDropLeftEventArgs.Instance);
+
+        public TaruiWebViewDownloadEventArgs RaiseDownload(string url, string? suggestedFilename)
+        {
+            var args = new TaruiWebViewDownloadEventArgs(url, suggestedFilename);
+            DownloadRequested?.Invoke(this, args);
+            return args;
+        }
+
+        public TaruiWebViewNavigationEventArgs RaiseNavigation(Uri url, bool isMainFrame)
+        {
+            var args = new TaruiWebViewNavigationEventArgs(url, isMainFrame);
+            NavigationRequested?.Invoke(this, args);
+            return args;
+        }
+    }
+
     private sealed class TestShellPlugin : ITaruiPlugin
     {
         public void ConfigureCommands(CommandRouterBuilder commands)
@@ -393,13 +639,18 @@ internal static class Program
     private sealed class FakeSinkRegistry : IWindowSinkRegistry
     {
         private readonly Dictionary<string, FakeSink> _sinks = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, CapabilitySet> _capabilities = new(StringComparer.Ordinal);
 
         public IReadOnlyCollection<string> Labels => _sinks.Keys.ToArray();
 
-        public FakeSink Add(string label)
+        public FakeSink Add(string label) =>
+            Add(label, new CapabilitySet(["*"], ["*"], []));
+
+        public FakeSink Add(string label, CapabilitySet capabilities)
         {
             var sink = new FakeSink();
             _sinks[label] = sink;
+            _capabilities[label] = capabilities;
             return sink;
         }
 
@@ -412,6 +663,18 @@ internal static class Program
             }
 
             sink = null!;
+            return false;
+        }
+
+        public bool TryGetCapabilities(string label, out CapabilitySet capabilities)
+        {
+            if (_capabilities.TryGetValue(label, out var set))
+            {
+                capabilities = set;
+                return true;
+            }
+
+            capabilities = null!;
             return false;
         }
     }

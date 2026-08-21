@@ -6,6 +6,31 @@ namespace Tarui.Plugins.Window;
 
 public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
 {
+    private static readonly string[] OtherWindowCapablePermissions =
+    [
+        "core:window|close",
+        "core:window|minimize",
+        "core:window|maximize",
+        "core:window|unmaximize",
+        "core:window|toggle-maximize",
+        "core:window|hide",
+        "core:window|show",
+        "core:window|focus",
+        "core:window|center",
+        "core:window|set-title",
+        "core:window|set-size",
+        "core:window|set-position",
+        "core:window|set-min-size",
+        "core:window|set-max-size",
+        "core:window|set-always-on-top",
+        "core:window|set-resizable",
+        "core:window|set-decorations",
+        "core:window|set-fullscreen",
+        "core:window|get-state",
+        "core:window|current-monitor",
+        "core:window|monitors"
+    ];
+
     public void ConfigureCommands(CommandRouterBuilder commands)
     {
         var handlers = new WindowCommands(service);
@@ -15,7 +40,8 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             TaruiJsonContext.Default.WindowOptions,
             TaruiJsonContext.Default.Unit,
             handlers.CreateAsync,
-            "core:window|create");
+            "core:window|create",
+            CanCreateWindow);
 
         commands.Add(
             "core:window|close",
@@ -177,7 +203,44 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             TaruiJsonContext.Default.WindowLabels,
             handlers.ListAsync,
             "core:window|list");
+
+        // Cross-window operations require the <permission>-other-window variant; register them as
+        // valid permission IDs so capability files may reference them and validation stays strict.
+        foreach (var permission in OtherWindowCapablePermissions)
+        {
+            commands.AddPermission(WindowPermissionGuard.OtherWindowPermission(permission));
+        }
     }
+
+    private static bool CanCreateWindow(WindowOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny)
+    {
+        foreach (var scope in deny)
+        {
+            if (ScopeMatchesProfile(options.Label, scope))
+            {
+                return false;
+            }
+        }
+
+        if (allow.Count == 0)
+        {
+            return true;
+        }
+
+        foreach (var scope in allow)
+        {
+            if (ScopeMatchesProfile(options.Label, scope))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ScopeMatchesProfile(string label, PathScope scope) =>
+        !string.IsNullOrWhiteSpace(scope.Path) &&
+        string.Equals(scope.Path, label, StringComparison.Ordinal);
 
     private sealed class WindowCommands(IWindowService service)
     {
@@ -186,147 +249,147 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             WindowOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.CreateAsync(options, cancellationToken);
+            service.CreateAsync(options, context, cancellationToken);
 
         [TaruiCommand("core:window|close")]
         public ValueTask<Unit> CloseAsync(
             CloseWindowOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.CloseAsync(options.Label ?? context.WindowLabel, options.Force, cancellationToken);
+            service.CloseAsync(Resolve(options.Label, context, "core:window|close"), options.Force, cancellationToken);
 
         [TaruiCommand("core:window|minimize")]
         public ValueTask<Unit> MinimizeAsync(
             WindowLabelOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.MinimizeAsync(options.Label ?? context.WindowLabel, cancellationToken);
+            service.MinimizeAsync(Resolve(options.Label, context, "core:window|minimize"), cancellationToken);
 
         [TaruiCommand("core:window|maximize")]
         public ValueTask<Unit> MaximizeAsync(
             WindowLabelOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.MaximizeAsync(options.Label ?? context.WindowLabel, cancellationToken);
+            service.MaximizeAsync(Resolve(options.Label, context, "core:window|maximize"), cancellationToken);
 
         [TaruiCommand("core:window|unmaximize")]
         public ValueTask<Unit> UnmaximizeAsync(
             WindowLabelOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.UnmaximizeAsync(options.Label ?? context.WindowLabel, cancellationToken);
+            service.UnmaximizeAsync(Resolve(options.Label, context, "core:window|unmaximize"), cancellationToken);
 
         [TaruiCommand("core:window|toggle-maximize")]
         public ValueTask<Unit> ToggleMaximizeAsync(
             WindowLabelOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.ToggleMaximizeAsync(options.Label ?? context.WindowLabel, cancellationToken);
+            service.ToggleMaximizeAsync(Resolve(options.Label, context, "core:window|toggle-maximize"), cancellationToken);
 
         [TaruiCommand("core:window|hide")]
         public ValueTask<Unit> HideAsync(
             WindowLabelOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.HideAsync(options.Label ?? context.WindowLabel, cancellationToken);
+            service.HideAsync(Resolve(options.Label, context, "core:window|hide"), cancellationToken);
 
         [TaruiCommand("core:window|show")]
         public ValueTask<Unit> ShowAsync(
             WindowLabelOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.ShowAsync(options.Label ?? context.WindowLabel, cancellationToken);
+            service.ShowAsync(Resolve(options.Label, context, "core:window|show"), cancellationToken);
 
         [TaruiCommand("core:window|focus")]
         public ValueTask<Unit> FocusAsync(
             WindowLabelOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.FocusAsync(options.Label ?? context.WindowLabel, cancellationToken);
+            service.FocusAsync(Resolve(options.Label, context, "core:window|focus"), cancellationToken);
 
         [TaruiCommand("core:window|center")]
         public ValueTask<Unit> CenterAsync(
             WindowLabelOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.CenterAsync(options.Label ?? context.WindowLabel, cancellationToken);
+            service.CenterAsync(Resolve(options.Label, context, "core:window|center"), cancellationToken);
 
         [TaruiCommand("core:window|set-title")]
         public ValueTask<Unit> SetTitleAsync(
             SetTitleOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.SetTitleAsync(options.Label ?? context.WindowLabel, options.Title, cancellationToken);
+            service.SetTitleAsync(Resolve(options.Label, context, "core:window|set-title"), options.Title, cancellationToken);
 
         [TaruiCommand("core:window|set-size")]
         public ValueTask<Unit> SetSizeAsync(
             SetSizeOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.SetSizeAsync(options.Label ?? context.WindowLabel, options.Width, options.Height, cancellationToken);
+            service.SetSizeAsync(Resolve(options.Label, context, "core:window|set-size"), options.Width, options.Height, cancellationToken);
 
         [TaruiCommand("core:window|set-position")]
         public ValueTask<Unit> SetPositionAsync(
             SetPositionOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.SetPositionAsync(options.Label ?? context.WindowLabel, options.X, options.Y, cancellationToken);
+            service.SetPositionAsync(Resolve(options.Label, context, "core:window|set-position"), options.X, options.Y, cancellationToken);
 
         [TaruiCommand("core:window|set-min-size")]
         public ValueTask<Unit> SetMinSizeAsync(
             SetExtentOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.SetMinSizeAsync(options.Label ?? context.WindowLabel, options.Width, options.Height, cancellationToken);
+            service.SetMinSizeAsync(Resolve(options.Label, context, "core:window|set-min-size"), options.Width, options.Height, cancellationToken);
 
         [TaruiCommand("core:window|set-max-size")]
         public ValueTask<Unit> SetMaxSizeAsync(
             SetExtentOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.SetMaxSizeAsync(options.Label ?? context.WindowLabel, options.Width, options.Height, cancellationToken);
+            service.SetMaxSizeAsync(Resolve(options.Label, context, "core:window|set-max-size"), options.Width, options.Height, cancellationToken);
 
         [TaruiCommand("core:window|set-always-on-top")]
         public ValueTask<Unit> SetAlwaysOnTopAsync(
             SetFlagOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.SetAlwaysOnTopAsync(options.Label ?? context.WindowLabel, options.Value, cancellationToken);
+            service.SetAlwaysOnTopAsync(Resolve(options.Label, context, "core:window|set-always-on-top"), options.Value, cancellationToken);
 
         [TaruiCommand("core:window|set-resizable")]
         public ValueTask<Unit> SetResizableAsync(
             SetFlagOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.SetResizableAsync(options.Label ?? context.WindowLabel, options.Value, cancellationToken);
+            service.SetResizableAsync(Resolve(options.Label, context, "core:window|set-resizable"), options.Value, cancellationToken);
 
         [TaruiCommand("core:window|set-decorations")]
         public ValueTask<Unit> SetDecorationsAsync(
             SetFlagOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.SetDecorationsAsync(options.Label ?? context.WindowLabel, options.Value, cancellationToken);
+            service.SetDecorationsAsync(Resolve(options.Label, context, "core:window|set-decorations"), options.Value, cancellationToken);
 
         [TaruiCommand("core:window|set-fullscreen")]
         public ValueTask<Unit> SetFullscreenAsync(
             SetFlagOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.SetFullscreenAsync(options.Label ?? context.WindowLabel, options.Value, cancellationToken);
+            service.SetFullscreenAsync(Resolve(options.Label, context, "core:window|set-fullscreen"), options.Value, cancellationToken);
 
         [TaruiCommand("core:window|get-state")]
         public ValueTask<WindowStateInfo> GetStateAsync(
             WindowLabelOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.GetStateAsync(options.Label ?? context.WindowLabel, cancellationToken);
+            service.GetStateAsync(Resolve(options.Label, context, "core:window|get-state"), cancellationToken);
 
         [TaruiCommand("core:window|current-monitor")]
         public ValueTask<MonitorInfo?> GetCurrentMonitorAsync(
             WindowLabelOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.GetCurrentMonitorAsync(options.Label ?? context.WindowLabel, cancellationToken);
+            service.GetCurrentMonitorAsync(Resolve(options.Label, context, "core:window|current-monitor"), cancellationToken);
 
         [TaruiCommand("core:window|primary-monitor")]
         public ValueTask<MonitorInfo?> GetPrimaryMonitorAsync(
@@ -341,7 +404,7 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken)
         {
-            var monitors = await service.GetMonitorsAsync(options.Label ?? context.WindowLabel, cancellationToken);
+            var monitors = await service.GetMonitorsAsync(Resolve(options.Label, context, "core:window|monitors"), cancellationToken);
             return [.. monitors];
         }
 
@@ -353,6 +416,13 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
         {
             var labels = await service.ListAsync(cancellationToken);
             return new WindowLabels([.. labels]);
+        }
+
+        private static string Resolve(string? requested, CommandContext context, string permission)
+        {
+            var label = requested ?? context.WindowLabel;
+            WindowPermissionGuard.EnsureOwnOrOtherWindow(context, label, permission);
+            return label;
         }
     }
 }

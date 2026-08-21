@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tarui.dev/schemas/tarui-desktop-capability.schema.json",
+  "title": "Tarui Desktop Capability",
+  "description": "Authorizes desktop permissions, event receives and path scopes for a set of windows.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["identifier", "windows", "permissions"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "identifier": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "windows": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "platforms": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["windows", "macos", "linux", "ios", "android"]
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["identifier"],
+            "properties": {
+              "identifier": { "type": "string", "minLength": 1 },
+              "allow": { "$ref": "#/$defs/scopeList" },
+              "deny": { "$ref": "#/$defs/scopeList" }
+            }
+          }
+        ]
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "scopeList": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "anyOf": [{ "required": ["base"] }, { "required": ["path"] }],
+        "properties": {
+          "base": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

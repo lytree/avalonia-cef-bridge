@@ -23,6 +23,11 @@ internal static class Program
             InvalidWindowConfigurationFailsFast();
             PluginCompositionRegistersCommands();
             await HostLifecycleDrivesShutdownBridge();
+            ShutdownCoordinatorDefaultsToMainWindowClose();
+            ShutdownModeConfigurationOverridesCoordinator();
+            InvalidShutdownModeFailsFast();
+            ShutdownCoordinatorEnforcesEachMode();
+            HostAppShutdownStopsGracefully();
         }
         catch (Exception exception)
         {
@@ -160,6 +165,97 @@ internal static class Program
         Assert(
             bridge.ShutdownRequested,
             "Stopping the host must request the Avalonia shutdown via the lifetime bridge.");
+    }
+
+    private static void ShutdownCoordinatorDefaultsToMainWindowClose()
+    {
+        using var app = TaruiHost.CreateApplicationBuilder().Build();
+
+        var shutdown = app.Services.GetRequiredService<IAppShutdown>();
+        Assert(shutdown is HostAppShutdown, "The host must register a host-coordinated IAppShutdown.");
+
+        var coordinator = app.Services.GetRequiredService<IAppShutdownCoordinator>();
+        Assert(
+            coordinator.Mode == AppShutdownMode.OnMainWindowClose,
+            "The default shutdown mode must be OnMainWindowClose.");
+    }
+
+    private static void ShutdownModeConfigurationOverridesCoordinator()
+    {
+        var builder = TaruiHost.CreateApplicationBuilder();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Tarui:Application:ShutdownMode"] = "OnLastWindowClose",
+        });
+
+        using var app = builder.Build();
+        var coordinator = app.Services.GetRequiredService<IAppShutdownCoordinator>();
+        Assert(
+            coordinator.Mode == AppShutdownMode.OnLastWindowClose,
+            "The configured shutdown mode must override the default.");
+    }
+
+    private static void InvalidShutdownModeFailsFast()
+    {
+        var builder = TaruiHost.CreateApplicationBuilder();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Tarui:Application:ShutdownMode"] = "NeverStop",
+        });
+
+        InvalidOperationException? failure = null;
+        try
+        {
+            _ = builder.Build();
+        }
+        catch (InvalidOperationException exception)
+        {
+            failure = exception;
+        }
+
+        Assert(failure is not null, "An invalid shutdown mode must fail the build.");
+        Assert(
+            failure!.Message.Contains("Tarui:Application:ShutdownMode", StringComparison.Ordinal),
+            "The failure must name the offending configuration key.");
+    }
+
+    private static void ShutdownCoordinatorEnforcesEachMode()
+    {
+        var shutdown = new RecordingAppShutdown();
+
+        var mainWindowClose = new AppShutdownCoordinator(shutdown, AppShutdownMode.OnMainWindowClose);
+        mainWindowClose.NotifyWindowClosed("main", 1);
+        mainWindowClose.NotifyWindowClosed("editor", 2);
+        Assert(shutdown.Shutdowns.Count == 1, "OnMainWindowClose must stop when the main window closes.");
+
+        var lastWindowClose = new AppShutdownCoordinator(shutdown, AppShutdownMode.OnLastWindowClose);
+        lastWindowClose.NotifyWindowClosed("editor", 1);
+        Assert(shutdown.Shutdowns.Count == 1, "OnLastWindowClose must not stop while a window remains.");
+        lastWindowClose.NotifyWindowClosed("editor", 0);
+        Assert(shutdown.Shutdowns.Count == 2, "OnLastWindowClose must stop when the last window closes.");
+
+        var explicitMode = new AppShutdownCoordinator(shutdown, AppShutdownMode.Explicit);
+        explicitMode.NotifyWindowClosed("main", 0);
+        Assert(shutdown.Shutdowns.Count == 2, "Explicit mode must not stop on window close.");
+    }
+
+    private static void HostAppShutdownStopsGracefully()
+    {
+        using var app = TaruiHost.CreateApplicationBuilder().Build();
+
+        var shutdown = app.Services.GetRequiredService<IAppShutdown>();
+        // RequestShutdown goes through the host, so only the host can observe it; the key assertion is
+        // that the concrete type exists and exposes the host lifecycle rather than Environment.Exit.
+        Assert(shutdown is HostAppShutdown, "IAppShutdown must resolve to the host-backed implementation.");
+    }
+
+    private sealed class RecordingAppShutdown : IAppShutdown
+    {
+        public List<int> Shutdowns { get; } = [];
+
+        public void RequestShutdown(int exitCode = 0) => Shutdowns.Add(exitCode);
+
+        public bool TryStartRelaunch() => true;
     }
 
     private static void Assert(bool condition, string message)

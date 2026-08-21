@@ -151,6 +151,7 @@ public static class SystemPluginServiceCollectionExtensions
     public static IServiceCollection AddSystemPlugin(this IServiceCollection services) => services
         .AddSingleton<IPathService, PathService>()
         .AddSingleton<IOsService, OsService>()
+        .AddSingleton<IAppShutdown, NoopAppShutdown>()
         .AddSingleton<IProcessService, ProcessService>()
         .AddSingleton<IShellService, ShellService>()
         .AddPlugin<SystemPlugin>();

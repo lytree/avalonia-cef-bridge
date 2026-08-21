@@ -64,7 +64,8 @@ Tarui 的目标不是逐行复刻 Tauri 的 Rust 内部实现，而是在 .NET�
 | Autostart | 未实现 | 尚无平台启动项管理 |
 | Global Shortcut | 未实现 | 尚无系统级快捷键注册 |
 | Window State | 未实现 | 尚无窗口位置和状态持久化 |
-| Deep Link / Updater | 未实现 | 尚无协议激活和更新流程 |
+| Deep Link | 已实现(Windows) | Windows cold/warm 全链路已接；macOS delegate / Linux .desktop 待真机验收 |
+| Updater | 未实现 | 尚无签名校验、回滚与安装策略 |
 | File Drop / Drag Region | 未实现 | 当前 Avalonia 12 windowed CEF 适配未暴露对应事件 |
 
 现有 5 个插件共注册 35 个权限匹配命令。新增能力必须继续沿用以下链路：
@@ -93,7 +94,7 @@ Tarui.Contracts DTO
 | Clipboard Manager plugin | `@tarui/api/clipboard` | 部分对齐：仅文本 | 后续增强 |
 | OS plugin | `@tarui/api/os` | 部分对齐：基础系统信息可用 | Phase 0 功能矩阵 |
 | Process plugin | `@tarui/api/process` | 部分对齐：退出和重启需纳入 Host 生命周期 | Phase 0 |
-| File System plugin | 无 | 已规划 | Phase 1 |
+| File System plugin | `@tarui/api/fs` | 部分对齐：九条命令、scoped allow/deny、glob 匹配、resources 只读、原子写、大小预算 | Phase 1 会话 grant + Channel 流式传输 |
 | Menu API | 无 | 已规划 | Phase 2 |
 | Tray Icon API | 无 | 已规划 | Phase 2 |
 | Single Instance plugin | 无 | 已规划 | Phase 3 |
@@ -113,7 +114,7 @@ Tarui.Contracts DTO
 | Window | `window.ts` | `Tarui.Plugins.Window`、`Tarui.Shell` | `core:window|*`、`window://*` | current/other-window 权限、窗口集成测试 |
 | Event | `event.ts` | `Tarui.Plugins.Event`、`EventRouter` | `core:event|emit`、`user://*` | 发送权限、接收事件列表、伪造拒绝测试 |
 | Dialog grant | `dialog.ts` | `Tarui.Plugins.Dialog`、`AvaloniaDialogService` | `plugin:dialog|*` | 调用窗口绑定、会话 grant 测试 |
-| File System | `fs.ts` | `Tarui.Plugins.FileSystem` | `plugin:fs|*`、后续 `fs://*` | allow/deny path scope、链接和大小测试 |
+| File System | `fs.ts` | `Tarui.Plugins.FileSystem`、`Tarui.Ipc/FileAccessPolicy` | `plugin:fs|*` | allow/deny path scope、glob(`**/*`/`/*`)、链接和大小测试、9 条命令覆盖测试 |
 | Menu | `menu.ts` | `Tarui.Plugins.Menu`、Avalonia menu service | `plugin:menu|*`、`menu://*` | owner window、资源释放和点击事件测试 |
 | Tray | `tray.ts` | `Tarui.Plugins.Tray`、Avalonia tray service | `plugin:tray|*`、`tray://*` | owner/app resource、Host 退出清理测试 |
 | Single Instance | `single-instance.ts` 仅事件 helper | `Tarui.SingleInstance` | `app://second-instance` | 事件接收权限、真实双进程测试 |
@@ -253,6 +254,7 @@ notification://
 global-shortcut://
 fs://
 updater://
+log://
 ```
 
 `EventRouter` 在向窗口投递带敏感信息的原生事件前必须检查事件接收权限。第二实例参数、文件路径和通知动作不能广播给未授权窗口。
@@ -540,6 +542,110 @@ Updater 在没有签名校验、回滚和安装器策略前不得交付“检查
 
 Phase 6 是滚动阶段，每个产品化插件必须建立独立工作项、威胁模型、平台矩阵和退出标准。单个插件完成不能使其余未选择插件自动获得“已对齐”状态。
 
+### 10.1 Store 威胁模型与平台矩阵
+
+Store 的职责是轻量 JSON 配置持久化，不作为安全凭据仓库。承载风险集中在对配置文件的越界读写与跨窗口越权。
+
+| 威胁 | 缓解措施 | 测试编号 |
+| --- | --- | --- |
+| Web 通过任意 base/path 读写宿主文件 | 所有磁盘访问复用 `IFileAccessPolicy`：只允许 `appData`/`appLocalData`/`appConfig`/`appCache`/`appLog`/`temp`，拒绝 rooted/UNC/设备/控制字符/非法段/符号链接越界，拒绝读 `APP_BINARY` 等非白名单 base | 6.7 Scope 正反 + `resources` 写拒绝 |
+| 借 `resources`（只读）路径写入 | `resources` 永远只读，写命令经 `StoreScopeAuthorizer` deny | 6.7 `ResourcesBaseRejectsWritesAsync` |
+| 配置 scope 授权缺失导致越权 | 命令级权限 + `StoreScopeAuthorizer` 按 capability allow/deny scope 匹配（glob、`**`、deny 优先），未授权返回 `PERMISSION_DENIED` | 6.7 `ScopeAuthorizerRespectsAllowDenyAndWildcards` |
+| 写入中断破坏配置 | `WriteAllBytesAtomicAsync` 临时文件 + 原子替换 | 6.3 实现 / FileAccessPolicy 原子写测试 |
+| 值语义歧义（null 读 vs 缺失） | Tauri erase 语义：`null` value 删除 key，`StoreGetResult.Value` 为 `string?` | 6.7 `NullValueRemovesKeyAsync` |
+| 明文凭据误存 | Store 仅存储字符串值，文档标注不作为安全凭据库；高敏数据走 Stronghold 等安全插件（延后评估） | 文档约束 |
+
+平台可用性：Store 基于 .NET 文件 IO 与 `IFileAccessPolicy`，无平台专用 API，三个平台契约语义一致。Windows 已验证；macOS/Linux 待实机运行验证（契约与措辞在 build 门禁覆盖，期望行为一致，但未以此代替运行证据）。
+
+### 10.2 Logging 威胁模型与平台矩阵
+
+Logging 把渲染进程日志并入宿主 `Microsoft.Extensions.Logging` 管道，并把宿主日志以 `log://entry` 事件下发窗口。
+
+| 威胁 | 缓解措施 | 测试编号 |
+| --- | --- | --- |
+| 渲染进程伪造任意 level/类别污染日志 | 未知 level 降级 `Information`，category 缺省 `renderer`；消息按字面转发，不当作结构化模板（避免 CA2254/日志注入） | 6.7 `UnknownLevelDegradesToInformationAsync` |
+| 日志消息被当作日志模板解析 | `logger.Log(level, 0, message, null, (_,_) => message)` 用显式 formatter 闭包，用户消息不进入模板 | 6.7 转发测试 |
+| 未授权窗口窃听宿主机敏感日志 | `log://entry` 加入保留前缀，`RemoteLogSink` 经 `EventRouter` 按 capability `events` 授权投递，未声明接收权限的窗口不接收 | 6.4 实现 / 事件授权机制 |
+| `LogLevel.None` 误入管道 | `RemoteLogger` 过滤 `None`，不产生 `log://entry` | 6.7 `RemoteLoggerFiltersOutNoneLevel` |
+| 日志循环放大 | 渲染记录单向上行并入日志管道；桌面日志单向下发窗口，高层 provider 不再回灌 IPC，避免有界 Channel 无限积压（`RemoteLogSink` 用无界 Channel + 后台排空） | 6.4 实现 |
+| 高限频拖垮事件系统 | 未来可加采样/节流，当前保持简单 FIFO | 设计备注 |
+
+平台可用性：Logging 基于 `Microsoft.Extensions.Logging` 与事件路由，无平台专用 API，Windows 已验证；macOS/Linux 待实机运行验证，契约语义一致。
+
+### 10.3 Deep Link 评估（工作项）
+
+**目标定义**：捕获以注册自定义协议（如 `tarui://`）启动应用的 URL；在应用已运行时把新到达的 URL 交给主实例；当前启动 URL 可通过命令查询。
+
+**候选项目**：`Tarui.Plugins.DeepLink` + `Tarui.Shell/DeepLinkService`（事件桥）+ `Tarui.SingleInstance` 增强。
+
+**复用点与界限**：Deep Link 与 SingleInstance 共享“命令行 argv 携带激活意图”这一事实，但职责不同：
+
+- 复用：Windows/Linux 上，应用已运行时的链接在 OS 层启动一个携带该 URL 的新进程，这正好走 `SingleInstanceGuard.Acquire` 的次实例转发路径，URL 作为 argv 到达主实例。规划让 `SingleInstanceCoordinator` 把收到的 `SecondInstanceArgs` 同步通知给一个原生观察者（`ISecondActivationSink`），DeepLinkService 从中提取 URL。冷启动（无实例运行）的 URL 由主进程自身的启动 argv 捕获。
+- 界限：SingleInstance 负责“是否主实例 + 跨进程转发 + `app://second-instance`”，Deep Link 负责“从 argv/通道解读 URL + `deeplink://*` 事件 + get-current”。不得让 Deep Link 接管实例锁或转发管道本身。
+- **平台边界修正**：macOS 热链接（应用已在运行时）不走 argv，而是经 AppKit `application(_:openURLs:)` 委托直接派发给已运行实例。故 macOS 需要在 Darwin 层挂一个 delegate 桥，把 URL 调用到 `ISecondActivationSink`/DeepLinkService，不能只依赖单实例足参数通道。Windows/Linux 冷热链接均沿 argv 路径，可完整复用单实例通道。
+
+**契约草稿**（注册 `TaruiJsonContext`）：
+
+```csharp
+public sealed record DeepLinkCurrentResult(string? Url);
+// 事件 payload：原始 url 字符串
+```
+
+**命令与事件**：
+
+```text
+plugin:deep-link|get-current     // 返回 DeepLinkCurrentResult
+事件：deeplink://<scheme>          // scheme ∈ 已注册协议集合
+```
+
+事件名按 scheme 生成（对齐 Tauri `deeplink://site`）。由于事件授权是精确匹配且生产禁用 `*`，capability 必须按已注册 scheme 显式列出 `deeplink://<scheme>`；scheme 集合来自配置 `Tarui:Application:DeepLinkSchemes`。
+
+**威胁模型**
+
+| 威胁 | 缓解措施 |
+| --- | --- |
+| 协议占用/被劫持，URL 未被本应用接收 | 仅注册显式 scheme；Windows 写入 `HKCU\Software\Classes\`，校验 ShellOpen 命令解析到本应用 exe 路径；linux `.desktop` 声明 `x-scheme-handler/<scheme>`；macOS `CFBundleURLTypes`。多实例并行注册时以最后写入为准并诚实登记 |
+| 伪造/畸形 URL（控制字符、超长、CRLF）注入日志或被当作命令 | DeepLinkService 校验 scheme 属于已注册集合，拒绝控制字符与超长（上限入契约）；URL 仅作为数据上报 Web，不在原生端执行任何动作 |
+| 未授权窗口窃听链接负载 | `deeplink://` 加入 `EventNames` 保留前缀；`EventRouter` 按 capability `events` 精确授权投递 |
+| 次实例转发投递的 URL 被伪造 | 沿用单实例通道现有的同用户隔离（Windows 命名管道 / Unix 域 socket）；在既有信任边界内传递，不新增更广暴露面 |
+| 链接触发敏感 Web 动作（钓鱼意图） | 原生端只转发 URL 数据，不解析为跳转/命令；是否放行由前端策略与用户意图决定，需在示例中展示确认路径 |
+| cold 与 warm 双路径漏发或重复 | 单一 `DeepLinkService` 消费统一 URL 流（启动 argv 播种 + 观察者转发），main 窗口就绪后 `Flush()` 补偿 warm 前到达的 URL，与 `app://second-instance` 的队列语义对齐 |
+
+**平台矩阵**
+
+| 平台 | 协议注册 | cold 链接（未运行） | warm 链接（已运行） | 验证状态 |
+| --- | --- | --- | --- | --- |
+| Windows | `HKCU\Software\Classes\<scheme>` | 启动 argv → get-current | 新进程 argv → 走单实例转发 → 观察者 | 已完成(Windows)/已验证 |
+| macOS | `CFBundleURLTypes`(Info.plist) | 启动 argv | AppKit `openURLs` delegate 桥（不经 argv）| 待实现/未验证 |
+| Linux | `.desktop` `x-scheme-handler/<scheme>` | 启动 argv | 新进程 argv → 单实例转发 → 观察者 | 待实现/未验证 |
+
+**退出标准**
+
+- `plugin:deep-link|get-current` 具有独立权限，未授权拒绝。
+- cold/warm 两条路径都被投递（Windows 冷启动 argv、次实例转发 argv、macOS delegate 各一条）。
+- URL 含控制字符/超长/非注册 scheme 被拒绝，且不产生 `deeplink://*` 事件。
+- `deeplink://<scheme>` 为保留前缀，未在 capability 声明的窗口不接收。
+- 示例应用能够展示收到、拒绝与非支持状态。
+- 平台矩阵记录真实验证结果；macOS delegate 桥未完成前不得标记跨平台可用。
+- 前置阶段门禁全部通过。
+
+**已定决策**：
+
+- 事件模型：按 scheme 生成 `deeplink://<scheme>` 事件（对齐 Tauri `deeplink://site`），避免跨协议串扰，capability 按已注册 scheme 显式授权。
+- 本轮范围：实现 Windows/Linux 全链路（注册 + cold/warm）+ macOS 委托桥骨架（Darwin delegate 转发到 `ISecondActivationSink`，真机仅 Windows 验证）。
+- 协议集合：来自配置 `Tarui:Application:DeepLinkSchemes`（JSON 字符串数组），运行时加载并在启动期校验。非空数组才注册/播种。
+
+**实现与验收记录**：
+
+- 契约：`Tarui.Contracts/DeepLinkContracts.cs` 增 `DeepLinkCurrentResult`、`DeepLinkFeedOptions`，并注册 `TaruiJsonContext`；`EventNames.ReservedPrefixes` 增 `deeplink://`。
+- 单实例：`ISecondActivationSink` 观察者接口；`SingleInstanceCoordinator.Receive/Flush` 均同步通知注册的 sink（尽力而为、不抛错）。
+- 插件：`Tarui.Plugins.DeepLink` 暴露 `IDeepLinkService`；`DeepLinkPlugin` 注册 `plugin:deep-link|get-current`、`plugin:deep-link|feed` 两命令与两权限；`AddDeepLinkPlugin()` 组合根注册。
+- Shell：`DeepLinkUri`（scheme 校验 + URL 提取，拒绝控制字符/超长）、`DeepLinkConfiguration`（读取 `Tarui:Application:DeepLinkSchemes` 并去重/过滤非法）、`DeepLinkService`（cold argv 播种 + warm 观察者 + `Deliver` 发 `deeplink://<scheme>` 事件 + get-current/feed）、`WindowsDeepLinkRegistrar`（`HKCU\Software\Classes` 每用户注册）、`DeepLinkRegistrarHostedService`。
+- 接线：`Program.cs` 增 `AddDeepLinkPlugin()`；`appsettings.json` 配 `Tarui:Application:DeepLinkSchemes: ["tarui"]`；`capabilities/main.json` 授权 `plugin:deep-link|*` 与 `deeplink://tarui` 事件。
+- Web API：`web/packages/api/deep-link.ts`（`getCurrent`/`feed`/`onDeepLink`/`deepLink`）+ `index.ts` barrel（`getCurrentDeepLink`/`feedDeepLink`/`onDeepLink`）+ `package.json` 导出 `./deep-link`。
+- 测试：`tests/Tarui.DeepLink.Tests` 覆盖 URL 提取/拒绝、scheme 校验、配置过滤去重、cold 播种、warm 观察者投递、按 scheme 事件、feed 复现校验路径、插件命令/权限注册；`Tarui.SingleInstance.Tests` 增 `CoordinatorNotifiesSecondActivationSinksAsync`。
+- 验收：`dotnet build` 0 警告/0 错误；18 个自测套件全部通过（含 Architecture gate 扫描 806 文件）；`pnpm lint` 0 错误；`pnpm build` 成功。仅 Windows 真机验证，macOS（delegate 桥）与 Linux（`.desktop` 注册）待后续真机验收。
+
 ## 11. 项目与依赖落点
 
 建议最终目录：
@@ -563,6 +669,8 @@ src/plugins/
   Tarui.Plugins.Notification/
   Tarui.Plugins.Autostart/
   Tarui.Plugins.GlobalShortcut/
+  Tarui.Plugins.Store/
+  Tarui.Plugins.Log/
 
 web/packages/api/
   fs.ts
@@ -573,6 +681,8 @@ web/packages/api/
   autostart.ts
   global-shortcut.ts
   single-instance.ts
+  store.ts
+  log.ts
 ```
 
 依赖方向：
@@ -686,13 +796,13 @@ pnpm build
 | --- | --- | --- | --- | --- | --- | --- |
 | 对齐分析与步骤文档 | 已完成 | 不适用 | 不适用 | 不适用 | 本文及 README 入口 | 2026-08-21 |
 | Tauri-to-Tarui 模块映射 | 已完成 | 不适用 | 不适用 | 不适用 | 第 2.1、2.2 节 | 2026-08-21 |
-| Phase 0：安全与生命周期 | 未开始 | 未验证 | 未验证 | 未验证 | 尚无对应代码和测试变更 | 2026-08-21 |
-| Phase 1：受限文件系统 | 未开始 | 未验证 | 未验证 | 未验证 | 尚无插件项目 | 2026-08-21 |
-| Phase 2：菜单与托盘 | 未开始 | 未验证 | 未验证 | 未验证 | 尚无插件项目 | 2026-08-21 |
-| Phase 3：单实例与窗口状态 | 未开始 | 未验证 | 未验证 | 未验证 | 尚无 desktop/plugin 项目 | 2026-08-21 |
-| Phase 4：通知、自动启动、全局快捷键 | 未开始 | 未验证 | 未验证 | 未验证 | 尚无插件项目 | 2026-08-21 |
-| Phase 5：WebView 深度桌面集成 | 未开始 | 未验证 | 未验证 | 未验证 | WebView 抽象尚未扩展 | 2026-08-21 |
-| Phase 6：产品化插件 | 未开始 | 未验证 | 未验证 | 未验证 | 等待桌面核心稳定 | 2026-08-21 |
+| Phase 0：安全与生命周期 | 已完成(Windows) | 验证中 | 未验证 | 未验证 | 4.1 Capability v2 已完成：manifest DTO、scope、events、JSON Schema、启动校验、scope 授权器。4.2 显式窗口权限配置已完成：`WindowCapabilityResolver`、`CapabilityNotFoundException`、`*-other-window` 守卫、创建提权防护。4.3 系统事件保护已完成：Web emit 限定 `user://`（`EventNames`）、保留原生前缀、`EventRouter` 按 capability `events` 做接收授权。4.4 路径安全已完成：`IFileAccessPolicy`（`Tarui.Ipc/FileAccessPolicy`）统一授权 gate，`PathAccessDeniedException`→`PATH_DENIED`；拒绝 rooted/UNC-设备/控制字符/空`.``..`/ADS 段，单词段 `ResolveLinkTarget` 符号链接/重解析越界防护，临时文件+原子替换写入，单次与累计大小上限；`Tarui.Capabilities.Tests` 新增 5 组路径测试（拒绝、合法、链接逃逸、大小预算、原子写），Windows 无开发者模式时链接测试按环境跳过。4.5 生命周期已完成：`IAppShutdown`/`IAppShutdownCoordinator`（`Tarui.Ipc/AppShutdown`）、`HostAppShutdown`→`IHostApplicationLifetime.StopApplication`、`AppShutdownMode` 三档由 `Tarui:Application:ShutdownMode` 配置，`ShellWindowFactory` 关闭时释放 WebViewHost 并通知 coordinator，`ProcessService` 改走 host 协调退出。验收已通过：`dotnet build` 0 警告/0 错误；Ipc/WebView/Shell/Plugins/Hosting/Capabilities/Architecture 7 套自测试全绿；web lint 0 错误、web build 成功。macOS/Linux 平台未运行验证 | 2026-08-21 |
+| Phase 1：受限文件系统 | 进行中 | 已验证 | 未验证 | 未验证 | 1.1 契约：`Tarui.Contracts/FileSystemContracts.cs` 定义 `FsPathOptions` 等 10 组 DTO，并注册 `TaruiJsonContext` 序列化元数据（含 `bool`、`Unit`、`FsDirEntry[]`）。1.2 插件：`Tarui.Plugins.FileSystem/FileSystemPlugin.cs` + `FileSystemService.cs` 九条命令（`read-text-file`、`write-text-file`、`read-dir`、`stat`、`exists`、`mkdir`、`copy-file`、`rename`、`remove`），命令路由 + 9 个独立权限，`FsScopeAuthorizer` 实现 `**` 跨多级 + `**/suffix` + `/*` glob 与 deny 优先，写类命令拒绝只读 `resources`，路径授权复用 `IFileAccessPolicy`（含 rooted/UNC/控制字符/空段/`..`/符号链接越界 + 8 MiB 文本单次上限 + 原子临时替换写入）。1.3 集成：`Tarui.App/Program.cs` 增加 `AddFileSystemPlugin()`，`Tarui.App.csproj` + `Tarui.Plugins.Tests.csproj` 加入插件引用，`tarui.net.sln` 加入 `Tarui.Plugins.FileSystem` 与 `Tarui.FileSystem.Tests` 项目。1.4 Capabilities：`capabilities/main.json` 授予 main 窗口结构化 scoped FS 权限（读 `documents/**` + `**/*.json` + `appLog/temp/resources`，写排除只读 `resources`，`remove` 附加 deny `appConfig/settings/protected.json`）；`editor.json` 仅授予只读域（appData/documents/** + resources）。1.5 测试：`tests/Tarui.FileSystem.Tests/` 新增 8 组自测试（原子写往返 + 大小预算 SizeLimit 拒绝 + resources 写拒绝 + mkdir/remove 递归树 + read-dir 尺寸/类型 + stat/exists 磁盘一致性 + copy/rename 字节迁移 + scope allow/deny/glob 正反 + 9 条命令注册计数）。1.6 Web API：`web/packages/api/fs.ts` 新增 base 枚举 + 9 条类型化调用，`index.ts` barrel export fs 模块。1.7 验收 Windows：`dotnet build tarui.net.sln` 0 警告/0 错误；`Tarui.FileSystem.Tests`、`Tarui.Capabilities.Tests`、`Tarui.Plugins.Tests`、`Tarui.Architecture.Tests`、`Tarui.Ipc.Tests`、`Tarui.WebView.Tests`、`Tarui.Shell.Tests`、`Tarui.Hosting.Tests` 八套自测试全部退出码 0；`pnpm lint` 0 错误、`pnpm build` 成功。macOS/Linux 平台未运行验证。 | 2026-08-21 |
+| Phase 2：菜单与托盘 | 已完成(Windows) | 验证中 | 未验证 | 未验证 | 2.1 契约：`Tarui.Contracts/MenuTrayContracts.cs` 定义 `MenuItemDefinition`（normal/divider/check/submenu + 稳定 `id` + enabled/checked/accelerator/嵌套 items）、`SetWindowMenuOptions`、`MenuUpdateItemOptions`、`TrayCreateOptions` 及 set-menu/set-icon/set-tooltip/set-visible/remove 等 11 组 DTO 与 3 组事件 DTO，并注册 `TaruiJsonContext` 序列化元数据。2.2 插件：`Tarui.Plugins.Menu/MenuPlugin.cs` 三条命令（`set-window-menu`、`update-item`、`remove-window-menu`）、`Tarui.Plugins.Tray/TrayPlugin.cs` 六条命令（`create`、`set-menu`、`set-icon`、`set-tooltip`、`set-visible`、`remove`），全部走 owner 语义（`CommandContext` 授权 + owner window 归属校验）。2.3 Shell 集成：`Tarui.Shell` 新增 `AvaloniaMenuService`（`IMenuService`，基于 Avalonia `NativeMenu` + `NativeMenu.SetMenu` 附加属性、`NativeMenuItemToggle`→`MenuItemToggleType`）与 `AvaloniaTrayService`（`ITrayService` + `IDisposable`，`TrayIcon` + `TrayIcon.SetIcons(Application, TrayIcons)` 集合注册，图标经 `TrayIconPath.Resolve` 解析 `resources:`/`temp:` 等 base）；`NativeMenuBuilder` 校验整树 id 唯一并构建子菜单；服务经 `TaruiShellServiceCollectionExtensions` 注册，owner 窗口销毁时自动释放菜单/托盘（生命周期关闭钩子）；`Tarui.Shell.csproj` 加入 Menu/Tray 插件引用，`Tarui.App/Program.cs` 增加 `AddMenuPlugin()` + `AddTrayPlugin()`。2.4 Capabilities：`capabilities/main.json` + `editor.json` 授予 3 条 menu + 6 条 tray 权限，事件表注册 `menu://item-clicked`、`tray://clicked`、`tray://menu-item-clicked`。2.5 测试：`tests/Tarui.MenuTray.Tests/` 新增 9 组自测试（Menu/Tray 插件全命令注册 + dispatch 转发 owner 并做权限 gate + 整树 id 唯一 + 嵌套 id 拒绝 + 图标路径 base 解析正反 + 点击 DTO JSON 往返）。2.6 Web API：`web/packages/api/menu.ts`（3 条调用 + `menuItemKinds`）+ `tray.ts`（6 条调用），`package.json` exports 增加 `./menu`、`./tray`（并补 `./fs`），`index.ts` barrel export。2.7 验收 Windows：`dotnet build tarui.net.sln` 0 警告/0 错误；Ipc/WebView/Shell/Plugins/Hosting/Capabilities/FileSystem/MenuTray/Architecture 九套自测试全部退出码 0；`pnpm lint` 0 错误、`pnpm build` 成功。macOS/Linux 平台未运行验证。 | 2026-08-21 |
+| Phase 3：单实例与窗口状态 | 已完成(Windows) | 验证中 | 未验证 | 未验证 | 3.1 契约：`Tarui.Contracts/SingleInstanceStateContracts.cs` 定义 `SecondInstanceArgs`（arguments + workingDirectory + timestamp）、`WindowStateOptions`/`WindowStateSaveOptions`/`WindowStateRestoreOptions`、`WindowStateSnapshot`（label + x/y/width/height + maximized/fullscreen + scaleFactor）、`WindowStateRestoreResult`，并注册 `TaruiJsonContext` 序列化元数据。3.2 单实例：`Tarui.SingleInstance` 项目 `SingleInstanceGuard`（`Acquire` 抢占：Windows 命名 Mutex + 命名管道转发、macOS/Linux 走 Unix 域 socket 转发路径；主实例返回 `SingleInstanceHandle(InstanceRole.Primary)`，次实例序列化 `SecondInstanceArgs` 转发后返回 `Secondary`）+ `SingleInstanceCoordinator`（`Start()`/`Dispose()` 起停监听，`Receive(args)` 在主窗口未注册时入队、`Flush()` 随 main 窗口就绪投递 `app://second-instance` 事件；投递经 `EventRouter` 按 capability `events` 做接收授权）+ `AddSingleInstance` 扩展（DI 注册 identity 读取 `Tarui:Application:SingleInstance` 配置）。3.3 接线：`Tarui.App/Program.cs` 先 `RunSubProcess` 再 `SingleInstanceGuard.Acquire`，主进程注册生命周期、MainWindow 创建后 `coordinator.Flush()`，`Tarui.App.csproj` + `Tarui.SingleInstance` + `tarui.net.sln` 集成。3.4 窗口状态插件：`Tarui.Plugins.WindowState/WindowStatePlugin.cs` 三条命令（`plugin:window-state|save`、`restore`、`clear`）+ `WindowStatePermissionGuard` owner 与 `-other-window` 变体授权，纯模型适配器 `WindowStateFit.ClampToMonitors`（把离线快照拉回到主工作区、钳制尺寸不超当前显示器），Shell 实现 `AvaloniaWindowStateService`（`IWindowStateService`，经 `IWindowService` + `JsonWindowStateStore` 读写几何与最大化/全屏状态）；契约 `IWindowStateStore` 下沉到插件避免 Shell↔plugin 环依赖。3.5 接线：`AddTaruiShell` 注册窗口状态服务，`Tarui.App/Program.cs` 增加 `AddWindowStatePlugin()`，`Tarui.Shell` 引用 WindowState 插件，`tarui.net.sln` + capabilities 集成。3.6 Web API：`web/packages/api/single-instance.ts`（`onSecondInstance` + `SecondInstanceArgs` 类型）+ `window-state.ts`（`save`/`restore`/`clear` + `WindowStateOptions`/`WindowStateRestoreResult`），`package.json` exports 增加 `./single-instance`、`./window-state`，`index.ts` barrel export。3.7 测试：`tests/Tarui.SingleInstance.Tests/`（主进程抢占 + 次实例 `--si-probe` 双进程转发参数/工作目录 + 未注册窗口入队 + `Flush()` 投递 + 未授权窗口不投递 + Start/Dispose 往返）+ `tests/Tarui.WindowState.Tests/`（`WindowStateFit` 几何拟合：离线/越界/超大快照拉回主工作区 + save/restore/clear 命令注册、权限 gate、`-other-window` 守卫、restore 结果 JSON 往返）。3.8 验收 Windows：`dotnet build tarui.net.sln` 0 警告/0 错误；SingleInstance/WindowState 新增 2 套 + Ipc/WebView/Shell/Plugins/Hosting/Capabilities/FileSystem/MenuTray/Architecture 共 11 套自测试全部退出码 0；`pnpm lint` 0 错误、`pnpm build` 成功。macOS/Linux 平台未运行验证。 | 2026-08-21 |
+| Phase 4：通知、自动启动、全局快捷键 | 已完成(Windows) | 验证中 | 未验证 | 未验证 | 4.1 契约：`Tarui.Contracts/NotificationContracts.cs`（`NotificationOptions`/`NotificationPermissionStateResult`/`NotificationCancelOptions`/`NotificationEvent`）+ `AutostartContracts.cs`（`AutostartEnableOptions`/`AutostartState`）+ `GlobalShortcutContracts.cs`（`GlobalShortcutOptions`/`GlobalShortcutState`/`GlobalShortcutTriggered`），并注册 `TaruiJsonContext` 序列化元数据。4.2 通知插件：`Tarui.Plugins.Notification/NotificationPlugin.cs` 四条命令（`permission-state`/`request-permission`/`show`/`cancel`）+ `NotificationValidator` 纯逻辑校验（id/title/body 非空且超长拒绝）。4.3 自动启动插件：`Tarui.Plugins.Autostart/AutostartPlugin.cs` 三条命令（`is-enabled`/`enable`/`disable`）+ `AutostartConfig` 参数校验（数量/单参长度/控制字符）+ `BuildCommandLine` 始终引用当前进程路径并引用转义。4.4 全局快捷键插件：`Tarui.Plugins.GlobalShortcut/GlobalShortcutPlugin.cs` 四条命令（`register`/`unregister`/`unregister-all`/`is-registered`）+ `AcceleratorSpec` 归一化（`+`/`-` 分隔、修饰符别名 `Ctrl/Control`、`Cmd/Command/Super/Meta/Win`、`Option/Alt`，key 大写，修饰符不得在 key 之后）+ `AcceleratorScopeAuthorizer` 作用域授权（deny 优先、`allow` glob 匹配、作用域模式归一化识别别名）。4.5 Shell 平台服务：`Tarui.Shell` 新增 `WindowsNotificationService`（Shell_NotifyIcon 气泡 + 按 id 去重，非 Windows 诚实降级）、`WindowsAutostartService`（注册表 `Run` 键 + 命令行拼接）、`WindowsGlobalShortcutService`（RegisterHotKey + 隐藏消息窗口线程 + `WM_HOTKEY` 投递 `global-shortcut://triggered`）；事件统一经 `EventRouter` 按 capability `events` 授权投递 `notification://activated/dismissed`、`global-shortcut://triggered`；服务经 `TaruiShellServiceCollectionExtensions` 注册，并向 App 组合根暴露。4.6 接线：`Tarui.App/Program.cs` 增加 `AddNotificationPlugin()`/`AddAutostartPlugin()`/`AddGlobalShortcutPlugin()`，`Tarui.App.csproj`/`Tarui.Shell.csproj`/`tarui.net.sln` 集成，`capabilities/main.json`+`editor.json` 授予权限与事件、main 授予 global-shortcut 作用域 allow/deny（`Ctrl+Shift+P`/`Ctrl+Alt+*`/`Ctrl+Alt+F4`）。4.7 Web API：`web/packages/api/notification.ts`（4 条调用 + `onNotificationActivated`/`onNotificationDismissed`，经 `listen` 收 `notification://*`）+ `autostart.ts`（3 条）+ `global-shortcut.ts`（4 条 + `onGlobalShortcut`），`package.json` exports 增加 `./notification`/`./autostart`/`./global-shortcut`，`index.ts` barrel export。4.8 测试：`tests/Tarui.Notification.Tests`/`Tarui.Autostart.Tests`/`Tarui.GlobalShortcut.Tests` 三套新增（命令注册计数 + dispatch 授权 gate + 校验拒绝空/超长 + `AcceleratorSpec` 归一化与作用域 glob 匹配 + `AutostartConfig` 引用/参数校验 + DTO JSON 往返）。4.9 验收 Windows：`dotnet build tarui.net.sln` 0 警告/0 错误；新增 3 套 + Ipc/WebView/Shell/Plugins/Hosting/Capabilities/FileSystem/MenuTray/SingleInstance/WindowState/Architecture 共 14 套自测试全部退出码 0；`pnpm lint` 0 错误、`pnpm build` 成功（`@tarui/api` 新 TS 经 web `tsc -b` 传递类型检查）。macOS/Linux 平台未运行验证。 | 2026-08-21 |
+| Phase 5：WebView 深度桌面集成 | 进行中 | 验证中 | 未验证 | 未验证 | 5.1 契约：`Tarui.Contracts/WebViewContracts.cs` 定义 `WebViewFileDropEvent`（paths/text/x/y）、`WebViewDownloadRequestEvent`（url/suggestedFilename）、`WebViewNavigationRequestEvent`（url/isMainFrame），注册 `TaruiJsonContext` 序列化元数据。5.2 纯策略引擎：`Tarui.WebView.Abstractions/WebViewRequestPolicy.cs`（`WebViewPolicyOptions` + `WebViewRequestDecision.Allow/External/Deny`，导航 glob allow/external 默认 deny，下载 host allow 默认 deny，拒绝非 http/https scheme 与 URL 控制字符，相对 URL 抛 `WebViewRequestDeniedException(MalformedUrl)`）+ `DraggableRegion.cs`（`DraggableRegionSelector.HitTest` 实现 NoDrag 覆盖 Drag、`Differs` 集合差异比较）。5.3 抽象扩展：`Tarui.WebView.Abstractions/IWebView.cs` 为 `ITaruiWebView` 增加类型化原生事件 `FileDropEntered/FileDropLeft/FileDropped/DownloadRequested/NavigationRequested/DragRegionsUpdated` 及 `Navigate/SetDragRegions`。5.4 Shell 路由：`Tarui.Shell/WebViewHost.cs` 承接原生事件→先经 `WebViewRequestPolicy` 决策导航/下载，再按 capability `events` 授权将带窗口上下文的事件经 `EventRouter` 投递 `window://file-drop-entered/left/dropped`、`webview://download-requested/navigation-requested`；未授权窗口在 OS 层拒绝拖放（`Accepted=false`），绝不携带文件路径。5.5 CefGlue 适配：`Tarui.WebView.CefGlueNext` 新增 `CefGlueNextNativeHandlers.cs`（`CefNavigationRequestHandler.OnBeforeBrowse` 决策并对外部打开、`CefDownloadHandler.OnBeforeDownload` 决策、`CefDragHandler.OnDraggableRegionsChanged` 转换），`CefGlueNextWebView` 接线 RequestHandler/DownloadHandler/DragHandler。5.6 接线/API：`TaruiShellServiceCollectionExtensions` 用可选 `IConfiguration` 构建 `WebViewRequestPolicy`（`Tarui:Web:Policy:*` 默认允许应用源与 localhost，外部 `https:*`），`appsettings.json` 配 `NavExternal: https:*`，`capabilities/main.json`+`editor.json` events 注册 5 个保留事件；`web/packages/api/window.ts` 增加 `FILE_DROP_*_EVENT`/`DOWNLOAD_REQUESTED_EVENT`/`NAVIGATION_REQUESTED_EVENT` + `FileDropEvent`/`DownloadRequestEvent`/`NavigationRequestEvent` 类型 + `onFileDropEntered/onFileDropLeft/onFileDropped/onDownloadRequested/onNavigationRequested`，`index.ts` barrel export。5.7 测试：`Tarui.WebViewEvents.Tests`（策略决策 + 恶意 scheme/控制字符 + 相对 URL + glob 语义 + 拖拽区域命中/NoDrag 覆盖/退化/差异）+ `Tarui.Shell.Tests` 新增 WebViewHost 路由授权（未授权文件拖放 OS 层拒绝、授权分发路径/文本/坐标、下载按 policy+capability 正反、导航按 policy+capability 正反）。5.8 验收 Windows（代码与门禁）：`dotnet build tarui.net.sln` 0 警告/0 错误；16 套自测试全部退出码 0（含 Architecture 扫描 787 files）；`pnpm lint` 0 错误、`pnpm build` 成功。真机 windowed CEF 验收待执行：文件进入/离开/放下、多窗口拖放命中、拖拽区域动态更新、下载/导航外部打开、WebView 反复创建销毁无残留。macOS/Linux 平台未运行验证。 | 2026-08-21 |
+| Phase 6：产品化插件（Store + Logging）| 进行中 | 已验证 | 未验证 | 未验证 | 6.1 契约：`Tarui.Contracts/StoreContracts.cs`（`StoreFileOptions`/`StoreKeyOptions`/`StoreSetOptions`/`StoreGetResult`/`StoreHasResult`/`StoreKeysResult`）+ `LogContracts.cs`（`LogRecordOptions`/`LogEntry`），均注册 `TaruiJsonContext` 序列化元数据；`Tarui.Ipc/EventNames.cs` ReservedPrefixes 增加 `log://`。6.2 Store 插件：`Tarui.Plugins.Store/StorePlugin.cs` 暴露 `IStoreService`（get/set/has/delete/clear/keys 六条命令 `plugin:store|*`）+ `StoreScopeAuthorizer`（按 capability allow/deny scope 校验 base+path，deny 优先）。6.3 Store 实现：`Tarui.Plugins.Store/JsonStoreService.cs` 复用 `IFileAccessPolicy`（`ReadAllBytesAsync`/`WriteAllBytesAtomicAsync` 原子替换、`resources` 只读、PATH_DENIED 错误码）做 JSON 配置持久化，内存 `Dictionary` 缓存 + 锁快照写盘，`resources` base 拒绝写。6.4 Logging 插件+Shell：`Tarui.Plugins.Log/LogPlugin.cs`（`plugin:log|record`）+ `LogService`（把渲染进程日志桥接进 `Microsoft.Extensions.Logging`，未知 level 降级 `Information`、默认 category `renderer`、`BeginScope` 携带 `TaruiTimestamp`）+ `RemoteLoggerProvider`/`RemoteLogger`（`ILoggerProvider`，把桌面日志投递到 `IRemoteLogSink`，`LogLevel.None` 过滤）；`Tarui.Shell/RemoteLogSink.cs` 经 `EventRouter` 按 capability `events` 授权广播 `log://entry`。6.5 接线：`Tarui.App/Program.cs` `AddStorePlugin()`+`AddLogPlugin()`，`Tarui.App.csproj`/`Tarui.Shell.csproj` 引用 Store/Log 插件，`TaruiShellServiceCollectionExtensions` 注册 `IRemoteLogSink`+`ILoggerProvider`，`capabilities/main.json`+`editor.json` 授予 store 权限（含 appData/appConfig scoped allow 与 `resources` deny）与 `log://entry` 事件接收。6.6 Web API：`web/packages/api/store.ts`（6 条调用 + `storeBaseIdentifiers`）+ `log.ts`（`record`+`trace/debug/info/warn/error/critical` + `onLogEntry` + `logLevels` + `LOG_ENTRY_EVENT`），`package.json` exports 增加 `./store`、`./log`，`index.ts` barrel export（含 `log`/`store` 对象与类型）。6.7 测试：`tests/Tarui.Store.Tests`（11 组：Set/Get 往返 + 文件落盘、null 擦除 key、Has、Delete、Clear、Keys、缺失文件读空、新服务重载持久化、resources 写拒绝、scope allow/deny/通配、六命令注册计数）+ `tests/Tarui.Log.Tests`（7 组：level/category 转发、未知 level 降级、默认 category、命令注册、RemoteLogger 类别/格式/异常追加、None 过滤）。6.8 验收 Windows：`dotnet build tarui.net.sln` 0 警告/0 错误；Store/Log 新增 2 套 + Ipc/WebView/Shell/Plugins/Hosting/Capabilities/FileSystem/MenuTray/SingleInstance/WindowState/Notification/Autostart/GlobalShortcut/WebViewEvents/Architecture 共 17 套自测试全部退出码 0（Architecture 扫描 797 files，无反射/扫描/动态加载）；`pnpm lint` 0 错误、`pnpm build` 成功（store/log 经 tsc -b 传递类型检查）。威胁模型与平台矩阵见 Phase 6 备注；macOS/Linux 平台未运行验证。后续按优先级评估 Deep Link、Updater、HTTP、SQL。 | 2026-08-21 |
 
 状态更新规则：
 

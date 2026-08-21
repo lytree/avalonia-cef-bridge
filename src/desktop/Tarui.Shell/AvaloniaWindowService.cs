@@ -11,9 +11,9 @@ namespace Tarui.Shell;
 
 public sealed class AvaloniaWindowService(
     WindowRegistry registry,
-    Func<WindowOptions, WindowRegistry.Entry> windowFactory) : IWindowService
+    Func<WindowOptions, CommandContext?, WindowRegistry.Entry> windowFactory) : IWindowService
 {
-    public async ValueTask<Unit> CreateAsync(WindowOptions options, CancellationToken cancellationToken)
+    public async ValueTask<Unit> CreateAsync(WindowOptions options, CommandContext callerContext, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (registry.TryGet(options.Label, out _))
@@ -23,7 +23,7 @@ public sealed class AvaloniaWindowService(
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var entry = windowFactory(options);
+            var entry = windowFactory(options, callerContext);
             registry.Add(options.Label, entry);
             if (options.Visible)
             {

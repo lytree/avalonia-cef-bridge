@@ -26,14 +26,26 @@ public sealed class CommandRouterBuilder
         JsonTypeInfo<TArgs> argsType,
         JsonTypeInfo<TResult> resultType,
         Func<TArgs, CommandContext, CancellationToken, ValueTask<TResult>> handler,
-        string permission)
+        string permission,
+        Func<TArgs, IReadOnlyList<PathScope>, IReadOnlyList<PathScope>, bool>? scopeAuthorizer = null)
     {
-        if (!_commands.TryAdd(command, new JsonCommandInvoker<TArgs, TResult>(argsType, resultType, handler)))
+        if (!_commands.TryAdd(command, new JsonCommandInvoker<TArgs, TResult>(argsType, resultType, handler, permission, scopeAuthorizer)))
         {
             throw new InvalidOperationException($"Duplicate command '{command}'.");
         }
 
         _permissions.Add(command, permission);
+        _registeredPermissions.Add(permission);
+        return this;
+    }
+
+    /// <summary>
+    /// Registers a permission ID that has no dedicated command but may be referenced by capability
+    /// files. Used for guard permissions such as the <c>-other-window</c> variants that authorize
+    /// operating on a window other than the caller's own window.
+    /// </summary>
+    public CommandRouterBuilder AddPermission(string permission)
+    {
         _registeredPermissions.Add(permission);
         return this;
     }
@@ -76,6 +88,26 @@ public sealed class CommandRouter(
         {
             return InvokeResponse.Fail(request.Id, "INVALID_ARGUMENTS", "The command payload is invalid.");
         }
+        catch (ScopeDeniedException)
+        {
+            return InvokeResponse.Fail(request.Id, "SCOPE_DENIED", $"Command '{request.Command}' is denied by its capability scope.");
+        }
+        catch (PermissionDeniedException)
+        {
+            return InvokeResponse.Fail(request.Id, "PERMISSION_DENIED", $"Command '{request.Command}' is not allowed.");
+        }
+        catch (CapabilityNotFoundException)
+        {
+            return InvokeResponse.Fail(request.Id, "CAPABILITY_NOT_FOUND", $"No capability profile is declared for the target window.");
+        }
+        catch (EventNamespaceDeniedException)
+        {
+            return InvokeResponse.Fail(request.Id, "EVENT_NOT_ALLOWED", $"The event name is reserved for native events.");
+        }
+        catch (PathAccessDeniedException exception)
+        {
+            return InvokeResponse.Fail(request.Id, "PATH_DENIED", $"The path is denied by the file access policy ({exception.Reason}).");
+        }
         catch (OperationCanceledException)
         {
             return InvokeResponse.Fail(request.Id, "CANCELLED", "The command was cancelled.");
@@ -90,7 +122,9 @@ public sealed class CommandRouter(
 internal sealed class JsonCommandInvoker<TArgs, TResult>(
     JsonTypeInfo<TArgs> argsType,
     JsonTypeInfo<TResult> resultType,
-    Func<TArgs, CommandContext, CancellationToken, ValueTask<TResult>> handler) : ICommandInvoker
+    Func<TArgs, CommandContext, CancellationToken, ValueTask<TResult>> handler,
+    string permission,
+    Func<TArgs, IReadOnlyList<PathScope>, IReadOnlyList<PathScope>, bool>? scopeAuthorizer) : ICommandInvoker
 {
     public async ValueTask<InvokeResponse> InvokeAsync(
         InvokeRequest request,
@@ -99,6 +133,16 @@ internal sealed class JsonCommandInvoker<TArgs, TResult>(
     {
         var args = request.Payload.Deserialize(argsType)
             ?? throw new InvalidPayloadException();
+
+        if (scopeAuthorizer is not null && context.Capabilities.TryGetScope(permission, out var scope))
+        {
+            // deny wins over allow; the authorizer observes both lists and decides.
+            if (!scopeAuthorizer(args, scope.Allow, scope.Deny))
+            {
+                throw new ScopeDeniedException(request.Command);
+            }
+        }
+
         var result = await handler(args, context, cancellationToken);
         var payload = JsonSerializer.SerializeToElement(result, resultType);
         return InvokeResponse.Ok(request.Id, payload);

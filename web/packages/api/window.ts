@@ -67,6 +67,32 @@ export const WINDOW_FOCUS_CHANGED_EVENT = 'window://focus-changed'
 export const WINDOW_CLOSE_REQUESTED_EVENT = 'window://close-requested'
 export const WINDOW_DESTROYED_EVENT = 'window://destroyed'
 
+export const FILE_DROP_ENTERED_EVENT = 'window://file-drop-entered'
+export const FILE_DROP_LEFT_EVENT = 'window://file-drop-left'
+export const FILE_DROPPED_EVENT = 'window://file-dropped'
+export const DOWNLOAD_REQUESTED_EVENT = 'webview://download-requested'
+export const NAVIGATION_REQUESTED_EVENT = 'webview://navigation-requested'
+
+export type FileDropEvent = {
+  /** Absolute paths of the dragged files. */
+  paths: string[]
+  /** Raw dropped text, when the drop payload contains non-file content. */
+  text: string | null
+  /** Drop position (CSS pixels) relative to the webview viewport origin. */
+  x: number
+  y: number
+}
+
+export type DownloadRequestEvent = {
+  url: string
+  suggestedFilename: string | null
+}
+
+export type NavigationRequestEvent = {
+  url: string
+  isMainFrame: boolean
+}
+
 /**
  * Typed handle for a shell window. Instances with no label target the
  * window that hosts the calling webview; the shell resolves the label
@@ -214,6 +240,31 @@ export class Window {
         handler()
       }
     })
+  }
+
+  /** Fires when a file drag enters the webview. The drag is only delivered to windows authorized to receive file paths. */
+  onFileDropEntered(handler: (drop: FileDropEvent) => void): Unlisten {
+    return listen<FileDropEvent>(FILE_DROP_ENTERED_EVENT, event => handler(event.payload))
+  }
+
+  /** Fires when a file drag leaves the webview without being dropped. */
+  onFileDropLeft(handler: () => void): Unlisten {
+    return listen<WindowLabelPayload>(FILE_DROP_LEFT_EVENT, () => handler())
+  }
+
+  /** Fires with the resolved absolute file paths when files are dropped onto the webview. */
+  onFileDropped(handler: (drop: FileDropEvent) => void): Unlisten {
+    return listen<FileDropEvent>(FILE_DROPPED_EVENT, event => handler(event.payload))
+  }
+
+  /** Fires for download requests allowed by the host policy and authorized for this window. */
+  onDownloadRequested(handler: (request: DownloadRequestEvent) => void): Unlisten {
+    return listen<DownloadRequestEvent>(DOWNLOAD_REQUESTED_EVENT, event => handler(event.payload))
+  }
+
+  /** Fires for navigations allowed by the host policy and authorized for this window. */
+  onNavigationRequested(handler: (request: NavigationRequestEvent) => void): Unlisten {
+    return listen<NavigationRequestEvent>(NAVIGATION_REQUESTED_EVENT, event => handler(event.payload))
   }
 
   private target(): Record<string, unknown> {

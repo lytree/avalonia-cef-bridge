@@ -10,12 +10,16 @@
   <ItemGroup>
     <ProjectReference Include="..\Tarui.Hosting\Tarui.Hosting.csproj" />
     <ProjectReference Include="..\Tarui.Shell\Tarui.Shell.csproj" />
+    <ProjectReference Include="..\Tarui.SingleInstance\Tarui.SingleInstance.csproj" />
     <ProjectReference Include="..\..\webview\Tarui.WebView.CefGlueNext\Tarui.WebView.CefGlueNext.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Core\Tarui.Plugins.Core.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Dialog\Tarui.Plugins.Dialog.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Event\Tarui.Plugins.Event.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.FileSystem\Tarui.Plugins.FileSystem.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.System\Tarui.Plugins.System.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Window\Tarui.Plugins.Window.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Store\Tarui.Plugins.Store.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Log\Tarui.Plugins.Log.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
@@ -38,5 +42,6 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\..\capabilities\*.json" Link="capabilities\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\..\schemas\tarui-desktop-capability.schema.json" Link="schemas\tarui-desktop-capability.schema.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

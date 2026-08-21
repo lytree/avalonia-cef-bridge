@@ -157,14 +157,14 @@ internal static class Program
         var response = await router.InvokeAsync(
             Request(
                 "core:event|emit",
-                new EventEmitOptions("theme://changed", payload, "editor"),
+                new EventEmitOptions("user://theme-changed", payload, "editor"),
                 TaruiJsonContext.Default.EventEmitOptions),
             AllowAll());
 
         Assert(response.Success, "Event emission must succeed.");
         Assert(sender.Emitted.Count == 1, "The sender must receive exactly one event.");
         Assert(
-            sender.Emitted[0].Event == "theme://changed" && sender.Emitted[0].TargetWindow == "editor",
+            sender.Emitted[0].Event == "user://theme-changed" && sender.Emitted[0].TargetWindow == "editor",
             "The event name and target window must round-trip.");
         Assert(
             sender.Emitted[0].Payload.GetProperty("theme").GetString() == "dark",

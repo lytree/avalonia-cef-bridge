@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Themes.Fluent;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,6 +19,12 @@ internal sealed class TaruiAvaloniaApp(IServiceProvider services) : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             services.GetRequiredService<TaruiLifetimeBridge>().Register(desktop);
+
+            // The AppShutdownCoordinator (driven by Tarui:Application:ShutdownMode) decides when the
+            // host stops. Disabling Avalonia's built-in main-window-close auto exit gives the
+            // coordinator full control across OnMainWindowClose / OnLastWindowClose / Explicit.
+            desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+
             desktop.MainWindow = services.GetRequiredService<IMainWindowLauncher>().LaunchMainWindow();
         }
 
