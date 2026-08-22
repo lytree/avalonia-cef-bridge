@@ -137,6 +137,21 @@ Scheme mode serves `tarui://localhost/index.html`. The build copies Web `dist` f
 
 When no mode is specified, a configured `TARUI_WEB_URL` selects HTTP; otherwise a packaged Web directory selects Scheme, falling back to the local development HTTP URL only when no packaged assets exist.
 
+## Tarui CLI
+
+`src/tarui-cli` (`Tarui.Cli`) is a zero-dependency orchestration tool that reads the `tarui.app.json` manifest at the repository root and drives the frontend/backend pipeline. It is published as a `dotnet tool` named `tarui`:
+
+```powershell
+dotnet tool install -global Tarui.Cli
+
+tarui dev     # dev server (build.beforeDevCommand) + dotnet watch, Ctrl+C tears both down
+tarui build   # frontend build, self-contained publish, portable zip + latest.json
+tarui info    # environment / toolchain / manifest diagnostics
+tarui --help  # full command surface
+```
+
+`tarui dev` starts `build.beforeDevCommand` in `build.frontend`, waits for `build.devUrl` to become reachable, then launches the desktop project with `TARUI_WEB_MODE=http` and `TARUI_WEB_URL=<devUrl>`. `tarui build` runs `build.beforeBuildCommand`, validates `build.frontendDist`, publishes the desktop project self-contained for the current RID, and emits the configured `bundle.targets` (currently a portable zip) plus an updater blueprint `dist/latest.json` with SHA-256. Run from the repository root; see `docs/dev-workflow-design.md` for the manifest schema and the phased rollout (W3 application templates, W4 plugin workflow, W5 installers).
+
 ## Native capability surface
 
 `AddTaruiShell()` composes the shell from explicitly registered plugins. Every command is permission-checked against the capability file of the calling window (`capabilities/main.json`):

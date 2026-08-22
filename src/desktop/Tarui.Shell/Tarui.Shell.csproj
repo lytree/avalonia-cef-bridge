@@ -33,10 +33,12 @@
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Store\Tarui.Plugins.Store.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Log\Tarui.Plugins.Log.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.DeepLink\Tarui.Plugins.DeepLink.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Updater\Tarui.Plugins.Updater.csproj" />
     <ProjectReference Include="..\..\webview\Tarui.WebView.Abstractions\Tarui.WebView.Abstractions.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Tarui.MenuTray.Tests" />
     <InternalsVisibleTo Include="Tarui.DeepLink.Tests" />
+    <InternalsVisibleTo Include="Tarui.Updater.Tests" />
   </ItemGroup>
 </Project>

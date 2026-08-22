@@ -23,6 +23,7 @@
  * - store           : lightweight JSON configuration persistence
  * - log             : renderer log forwarding and desktop log event subscription
  * - deep-link       : current launch URL and custom-protocol activation events
+ * - updater         : signed update check and download staging
  *
  * `dialog.open` and `shell.open` are re-exported as `openDialog` and
  * `openExternal` here to keep the barrel collision-free; the subpath
@@ -172,10 +173,15 @@ export {
 } from './log'
 export type { LogLevel, LogRecordOptions, LogEntry } from './log'
 
-export {
-  deepLink,
-  getCurrent as getCurrentDeepLink,
-  feed as feedDeepLink,
-  onDeepLink,
-} from './deep-link'
+export { deepLink, getCurrent as getCurrentDeepLink, feed as feedDeepLink, onDeepLink } from './deep-link'
 export type { DeepLinkCurrentResult, DeepLinkFeedOptions } from './deep-link'
+
+export {
+  updater,
+  check as checkUpdate,
+  download as downloadUpdate,
+  onStatus as onUpdaterStatus,
+  updaterStatusPhases,
+  UPDATER_STATUS_EVENT,
+} from './updater'
+export type { UpdateCheckResult, UpdateDownloadResult, UpdaterStatus, UpdaterStatusPhase } from './updater'

@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tarui.dev/schemas/app.v1.json",
+  "title": "Tarui Application Manifest",
+  "description": "Build-time manifest consumed by the Tarui CLI (tarui dev / tarui build). Runtime host configuration stays in appsettings.json; this file only drives frontend orchestration, output locations, bundle targets and product identity.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["product", "build", "bundle"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "identifier"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+" },
+        "identifier": { "type": "string", "minLength": 1 }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frontendDist"],
+      "properties": {
+        "frontend": { "type": "string", "description": "Frontend project root, relative to this manifest. Used as the working directory for beforeDevCommand / beforeBuildCommand. Defaults to the manifest directory." },
+        "beforeDevCommand": { "type": "string", "description": "Command that starts the frontend dev server, e.g. 'pnpm dev'." },
+        "devUrl": { "type": "string", "format": "uri", "description": "HTTP(S) URL the dev server listens on. Injected into the host via TARUI_WEB_MODE=http and TARUI_WEB_URL." },
+        "beforeBuildCommand": { "type": "string", "description": "Command that builds the frontend, e.g. 'pnpm build'." },
+        "frontendDist": { "type": "string", "description": "Directory containing the built frontend (must contain index.html after beforeBuildCommand). Injected via TARUI_WEB_ROOT in scheme mode." },
+        "desktopProject": { "type": "string", "description": "Desktop .csproj to run/publish. Optional: auto-detected when the app contains exactly one .csproj." }
+      }
+    },
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targets"],
+      "properties": {
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["zip", "msix"] }
+        },
+        "icon": { "type": "string" },
+        "shortDescription": { "type": "string" }
+      }
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Capability identifiers referenced from capabilities/<id>.json."
+        }
+      }
+    }
+  }
+}

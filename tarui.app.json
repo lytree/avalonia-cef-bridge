@@ -1,0 +1,23 @@
+{
+  "$schema": "https://tarui.dev/schemas/app.v1.json",
+  "product": {
+    "name": "tarui.net",
+    "version": "0.1.0",
+    "identifier": "dev.tarui.net"
+  },
+  "build": {
+    "frontend": "web",
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "web/apps/Tarui.Web/dist",
+    "desktopProject": "src/desktop/Tarui.App/Tarui.App.csproj"
+  },
+  "bundle": {
+    "targets": ["zip"],
+    "shortDescription": "Tarui desktop runtime"
+  },
+  "app": {
+    "capabilities": ["main", "editor"]
+  }
+}

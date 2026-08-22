@@ -150,6 +150,10 @@ public sealed record EventEnvelope(
 [JsonSerializable(typeof(LogEntry))]
 [JsonSerializable(typeof(DeepLinkCurrentResult))]
 [JsonSerializable(typeof(DeepLinkFeedOptions))]
+[JsonSerializable(typeof(UpdateManifest))]
+[JsonSerializable(typeof(UpdateCheckResult))]
+[JsonSerializable(typeof(UpdateDownloadResult))]
+[JsonSerializable(typeof(UpdaterStatus))]
 [JsonSerializable(typeof(string))]
 [JsonSerializable(typeof(bool))]
 public partial class TaruiJsonContext : JsonSerializerContext;

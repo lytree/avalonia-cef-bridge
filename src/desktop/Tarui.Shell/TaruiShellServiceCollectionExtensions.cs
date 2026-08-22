@@ -12,6 +12,7 @@ using Tarui.Plugins.Menu;
 using Tarui.Plugins.Notification;
 using Tarui.Plugins.System;
 using Tarui.Plugins.Tray;
+using Tarui.Plugins.Updater;
 using Tarui.Plugins.Window;
 using Tarui.Plugins.WindowState;
 using Tarui.WebView.Abstractions;
@@ -66,6 +67,12 @@ public static class TaruiShellServiceCollectionExtensions
         .AddSingleton<IDeepLinkService>(sp => sp.GetRequiredService<DeepLinkService>())
         .AddSingleton<ISecondActivationSink>(sp => sp.GetRequiredService<DeepLinkService>())
         .AddHostedService<DeepLinkRegistrarHostedService>()
+        .AddSingleton<HttpClient>()
+        .AddSingleton<IUpdaterService>(sp => new UpdaterService(
+            sp.GetRequiredService<HttpClient>(),
+            UpdaterConfiguration.ReadSettings(sp.GetService<IConfiguration>()),
+            sp.GetService<EventRouter>(),
+            sp.GetService<ILogger<UpdaterService>>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<UpdaterService>.Instance))
         .AddSingleton<IMainWindowLauncher, MainWindowLauncher>()
         .AddSingleton<IRemoteLogSink, RemoteLogSink>()
         .AddSingleton<ILoggerProvider, RemoteLoggerProvider>();

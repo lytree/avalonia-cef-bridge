@@ -6,6 +6,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>tarui.net</AssemblyName>
     <RootNamespace>Tarui.App</RootNamespace>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Tarui.Hosting\Tarui.Hosting.csproj" />

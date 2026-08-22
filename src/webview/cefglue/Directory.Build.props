@@ -1,0 +1,9 @@
+<!-- 局部构建属性：src/webview/cefglue 是仓库内内置的第三方源码(Xilium.CefGlue)。
+  它不参与 W0 打包（各 csproj 已设 IsPackable=false）。这里关闭 XML 文档生成，
+  避免开启 GenerateDocumentationFile 后暴露第三方源码既有的注释格式问题(CS1570 等)，
+  并维持其脚本既有的宽松告警纪律。 -->
+<Project>
+  <PropertyGroup>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+</Project>

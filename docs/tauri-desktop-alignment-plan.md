@@ -65,7 +65,7 @@ Tarui 的目标不是逐行复刻 Tauri 的 Rust 内部实现，而是在 .NET�
 | Global Shortcut | 未实现 | 尚无系统级快捷键注册 |
 | Window State | 未实现 | 尚无窗口位置和状态持久化 |
 | Deep Link | 已实现(Windows) | Windows cold/warm 全链路已接；macOS delegate / Linux .desktop 待真机验收 |
-| Updater | 已评估(§10.6)，check/download 待实现 | 前置：签名 PKI、升级服务器、安装器策略未就绪；apply 默认关闭 |
+| Updater | check/download 已实现(Windows) | §10.6：签名清单 + 逐文件哈希校验 + 受控 staging + `updater://status` 事件已接；apply 仍默认关闭（前置未就绪） |
 | File Drop / Drag Region | 未实现 | 当前 Avalonia 12 windowed CEF 适配未暴露对应事件 |
 
 现有 5 个插件共注册 35 个权限匹配命令。新增能力必须继续沿用以下链路：
@@ -686,7 +686,7 @@ macOS 的 warm 激活**不经 argv**，需 AppKit `application(_:openURLs:)` del
 **当前事实（决定方案的前提）**：
 
 - 发布形态：`Tarui.App` 为 framework-dependent WinExe（net10.0），CEF `win-x64` 原生运行时与 web dist 均拷贝进输出目录；无 self-contained、无安装器、无发布脚本 → 部署即”整目录拷贝“。
-- 签名基础设施：仓库尚无一例代码签名证书、Ed25519 私钥治理（public key 注入）或升级服务器/TLS pin。**这三样在 apply 之前必须就位。**
+- 签名基础设施：仓库尚无一例代码签名证书、ECDSA（P-384/SHA-384）私钥治理（public key 注入）或升级服务器/TLS pin。**这三样在 apply 之前必须就位。**
 - 信任先例：仅 CEF 运行时安装脚本做“官方 SHA-1 + 固定来源”，不足以支撑对宿主 exe 的自动替换，因为运行中的 exe/CEF DLL 在 Windows 上被锁定，无法就地原子替换。
 
 **契约草稿**（注册 `TaruiJsonContext`）：
@@ -712,7 +712,7 @@ plugin:updater|apply      // 在满足前置时原子替换整包并重启（默
 
 | 威胁 | 缓解措施 |
 | --- | --- |
-| 中间人/伪造服务器下发篡改包 | HTTPS + 对整份 `UpdateManifest` 做 Ed25519 签名验证（公钥编译期注入，私钥离线治理）；随后逐文件 `Sha256` 复校，双重校验后才允许 staging |
+| 中间人/伪造服务器下发篡改包 | HTTPS + 对整份 `UpdateManifest` 做 ECDSA（P-384/SHA-384）签名验证（公钥编译期注入，私钥离线治理）；随后逐文件 `Sha256` 复校，双重校验后才允许 staging |
 | 校验与实际执行分离被绕过（检查到即执行） | `check` 只读无副作用；`download` 只写受控 staging；`apply` 单独授权且默认 `NOT_SUPPORTED`，未就绪不执行（对齐 §10 门槛“没有签名校验、回滚和安装器策略前不得交付”）。策略由 capability 控制，生产不授予 `apply` |
 | CEF/DLL 运行中锁定导致替换不完整 | Windows 上就地替换不可行 → 必须走“外部引导器先关旧进程再 swap”或“安装器包”之一（见决策）；不作为 `apply` 的偷懒实现 |
 | 替换过程中断导致应用不可用 | 替换前写“即将切换”清单快照；swap 双目录 + 原子改名；启动自检失败触发回滚旧包；回滚同样经签名校验 |
@@ -738,9 +738,16 @@ plugin:updater|apply      // 在满足前置时原子替换整包并重启（默
 
 **已定决策**：
 
-- 本轮范围：实现 `check` + `download` 的完整链路（拉取、Ed25519 签名验证、逐文件哈希核验、受控 staging、`updater://status` 事件、capability 授权、Web 绑定与测试），并在文档明确 `apply` 为“默认关闭、前置未就绪”。**不**在签名 PKI、安装器、升级服务器就位前落地“检测到即替换”。
-- 签名算法：Ed25519；公钥编译期注入，私钥离线持有；清单递增版本禁止降级。
-- 升级对象：整包（exe + CEF 原生运行时 + web dist + capabilities/schemas），staging 目录受 `IFileAccessPolicy` 类似的白名单约束，升级流程不引入运行时反射/动态加载。
+- 本轮范围：实现 `check` + `download` 的完整链路（拉取、签名验证、逐文件哈希核验、受控 staging、`updater://status` 事件、capability 授权、Web 绑定与测试）——已完成(Windows)；`apply` 为“默认关闭、前置未就绪”。
+- 签名算法：ECDSA（P-384 / SHA-384）——`.NET 10` BCL 未提供 `Ed25519`，改用 BCL 原生 `ECDsa` 以保证全程由系统密码学实现处理；公钥以 base64 DER `SubjectPublicKeyInfo` 编译期注入，私钥离线持有；清单递增版本禁止降级。
+- 升级对象：整包（exe + CEF 原生运行时 + web dist + capabilities/schemas），staging 目录受路径白名单约束（拒绝绝对路径、盘符、反斜杠与目录穿越逃逸），升级流程不引入运行时反射/动态加载。
+
+**验收回归（2026-08-22，Windows）**：
+
+- 落点：`Tarui.Plugins.Updater`（`IUpdaterService` + `UpdaterPlugin` + `AddUpdaterPlugin`）、`Tarui.Shell`（`UpdaterService`、`UpdaterConfiguration`、`UpdateVerifier`）、`Tarui.Contracts`（`UpdateManifest`/`UpdateCheckResult`/`UpdateDownloadResult`/`UpdaterStatus` + `TaruiJsonContext` 注册）、`EventNames` 保留前缀 `updater://`、capabilities `plugin:updater|check`/`plugin:updater|download` 与 `updater://status` 事件、Web `updater.ts`（`check`/`download`/`onStatus`）+ barrel `@tarui/api` 与 subpath exports。
+- 静态验证：`dotnet build tarui.net.sln --no-restore` 0 警告 0 错误；`Tarui.Architecture.Tests` 扫描 814 文件通过（无运行时反射/动态加载）。
+- 行为测试：`Tarui.Updater.Tests` 15 例（合法签名通过、改字段签名失败、unsupported-schema、missing-hash、malformed、check 新增版本/同版本/未配置/签名失败/拉取失败、download 多文件 staging、哈希不匹配、盘符路径、穿越逃逸、未配置）+ 全量 17 套自测退出码 0；Web gate `pnpm lint` 0 错误、`pnpm build` 成功。
+- 真机限制：签名 PKI、升级服务器、安装器/引导器策略未就绪 → `apply` 保持关闭；`plugin:updater|download` 仅写入本地 staging，未在任何发布源上实测端到端下载。
 
 （升级通道中“外部引导器 swap”与“OS 安装器包”的方案对比、签名私钥治理与发布流水线，属于本工作项的后续设计，需在 `apply` 解锁前另立小节收敛。）
 

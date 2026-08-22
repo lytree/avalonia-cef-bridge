@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <!--
+      W2：CLI MVP（docs/dev-workflow-design.md §5）。
+      - 以 dotnet tool 发布：dotnet tool install -global Tarui.Cli，命令名 tarui。
+      - 纯编排器：不编译任何东西，仅读取清单、spawn 子进程（pnpm/dotnet）、传递环境变量、校验产物。
+      - 零第三方依赖（仅 BCL + System.Text.Json 源生成），与 §12-3「手写参数解析 + 零新依赖」决策一致。
+    -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>tarui</ToolCommandName>
+    <RollForward>Major</RollForward>
+    <AssemblyName>tarui</AssemblyName>
+    <RootNamespace>Tarui.Cli</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tarui.Cli.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,30 +1,43 @@
 {
   "name": "@tarui/api",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
+  "files": ["dist"],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./index.ts",
-    "./ipc": "./ipc.ts",
-    "./app": "./app.ts",
-    "./window": "./window.ts",
-    "./event": "./event.ts",
-    "./dialog": "./dialog.ts",
-    "./os": "./os.ts",
-    "./path": "./path.ts",
-    "./process": "./process.ts",
-    "./shell": "./shell.ts",
-    "./clipboard": "./clipboard.ts",
-    "./fs": "./fs.ts",
-    "./menu": "./menu.ts",
-    "./tray": "./tray.ts",
-    "./window-state": "./window-state.ts",
-    "./single-instance": "./single-instance.ts",
-    "./notification": "./notification.ts",
-    "./autostart": "./autostart.ts",
-    "./global-shortcut": "./global-shortcut.ts",
-    "./store": "./store.ts",
-    "./log": "./log.ts",
-    "./deep-link": "./deep-link.ts"
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./ipc": { "types": "./dist/ipc.d.ts", "default": "./dist/ipc.js" },
+    "./app": { "types": "./dist/app.d.ts", "default": "./dist/app.js" },
+    "./window": { "types": "./dist/window.d.ts", "default": "./dist/window.js" },
+    "./event": { "types": "./dist/event.d.ts", "default": "./dist/event.js" },
+    "./dialog": { "types": "./dist/dialog.d.ts", "default": "./dist/dialog.js" },
+    "./os": { "types": "./dist/os.d.ts", "default": "./dist/os.js" },
+    "./path": { "types": "./dist/path.d.ts", "default": "./dist/path.js" },
+    "./process": { "types": "./dist/process.d.ts", "default": "./dist/process.js" },
+    "./shell": { "types": "./dist/shell.d.ts", "default": "./dist/shell.js" },
+    "./clipboard": { "types": "./dist/clipboard.d.ts", "default": "./dist/clipboard.js" },
+    "./fs": { "types": "./dist/fs.d.ts", "default": "./dist/fs.js" },
+    "./menu": { "types": "./dist/menu.d.ts", "default": "./dist/menu.js" },
+    "./tray": { "types": "./dist/tray.d.ts", "default": "./dist/tray.js" },
+    "./window-state": { "types": "./dist/window-state.d.ts", "default": "./dist/window-state.js" },
+    "./single-instance": { "types": "./dist/single-instance.d.ts", "default": "./dist/single-instance.js" },
+    "./notification": { "types": "./dist/notification.d.ts", "default": "./dist/notification.js" },
+    "./autostart": { "types": "./dist/autostart.d.ts", "default": "./dist/autostart.js" },
+    "./global-shortcut": { "types": "./dist/global-shortcut.d.ts", "default": "./dist/global-shortcut.js" },
+    "./store": { "types": "./dist/store.d.ts", "default": "./dist/store.js" },
+    "./log": { "types": "./dist/log.d.ts", "default": "./dist/log.js" },
+    "./deep-link": { "types": "./dist/deep-link.d.ts", "default": "./dist/deep-link.js" },
+    "./updater": { "types": "./dist/updater.d.ts", "default": "./dist/updater.js" }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "prepack": "tsc -b"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.2"
   }
 }

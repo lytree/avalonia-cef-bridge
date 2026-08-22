@@ -23,7 +23,8 @@
     "webview://download-requested",
     "webview://navigation-requested",
     "log://entry",
-    "deeplink://tarui"
+    "deeplink://tarui",
+    "updater://status"
   ],
   "permissions": [
     "core:app|get-info",
@@ -257,6 +258,8 @@
       "deny": [
         { "base": "appConfig", "path": "settings/protected.json" }
       ]
-    }
+    },
+    "plugin:updater|check",
+    "plugin:updater|download"
   ]
 }

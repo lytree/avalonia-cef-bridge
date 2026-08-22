@@ -12,6 +12,7 @@ using Tarui.Plugins.Store;
 using Tarui.Plugins.Log;
 using Tarui.Plugins.System;
 using Tarui.Plugins.Tray;
+using Tarui.Plugins.Updater;
 using Tarui.Plugins.Window;
 using Tarui.Plugins.WindowState;
 using Tarui.Shell;
@@ -61,7 +62,8 @@ internal static class Program
             .AddGlobalShortcutPlugin()
             .AddStorePlugin()
             .AddLogPlugin()
-            .AddDeepLinkPlugin();
+            .AddDeepLinkPlugin()
+            .AddUpdaterPlugin();
 
         builder.Window.Configure(window =>
         {

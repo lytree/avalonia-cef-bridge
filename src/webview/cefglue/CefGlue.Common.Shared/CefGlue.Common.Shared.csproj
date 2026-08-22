@@ -3,6 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>Xilium.CefGlue.Common.Shared</AssemblyName>
     <RootNamespace>Xilium.CefGlue.Common.Shared</RootNamespace>
+    <IsPackable>false</IsPackable>
     <Nullable>disable</Nullable>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <EnableNETAnalyzers>false</EnableNETAnalyzers>

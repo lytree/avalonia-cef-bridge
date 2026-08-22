@@ -3,8 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "pnpm --filter @tarui/web dev",
-    "build": "pnpm --filter @tarui/web build",
+    "dev": "pnpm --filter @tarui/api build && pnpm --filter @tarui/web dev",
+    "build": "pnpm --filter @tarui/api build && pnpm --filter @tarui/web build",
     "lint": "pnpm --filter @tarui/web lint",
     "preview": "pnpm --filter @tarui/web preview"
   },

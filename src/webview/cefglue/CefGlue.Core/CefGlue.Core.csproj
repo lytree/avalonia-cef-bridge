@@ -3,6 +3,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>Xilium.CefGlue</AssemblyName>
     <RootNamespace>Xilium.CefGlue</RootNamespace>
+    <!-- 内置第三方源码，随 Tarui.WebView.CefGlueNext 主包发布，不单独成包 -->
+    <IsPackable>false</IsPackable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>disable</Nullable>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>

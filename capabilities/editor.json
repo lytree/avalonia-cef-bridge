@@ -14,7 +14,8 @@
     "tray://clicked",
     "tray://menu-item-clicked",
     "notification://activated",
-    "notification://dismissed"
+    "notification://dismissed",
+    "updater://status"
   ],
   "permissions": [
     "core:window|list",
@@ -54,6 +55,7 @@
         { "base": "appData", "path": "documents/**" },
         { "base": "resources" }
       ]
-    }
+    },
+    "plugin:updater|check"
   ]
 }
