@@ -58,6 +58,11 @@ function App() {
       window.onMoved(geo => pushLog({ text: `moved -> ${geo.x},${geo.y}` })),
       window.onResized(geo => pushLog({ text: `resized -> ${geo.width}x${geo.height}` })),
       window.onFocusChanged(focused => pushLog({ text: `focus ${focused ? 'in' : 'out'}` })),
+      // A close click is intercepted by the shell; it emits close-requested and
+      // waits for the frontend to confirm by invoking core:window|close.
+      window.onCloseRequested(() => {
+        void window.close()
+      }),
     ]
     return () => unsubs.forEach(fn => fn())
     // eslint-disable-next-line react-hooks/exhaustive-deps

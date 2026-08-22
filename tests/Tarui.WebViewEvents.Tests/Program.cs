@@ -88,6 +88,31 @@ internal static class Program
             "Allow pattern with a literal port must not match other ports.");
     }
 
+    private static void TestSchemeOriginNavigation()
+    {
+        var policy = Policy(allowNavigation: ["tarui://localhost/**"]);
+
+        AssertEqual(
+            WebViewRequestDecision.Allow,
+            policy.DecideNavigation(new Uri("tarui://localhost/index.html")),
+            "Scheme-mode origin navigation under an explicit allow rule should be allowed.");
+
+        AssertEqual(
+            WebViewRequestDecision.Allow,
+            policy.DecideNavigation(new Uri("tarui://localhost/assets/app.js")),
+            "Scheme-mode assets under an explicit allow rule should be allowed.");
+
+        AssertEqual(
+            WebViewRequestDecision.Deny,
+            policy.DecideNavigation(new Uri("tarui://otherhost/index.html")),
+            "Scheme-mode origin that is not covered should be denied.");
+
+        AssertDenied(() => broad_Policy().DecideNavigation(new Uri("file:///C:/Windows/System32/calc.exe")),
+            "file: scheme must still be denied even when a custom scheme is allowed.");
+    }
+
+    private static WebViewRequestPolicy broad_Policy() => Policy(allowNavigation: ["tarui://localhost/**"]);
+
     private static void TestNavigationMaliciousUrls()
     {
         var broad = Policy(allowNavigation: ["http://localhost:*/*", "https://app.example/**"]);

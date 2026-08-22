@@ -122,7 +122,7 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable
 
     private void OnDownloadRequested(object? sender, TaruiWebViewDownloadEventArgs args)
     {
-        var decision = _policy.DecideDownload(new Uri(args.Url, UriKind.Absolute));
+        var decision = DecideDownload(new Uri(args.Url, UriKind.Absolute));
         args.Decision = decision == WebViewRequestDecision.Allow
             ? TaruiWebViewDownloadAction.Allow
             : TaruiWebViewDownloadAction.Deny;
@@ -142,7 +142,7 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable
 
     private void OnNavigationRequested(object? sender, TaruiWebViewNavigationEventArgs args)
     {
-        args.Decision = ToAction(_policy.DecideNavigation(args.Url));
+        args.Decision = ToAction(DecideNavigation(args.Url));
         if (args.Decision == TaruiWebViewNavigationAction.Deny || !MayReceive(NavigationRequestedEvent))
         {
             return;
@@ -157,6 +157,32 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable
     }
 
     private bool MayReceive(string eventName) => _context.Capabilities.AllowsEvent(eventName);
+
+    private WebViewRequestDecision DecideNavigation(Uri url)
+    {
+        try
+        {
+            return _policy.DecideNavigation(url);
+        }
+        catch (WebViewRequestDeniedException)
+        {
+            // Malformed or unsafe-scheme URLs (for example the initial about:blank page CEF loads before
+            // the real start URL) are cancelled as a plain deny instead of crashing the native callback.
+            return WebViewRequestDecision.Deny;
+        }
+    }
+
+    private WebViewRequestDecision DecideDownload(Uri url)
+    {
+        try
+        {
+            return _policy.DecideDownload(url);
+        }
+        catch (WebViewRequestDeniedException)
+        {
+            return WebViewRequestDecision.Deny;
+        }
+    }
 
     private static TaruiWebViewNavigationAction ToAction(WebViewRequestDecision decision) => decision switch
     {

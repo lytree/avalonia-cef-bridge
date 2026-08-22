@@ -26,7 +26,7 @@ internal sealed class CefNavigationRequestHandler : RequestHandler
         bool userGesture,
         bool isRedirect)
     {
-        var decision = _owner.RaiseNavigation(new Uri(request.Url, UriKind.Absolute), frame.IsMain);
+        var decision = RaiseNavigationSafe(request.Url, frame.IsMain);
         return Resolve(decision, request.Url);
     }
 
@@ -38,8 +38,21 @@ internal sealed class CefNavigationRequestHandler : RequestHandler
         bool userGesture)
     {
         // target=_blank and equivalent dispositions must never drive a new embedded web view.
-        var decision = _owner.RaiseNavigation(new Uri(targetUrl, UriKind.Absolute), frame.IsMain);
+        var decision = RaiseNavigationSafe(targetUrl, frame.IsMain);
         return Resolve(decision, targetUrl);
+    }
+
+    private TaruiWebViewNavigationAction RaiseNavigationSafe(string url, bool isMainFrame)
+    {
+        try
+        {
+            return _owner.RaiseNavigation(new Uri(url, UriKind.Absolute), isMainFrame);
+        }
+        catch (WebViewRequestDeniedException)
+        {
+            // A policy denial must never escape into a CEF native callback; cancel the navigation.
+            return TaruiWebViewNavigationAction.Deny;
+        }
     }
 
     private static bool Resolve(TaruiWebViewNavigationAction action, string url) => action switch
@@ -83,7 +96,7 @@ internal sealed class CefDownloadHandler : DownloadHandler
         string suggestedName,
         CefBeforeDownloadCallback callback)
     {
-        var allowed = _owner.RaiseDownload(downloadItem.Url, suggestedName) == TaruiWebViewDownloadAction.Allow;
+        var allowed = RaiseDownloadSafe(downloadItem.Url, suggestedName) == TaruiWebViewDownloadAction.Allow;
         if (!allowed)
         {
             // Return false to cancel the download using Alloy-style default handling.
@@ -93,6 +106,19 @@ internal sealed class CefDownloadHandler : DownloadHandler
         // Hand the path choice to the OS save dialog; null lets the browser pick a default path.
         callback.Continue(null, showDialog: true);
         return true;
+    }
+
+    private TaruiWebViewDownloadAction RaiseDownloadSafe(string url, string? suggestedName)
+    {
+        try
+        {
+            return _owner.RaiseDownload(url, suggestedName);
+        }
+        catch (WebViewRequestDeniedException)
+        {
+            // A policy denial must never escape into a CEF native callback; cancel the download.
+            return TaruiWebViewDownloadAction.Deny;
+        }
     }
 }
 

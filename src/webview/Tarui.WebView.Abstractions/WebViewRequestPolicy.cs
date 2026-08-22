@@ -71,7 +71,14 @@ public sealed record WebViewPolicyOptions(
 /// </summary>
 public sealed class WebViewRequestPolicy
 {
-    private static readonly string[] AllowedSchemes = ["http", "https"];
+    // Schemes the web view must never load. Unlike http(s), custom application schemes (for example
+    // `tarui://localhost`) are legitimate when an allow or external rule names them, so they are not
+    // blocked here; they are only reachable when an explicit rule matches (see DecideNavigation).
+    private static readonly string[] UnsafeSchemes =
+    [
+        "javascript", "data", "file", "vbscript", "about", "blob",
+        "chrome", "chrome-extension", "devtools", "view-source"
+    ];
 
     private readonly WebViewPolicyOptions _options;
 
@@ -124,9 +131,12 @@ public sealed class WebViewRequestPolicy
     }
 
     /// <summary>
-    /// Validates that <paramref name="url"/> is an absolute http(s) URL with no control characters.
-    /// Throws <see cref="WebViewRequestDeniedException"/> otherwise. A URL whose scheme is not
-    /// http(s) is rejected even if a configured allow pattern would otherwise match.
+    /// Validates that <paramref name="url"/> is an absolute URL with no control characters and no
+    /// unsafe scheme. Throws <see cref="WebViewRequestDeniedException"/> otherwise. Unsafe schemes
+    /// that can execute or expose local content (javascript:, file:, data:, ...) are rejected even if
+    /// a configured allow pattern would otherwise match. Other schemes, including custom application
+    /// schemes such as the scheme-mode origin (<c>tarui://localhost</c>), pass this gate and are then
+    /// resolved by the configured allow/external rules.
     /// </summary>
     private static void Validate(Uri url)
     {
@@ -136,7 +146,7 @@ public sealed class WebViewRequestPolicy
         }
 
         var scheme = url.Scheme;
-        if (!Array.Exists(AllowedSchemes, s => s == scheme))
+        if (Array.Exists(UnsafeSchemes, s => s == scheme))
         {
             throw new WebViewRequestDeniedException(WebViewDenialReason.UnsupportedScheme);
         }

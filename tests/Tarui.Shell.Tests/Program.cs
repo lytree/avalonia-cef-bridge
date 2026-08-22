@@ -23,6 +23,7 @@ internal static class Program
         await WebViewHostDeliversFileDropToAuthorizedWindow();
         await WebViewHostGatesDownloadByPolicyAndCapability();
         await WebViewHostGatesNavigationByPolicyAndCapability();
+        await WebViewHostDeniesUnsafeSchemeWithoutThrowing();
         await CapabilityLoaderMergesWindowPermissions();
         await CapabilityLoaderHandlesMissingDirectory();
         ComposerRegistersPluginCommands();
@@ -494,6 +495,38 @@ internal static class Program
         }
 
         Assert(deniedSink.Events.Count == 0, "A denied navigation must not be delivered.");
+
+        return Task.CompletedTask;
+    }
+
+    private static Task WebViewHostDeniesUnsafeSchemeWithoutThrowing()
+    {
+        // CEF loads about:blank before the real start URL; an unsafe-scheme request must be
+        // cancelled as a plain deny instead of escaping the policy as an exception.
+        var capabilities = new CapabilitySet([], ["webview://navigation-requested", "webview://download-requested"], []);
+        var (host, sink, webView) = CreateWebViewHost(
+            capabilities,
+            new WebViewRequestPolicy(new WebViewPolicyOptions([], [], [], WebViewRequestDecision.Deny)));
+
+        using (host)
+        {
+            var navigation = webView.RaiseNavigation(new Uri("about:blank"), isMainFrame: true);
+            Assert(
+                navigation.Decision == TaruiWebViewNavigationAction.Deny,
+                "The initial about:blank navigation must be denied, not throw.");
+
+            var script = webView.RaiseNavigation(new Uri("javascript:alert(1)"), isMainFrame: true);
+            Assert(
+                script.Decision == TaruiWebViewNavigationAction.Deny,
+                "A javascript: navigation must be denied without throwing.");
+
+            var download = webView.RaiseDownload("javascript:alert(1)", null);
+            Assert(
+                download.Decision == TaruiWebViewDownloadAction.Deny,
+                "An unsafe-scheme download must be denied without throwing.");
+        }
+
+        Assert(sink.Events.Count == 0, "Unsafe-scheme denials must not be delivered to the window.");
 
         return Task.CompletedTask;
     }
