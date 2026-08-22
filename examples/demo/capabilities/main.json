@@ -6,8 +6,6 @@
   "permissions": [
     "core:app|get-info",
     "core:event|emit",
-    "core:os|info",
-    "core:path|resolve",
     "core:window|close",
     "core:window|minimize",
     "core:window|maximize",
