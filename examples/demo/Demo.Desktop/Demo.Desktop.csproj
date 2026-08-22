@@ -44,11 +44,11 @@
     <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('Linux')) and '$(PlatformTarget)' == 'arm64'">linux-arm64</TaruiCefRid>
     <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('OSX')) and '$(PlatformTarget)' != 'arm64'">osx-x64</TaruiCefRid>
     <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('OSX')) and '$(PlatformTarget)' == 'arm64'">osx-arm64</TaruiCefRid>
-    <TaruiCefRuntimeRoot Condition="'$(TaruiCefRuntimeRoot)' == ''">$(TARUI_CEF_ROOT)</TaruiCefRuntimeRoot>
+    <TaruiCefRuntimeRoot Condition="'$(TaruiCefRuntimeRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\runtime\cef\$(TaruiCefRid)'))</TaruiCefRuntimeRoot>
     <TaruiWebDistRoot Condition="'$(TaruiWebDistRoot)' == ''">$(MSBuildThisFileDirectory)..\web\dist</TaruiWebDistRoot>
   </PropertyGroup>
-  <ItemGroup Condition="'$(TaruiCefRuntimeRoot)' != '' and Exists('$(TaruiCefRuntimeRoot)\$(TaruiCefRid)')">
-    <Content Include="$(TaruiCefRuntimeRoot)\$(TaruiCefRid)\**\*" Link="CEF\$(TaruiCefRid)\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  <ItemGroup Condition="Exists('$(TaruiCefRuntimeRoot)')">
+    <Content Include="$(TaruiCefRuntimeRoot)\**\*" Link="CEF\$(TaruiCefRid)\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup Condition="Exists('$(TaruiWebDistRoot)\index.html')">
     <Content Include="$(TaruiWebDistRoot)\**\*" Link="web\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
