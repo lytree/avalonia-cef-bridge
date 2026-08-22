@@ -144,13 +144,14 @@ When no mode is specified, a configured `TARUI_WEB_URL` selects HTTP; otherwise 
 ```powershell
 dotnet tool install -global Tarui.Cli
 
-tarui dev     # dev server (build.beforeDevCommand) + dotnet watch, Ctrl+C tears both down
-tarui build   # frontend build, self-contained publish, portable zip + latest.json
-tarui info    # environment / toolchain / manifest diagnostics
-tarui --help  # full command surface
+tarui init   # scaffold a new app from the tarui-app template (--local <repo> for in-repo dev)
+tarui dev    # dev server (build.beforeDevCommand) + dotnet watch, Ctrl+C tears both down
+tarui build  # frontend build, self-contained publish, portable zip + latest.json
+tarui info   # environment / toolchain / manifest diagnostics
+tarui --help # full command surface
 ```
 
-`tarui dev` starts `build.beforeDevCommand` in `build.frontend`, waits for `build.devUrl` to become reachable, then launches the desktop project with `TARUI_WEB_MODE=http` and `TARUI_WEB_URL=<devUrl>`. `tarui build` runs `build.beforeBuildCommand`, validates `build.frontendDist`, publishes the desktop project self-contained for the current RID, and emits the configured `bundle.targets` (currently a portable zip) plus an updater blueprint `dist/latest.json` with SHA-256. Run from the repository root; see `docs/dev-workflow-design.md` for the manifest schema and the phased rollout (W3 application templates, W4 plugin workflow, W5 installers).
+`tarui dev` starts `build.beforeDevCommand` in `build.frontend`, waits for `build.devUrl` to become reachable, then launches the desktop project with `TARUI_WEB_MODE=http` and `TARUI_WEB_URL=<devUrl>`. `tarui build` runs `build.beforeBuildCommand`, validates `build.frontendDist`, publishes the desktop project self-contained for the current RID, and emits the configured `bundle.targets` (currently a portable zip) plus an updater blueprint `dist/latest.json` with SHA-256. Run from the repository root; see `docs/dev-workflow-design.md` for the manifest schema and the phased rollout (W3 application templates / `tarui init` complete, W4 plugin workflow, W5 installers).
 
 ## Native capability surface
 

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    W3：应用模板包（docs/dev-workflow-design.md §9）。
+    - 以 dotnet template 包发布：dotnet pack 产出 Tarui.Templates，安装后 `dotnet new tarui-app`。
+    - tarui init 是其上层包装：追加名称规范化、pnpm install 与本地引用改写（Local 模式）。
+    - 模板内容与 .template.config 位于 content/ 文件夹下，随包进入 content/（dotnet new 约定）。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PackageType>Template</PackageType>
+    <Title>Tarui Templates</Title>
+    <PackageDescription>Tarui desktop application templates. Installs `dotnet new tarui-app`.</PackageDescription>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeSymbols>false</IncludeSymbols>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Template files live at the project root; ContentTargetFolders relocates them into content/ in the package
+         so `dotnet new install` strips the prefix (the dotnet template package convention). -->
+    <Content Include="**\*"
+             Exclude="**\bin\**;**\obj\**;**\*.sln;**\*.nupkg;bin\**;obj\**;Tarui.Templates.csproj" />
+    <!-- The scaffolded sources are template content, not project sources. -->
+    <Compile Remove="**\*" />
+    <EmbeddedResource Remove="**\*" />
+    <None Remove="**\*" />
+  </ItemGroup>
+</Project>

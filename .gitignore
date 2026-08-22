@@ -10,3 +10,8 @@ runtime/cef/*
 !runtime/cef/README.md
 
 .fake
+
+# Local build/smoke output and editor settings (not source)
+.out/
+artifacts/
+.vscode/

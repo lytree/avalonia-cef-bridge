@@ -71,12 +71,14 @@ internal static class Program
         private readonly string _repositoryRoot;
         private readonly string _sourceRoot;
         private readonly string _vendoredCefGlueRoot;
+        private readonly string _templateRoot;
 
         public ArchitectureGate(string repositoryRoot)
         {
             _repositoryRoot = repositoryRoot;
             _sourceRoot = Path.Combine(repositoryRoot, "src");
             _vendoredCefGlueRoot = Path.Combine(_sourceRoot, "webview", "cefglue");
+            _templateRoot = Path.Combine(_sourceRoot, "templates");
         }
 
         public GateResult Run()
@@ -296,6 +298,10 @@ internal static class Program
             }
 
             var isVendoredCefGlueProject = IsUnder(file, _vendoredCefGlueRoot);
+            // Template assets (src/templates) are intended published-mode content: their csproj
+            // references Tarui.* NuGet packages by design, so the runtime-package prohibition
+            // that governs in-repo sources does not apply.
+            var isTemplateContent = IsUnder(file, _templateRoot);
 
             foreach (var packageReference in document.Descendants()
                          .Where(static element => element.Name.LocalName == "PackageReference"))
@@ -321,7 +327,7 @@ internal static class Program
                     continue;
                 }
 
-                if (IsForbiddenRuntimePackage(packageId))
+                if (!isTemplateContent && IsForbiddenRuntimePackage(packageId))
                 {
                     violations.Add(CreateProjectViolation(
                         file,

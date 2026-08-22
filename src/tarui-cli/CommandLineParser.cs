@@ -16,6 +16,10 @@ internal static class CommandLineParser
         string? rid = null;
         List<string>? bundles = null;
         string? outDir = null;
+        string? template = null;
+        string? manager = null;
+        string? output = null;
+        string? local = null;
 
         var index = 0;
         while (index < args.Count)
@@ -71,6 +75,18 @@ internal static class CommandLineParser
                     case "--out":
                         outDir = ReadOptionValue(name, inlineValue, args, ref index);
                         break;
+                    case "--template":
+                        template = ReadOptionValue(name, inlineValue, args, ref index);
+                        break;
+                    case "--manager":
+                        manager = ReadOptionValue(name, inlineValue, args, ref index);
+                        break;
+                    case "--output":
+                        output = ReadOptionValue(name, inlineValue, args, ref index);
+                        break;
+                    case "--local":
+                        local = ReadOptionValue(name, inlineValue, args, ref index);
+                        break;
                     default:
                         throw new CliUsageException($"Unknown option '{name}'.");
                 }
@@ -100,6 +116,28 @@ internal static class CommandLineParser
 
         var command = positional.Count == 0 ? TaruiCommand.Help : ParseCommand(positional[0]);
         var commandArgs = positional.Skip(1).ToArray();
+
+        // tarui init accepts a single positional application name.
+        if (command == TaruiCommand.Init)
+        {
+            if (commandArgs.Length > 1)
+            {
+                throw new CliUsageException(
+                    $"Unexpected argument(s) for 'init': {string.Join(' ', commandArgs.Skip(1))}");
+            }
+
+            return new CliOptions
+            {
+                Command = command,
+                Name = commandArgs.Length == 1 ? commandArgs[0] : null,
+                Template = template,
+                Manager = manager,
+                Output = output,
+                Local = local,
+                Verbose = verbose
+            };
+        }
+
         if (commandArgs.Length > 0)
         {
             throw new CliUsageException(
@@ -124,6 +162,7 @@ internal static class CommandLineParser
         "dev" => TaruiCommand.Dev,
         "build" => TaruiCommand.Build,
         "info" => TaruiCommand.Info,
+        "init" => TaruiCommand.Init,
         "help" => TaruiCommand.Help,
         "version" => TaruiCommand.Version,
         _ => throw new CliUsageException($"Unknown command '{value}'. Run 'tarui --help' for usage.")

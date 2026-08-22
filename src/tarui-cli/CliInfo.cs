@@ -13,6 +13,7 @@ internal static class CliInfo
           tarui <command> [options]
 
         Commands:
+          init      Scaffold a new application from the tarui-app template
           dev       Run the frontend dev server and the desktop app with hot reload
           build     Build the frontend, publish the desktop app and bundle distributables
           info      Print environment, toolchain and manifest diagnostics
@@ -21,6 +22,13 @@ internal static class CliInfo
 
         Global options:
           --config <path>    Path to tarui.app.json (default: ./tarui.app.json)
+
+        'tarui init' options:
+          <name>             Application name (e.g. tarui init my-app)
+          --template <t>     Frontend template (default: react-ts)
+          --manager <m>      Package manager to install frontend deps (default: pnpm)
+          --output <dir>     Target directory (default: ./<name>)
+          --local <repo>     Reference a local Tarui source tree instead of published packages
 
         'tarui dev' options:
           --project <path>   Desktop .csproj to run (overrides manifest build.desktopProject)

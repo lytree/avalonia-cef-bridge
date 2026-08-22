@@ -14,6 +14,7 @@ internal static class Program
             PathResolution();
             Tooling();
             LatestManifest();
+            Init();
         }
         catch (Exception exception)
         {
@@ -351,6 +352,72 @@ internal static class Program
         var json = """{"version":"0.1.0","url":"app.zip","sha256":"abc","signature":"sig"}""";
         var latest = System.Text.Json.JsonSerializer.Deserialize(json, TaruiCliJsonContext.Default.LatestManifestDto);
         Assert(latest?.Signature == "sig", "The signature placeholder must survive a round trip.");
+    }
+
+    private static void Init()
+    {
+        ParsesInitCommand();
+        InitRejectsMultipleNames();
+        NameNormalization();
+        LocalReferenceRewrite();
+    }
+
+    private static void ParsesInitCommand()
+    {
+        var options = CommandLineParser.Parse(["init", "my-app", "--template", "react-ts", "--manager", "pnpm", "--output", "./out", "--local", "/repo"]);
+        Assert(options.Command == TaruiCommand.Init, "Parse(['init', ...]) must select the Init command.");
+        Assert(options.Name == "my-app", "init <name> must be captured as the application name.");
+        Assert(options.Template == "react-ts", "--template must be captured.");
+        Assert(options.Manager == "pnpm", "--manager must be captured.");
+        Assert(options.Output == "./out", "--output must be captured.");
+        Assert(options.Local == "/repo", "--local must be captured.");
+
+        var noName = CommandLineParser.Parse(["init"]);
+        Assert(noName.Command == TaruiCommand.Init, "A bare 'init' must still select the Init command.");
+        Assert(noName.Name is null, "A bare 'init' must carry no application name.");
+    }
+
+    private static void InitRejectsMultipleNames()
+    {
+        Throws<CliUsageException>(
+            () => CommandLineParser.Parse(["init", "a", "b"]),
+            "tarui init must reject more than one application name.");
+    }
+
+    private static void NameNormalization()
+    {
+        Assert(ProjectName.ToIdentifier("my-app", "App") == "MyApp", "kebab-case must become PascalCase for C#.");
+        Assert(ProjectName.ToIdentifier("tmp-app", "App") == "TmpApp", "tmp-app must become TmpApp.");
+        Assert(ProjectName.ToIdentifier("!bad!name", "App") == "BadName", "Invalid characters must be stripped.");
+        Assert(ProjectName.ToIdentifier("", "Fallback") == "Fallback", "An empty name must fall back.");
+        Assert(ProjectName.ToIdentifierName("my-app") == "dev.myapp", "An app name must derive dev.<lowercased-alnum>.");
+    }
+
+    private static void LocalReferenceRewrite()
+    {
+        const string csproj =
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <PackageReference Include="Tarui.Hosting" Version="0.1.0" />
+                <PackageReference Include="NotInRepo" Version="0.1.0" />
+                <PackageReference Include="Tarui.Plugins.Window" Version="0.1.0" />
+              </ItemGroup>
+            </Project>
+            """;
+        var rewritten = LocalReferenceRewriter.RewriteContent(csproj, "C:/local/repo");
+        Assert(!rewritten.Contains("PackageReference Include=\"Tarui.Hosting\"", StringComparison.Ordinal),
+            "In-repo Tarui package references must be replaced.");
+        Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/desktop/Tarui.Hosting/Tarui.Hosting.csproj\" />", StringComparison.Ordinal),
+            "Tarui.Hosting must resolve to its local project path.");
+        Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/plugins/Tarui.Plugins.Window/Tarui.Plugins.Window.csproj\" />", StringComparison.Ordinal),
+            "Tarui.Plugins.Window must resolve to its local project path.");
+        Assert(rewritten.Contains("PackageReference Include=\"NotInRepo\"", StringComparison.Ordinal),
+            "Third-party package references must be left untouched.");
+        Assert(rewritten.Contains("<TaruiCefRuntimeRoot>C:/local/repo/runtime/cef</TaruiCefRuntimeRoot>", StringComparison.Ordinal),
+            "The CEF runtime root must be pointed at the local source tree.");
+        Assert(rewritten.Contains("<TaruiWebDistRoot>C:/local/repo/web/apps/Tarui.Web/dist</TaruiWebDistRoot>", StringComparison.Ordinal),
+            "The web dist root must be pointed at the local source tree.");
     }
 
     private static bool Has(IEnumerable<string> errors, string fragment) =>
