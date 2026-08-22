@@ -15,6 +15,7 @@ internal static class Program
             Tooling();
             LatestManifest();
             Init();
+            Plugin();
         }
         catch (Exception exception)
         {
@@ -418,6 +419,77 @@ internal static class Program
             "The CEF runtime root must be pointed at the local source tree.");
         Assert(rewritten.Contains("<TaruiWebDistRoot>C:/local/repo/web/apps/Tarui.Web/dist</TaruiWebDistRoot>", StringComparison.Ordinal),
             "The web dist root must be pointed at the local source tree.");
+    }
+
+    private static void Plugin()
+    {
+        ParsesPluginInitCommand();
+        ParsesPluginPackCommand();
+        PluginRejectsUnknownSubCommand();
+        PluginScaffoldsSkeleton();
+        PluginNameNormalization();
+    }
+
+    private static void ParsesPluginInitCommand()
+    {
+        var options = CommandLineParser.Parse(["plugin", "init", "store", "--local", "/repo"]);
+        Assert(options.Command == TaruiCommand.Plugin, "Parse(['plugin', ...]) must select the Plugin command.");
+        Assert(options.PluginAction == PluginAction.Init, "plugin init must select the Init action.");
+        Assert(options.PluginName == "store", "plugin init <name> must capture the plugin name.");
+        Assert(options.Local == "/repo", "--local must be captured for plugin init.");
+
+        var noName = CommandLineParser.Parse(["plugin", "init"]);
+        Assert(noName.PluginName is null, "A bare 'plugin init' must carry no name.");
+    }
+
+    private static void ParsesPluginPackCommand()
+    {
+        var options = CommandLineParser.Parse(["plugin", "pack"]);
+        Assert(options.Command == TaruiCommand.Plugin, "Parse(['plugin', 'pack']) must select the Plugin command.");
+        Assert(options.PluginAction == PluginAction.Pack, "plugin pack must select the Pack action.");
+    }
+
+    private static void PluginRejectsUnknownSubCommand()
+    {
+        Throws<CliUsageException>(
+            () => CommandLineParser.Parse(["plugin", "frobnicate"]),
+            "Unknown plugin sub-commands must throw CliUsageException.");
+        Throws<CliUsageException>(
+            () => CommandLineParser.Parse(["plugin"]),
+            "A bare 'plugin' must throw CliUsageException.");
+        Throws<CliUsageException>(
+            () => CommandLineParser.Parse(["plugin", "init", "a", "b"]),
+            "'plugin init' must reject more than one plugin name.");
+        Throws<CliUsageException>(
+            () => CommandLineParser.Parse(["plugin", "pack", "extra"]),
+            "'plugin pack' must reject positional arguments.");
+    }
+
+    private static void PluginScaffoldsSkeleton()
+    {
+        using var temp = TempDirectory.Create();
+        var root = PluginScaffolder.Scaffold("store", temp.Path, localRepo: null);
+        Assert(File.Exists(Path.Combine(root, "src", "Tarui.Plugins.Store", "Tarui.Plugins.Store.csproj")),
+            "The scaffolder must emit the plugin .csproj.");
+        Assert(File.Exists(Path.Combine(root, "src", "Tarui.Plugins.Store", "Plugin.cs")),
+            "The scaffolder must emit Plugin.cs.");
+        Assert(File.Exists(Path.Combine(root, "src", "Tarui.Plugins.Store", "Contracts.cs")),
+            "The scaffolder must emit Contracts.cs.");
+        Assert(File.Exists(Path.Combine(root, "permissions", "schema.json")),
+            "The scaffolder must emit the permissions schema.");
+        Assert(File.Exists(Path.Combine(root, "guest-js", "package.json")),
+            "The scaffolder must emit the guest-js package.");
+        Assert(File.Exists(Path.Combine(root, "tests", "Tarui.Plugins.Store.Tests", "Program.cs")),
+            "The scaffolder must emit the test project.");
+        Assert(File.Exists(Path.Combine(root, "README.md")),
+            "The scaffolder must emit a README.");
+    }
+
+    private static void PluginNameNormalization()
+    {
+        Assert(PluginScaffolder.NormalizePluginName("My-Store") == "my-store", "Plugin names must be lower-cased.");
+        Assert(PluginScaffolder.NormalizePluginName("Foo!Bar") == "foobar", "Invalid characters must be stripped.");
+        Assert(PluginScaffolder.NormalizePluginName("") == string.Empty, "An empty name normalizes to empty.");
     }
 
     private static bool Has(IEnumerable<string> errors, string fragment) =>

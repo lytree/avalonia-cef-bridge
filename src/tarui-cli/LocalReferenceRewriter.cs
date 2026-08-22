@@ -19,10 +19,13 @@ internal static class LocalReferenceRewriter
             ["Tarui.WebView.CefGlueNext"] = "src/webview/Tarui.WebView.CefGlueNext/Tarui.WebView.CefGlueNext.csproj",
             ["Tarui.Plugins.Core"] = "src/plugins/Tarui.Plugins.Core/Tarui.Plugins.Core.csproj",
             ["Tarui.Plugins.Window"] = "src/plugins/Tarui.Plugins.Window/Tarui.Plugins.Window.csproj",
+            ["Tarui.Ipc"] = "src/core/Tarui.Ipc/Tarui.Ipc.csproj",
+            ["Tarui.Contracts"] = "src/core/Tarui.Contracts/Tarui.Contracts.csproj",
+            ["Tarui.Ipc.Generators"] = "src/generators/Tarui.Ipc.Generators/Tarui.Ipc.Generators.csproj",
         };
 
     private static readonly Regex PackageReferencePattern = new(
-        @"<PackageReference\s+Include=""(?<id>[^""]+)""\s+Version=""(?<version>[^""]+)""\s*/>",
+        @"<PackageReference\s+Include=""(?<id>[^""]+)""\s+(?<attrs>(?:[^>]*?)\s*Version=""[^""]+""[^>]*?)\s*/>",
         RegexOptions.Compiled);
 
     /// <summary>Returns the repo-relative project path for a package, or null if it is not an in-repo Tarui package.</summary>
@@ -55,7 +58,13 @@ internal static class LocalReferenceRewriter
                 }
 
                 replacements++;
-                return "<ProjectReference Include=\"" + repo + "/" + ToUrlPath(resolved) + "\" />";
+                // Preserve analyzer/metadata attributes (e.g. Tarui.Ipc.Generators) so the
+                // local project reference behaves identically to the published package.
+                var attrs = match.Groups["attrs"].Value.Trim();
+                // Strip the trailing Version="..." attribute: versions do not apply to project references.
+                var keep = Regex.Replace(attrs, @"\s*Version=""[^""]*""", string.Empty, RegexOptions.Compiled);
+                var suffix = string.IsNullOrWhiteSpace(keep) ? string.Empty : " " + keep.Trim();
+                return "<ProjectReference Include=\"" + repo + "/" + ToUrlPath(resolved) + "\"" + suffix + " />";
             });
 
         // Point the CEF/web content sources at the local source tree. These

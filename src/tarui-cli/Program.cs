@@ -13,6 +13,7 @@ internal static class Program
                 TaruiCommand.Help => ShowHelp(console),
                 TaruiCommand.Version => ShowVersion(console),
                 TaruiCommand.Init => await new InitCommand(console).RunAsync(options),
+                TaruiCommand.Plugin => await new PluginCommand(console).RunAsync(options),
                 TaruiCommand.Info => await new InfoCommand(console).RunAsync(options),
                 TaruiCommand.Dev => await new DevCommand(console).RunAsync(options),
                 TaruiCommand.Build => await new BuildCommand(console).RunAsync(options),

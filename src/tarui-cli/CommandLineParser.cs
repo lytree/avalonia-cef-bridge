@@ -138,6 +138,58 @@ internal static class CommandLineParser
             };
         }
 
+        // tarui plugin <init|pack> [<name>]
+        if (command == TaruiCommand.Plugin)
+        {
+            if (commandArgs.Length == 0 || string.IsNullOrWhiteSpace(commandArgs[0]))
+            {
+                throw new CliUsageException(
+                    "tarui plugin requires a sub-command (init | pack). See 'tarui --help'.");
+            }
+
+            var action = commandArgs[0] switch
+            {
+                "init" => PluginAction.Init,
+                "pack" => PluginAction.Pack,
+                _ => throw new CliUsageException(
+                    $"Unknown plugin sub-command '{commandArgs[0]}'. Expected 'init' or 'pack'.")
+            };
+
+            // plugin init takes one positional plugin name; pack takes none.
+            var remaining = commandArgs.Skip(1).ToArray();
+            if (action == PluginAction.Init)
+            {
+                if (remaining.Length > 1)
+                {
+                    throw new CliUsageException(
+                        $"Unexpected argument(s) for 'plugin init': {string.Join(' ', remaining.Skip(1))}");
+                }
+
+                return new CliOptions
+                {
+                    Command = command,
+                    PluginAction = action,
+                    PluginName = remaining.Length == 1 ? remaining[0] : null,
+                    Output = output,
+                    Local = local,
+                    Verbose = verbose
+                };
+            }
+
+            if (remaining.Length > 0)
+            {
+                throw new CliUsageException(
+                    $"Unexpected argument(s) for 'plugin pack': {string.Join(' ', remaining)}");
+            }
+
+            return new CliOptions
+            {
+                Command = command,
+                PluginAction = action,
+                Verbose = verbose
+            };
+        }
+
         if (commandArgs.Length > 0)
         {
             throw new CliUsageException(
@@ -163,6 +215,7 @@ internal static class CommandLineParser
         "build" => TaruiCommand.Build,
         "info" => TaruiCommand.Info,
         "init" => TaruiCommand.Init,
+        "plugin" => TaruiCommand.Plugin,
         "help" => TaruiCommand.Help,
         "version" => TaruiCommand.Version,
         _ => throw new CliUsageException($"Unknown command '{value}'. Run 'tarui --help' for usage.")

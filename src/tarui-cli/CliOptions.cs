@@ -7,7 +7,14 @@ internal enum TaruiCommand
     Info,
     Dev,
     Build,
-    Init
+    Init,
+    Plugin
+}
+
+internal enum PluginAction
+{
+    Init,
+    Pack
 }
 
 /// <summary>Normalized result of command-line parsing.</summary>
@@ -50,4 +57,10 @@ internal sealed record CliOptions
 
     /// <summary>init --local: reference a local Tarui source tree instead of published packages.</summary>
     public string? Local { get; init; }
+
+    /// <summary>plugin: which sub-action to run (init / pack).</summary>
+    public PluginAction? PluginAction { get; init; }
+
+    /// <summary>plugin: name of the plugin (positional after the sub-command).</summary>
+    public string? PluginName { get; init; }
 }
