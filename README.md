@@ -155,6 +155,15 @@ tarui --help     # full command surface
 
 `tarui dev` starts `build.beforeDevCommand` in `build.frontend`, waits for `build.devUrl` to become reachable, then launches the desktop project with `TARUI_WEB_MODE=http` and `TARUI_WEB_URL=<devUrl>`. `tarui build` runs `build.beforeBuildCommand`, validates `build.frontendDist`, publishes the desktop project self-contained for the current RID, then produces the configured `bundle.targets` — a portable `zip` plus an MSIX (`--bundle msix`, or `bundle.targets: ["zip","msix"]`) — and an updater blueprint `dist/latest.json` with SHA-256. The MSIX is built by the managed `MsixPacker` (OPC ZIP + `AppxManifest.xml` + SHA-256 `AppxBlockMap.xml`, no `makeappx` dependency); if `bundle.msix.certificate.{path,password,timeStamperUrl}` is configured it is Authenticode-signed via `signtool.exe`, otherwise it is emitted unsigned. During `build` it also merges every referenced plugin's `permissions/<plugin>/schema.json` into `schemas/permissions.schema.json` (a validation aid only — `capabilities/*.json` remain the sole runtime authorization source). `tarui plugin init` scaffolds a plugin with permission descriptors, a typed guest-js bridge and console self-tests; `tarui plugin pack` validates layout, permission/version consistency, runs self-tests, and packs both the NuGet backend (with `permissions/`) and the npm frontend. Run from the repository root; see `docs/dev-workflow-design.md` for the manifest schema and the phased rollout (W3 application templates / `tarui init` complete, W4 plugin workflow complete, W5 installers complete).
 
+## CI and releases
+
+GitHub Actions automates the integration and release gates (design `§10`):
+
+- `.github/workflows/ci.yml` — PR / branch gate: `dotnet build` 0 warnings, all self-tests, `Tarui.Architecture.Tests`, NuGet package baseline, version consistency (`Directory.Build.props` == `@tarui/api`), and `pnpm lint` + `pnpm build`.
+- `.github/workflows/release.yml` — tag `tarui-v<version>` (or manual dispatch): validates, pushes all NuGet packages topologically, publishes `@tarui/api`, builds the `zip;msix` installers on Windows (optional Authenticode), and creates a GitHub Release with the artifacts attached.
+
+Release secrets live in the GitHub `release` environment. Required: `NUGET_API_KEY` (and optional `NUGET_SOURCE`); `NPM_TOKEN`. Optional for signed MSIX: `WINDOWS_CERT_BASE64`, `WINDOWS_CERT_PUBLISHER`, `WINDOWS_CERT_PASSWORD`, `WINDOWS_CERT_TIMESTAMP`; without a certificate the MSIX is emitted unsigned.
+
 ## Native capability surface
 
 `AddTaruiShell()` composes the shell from explicitly registered plugins. Every command is permission-checked against the capability file of the calling window (`capabilities/main.json`):

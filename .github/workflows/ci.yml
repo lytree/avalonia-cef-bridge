@@ -1,0 +1,106 @@
+name: ci
+
+# PR 门禁（docs/dev-workflow-design.md §10，不变量）。
+#   dotnet build 0 警告 → 全部可执行自测试 = 0 → Tarui.Architecture.Tests
+#   → 新增包门禁（dotnet pack + 版本一致性）→ pnpm lint + pnpm build。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  dotnet:
+    name: dotnet build & tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: tarui.net.sln
+
+      - name: Restore (NuGet.Config)
+        run: dotnet restore tarui.net.sln --configfile NuGet.Config
+
+      - name: Build (0 warnings/errors)
+        run: dotnet build tarui.net.sln -c Release --no-restore
+
+      - name: Package baseline (新增包门禁)
+        run: dotnet pack tarui.net.sln -c Release --no-build --nologo -o artifacts/nuget
+
+      - name: Package baseline validation
+        run: |
+          $packs = Get-ChildItem artifacts/nuget/*.nupkg
+          $symbols = Get-ChildItem artifacts/nuget/*.snupkg
+          if ($packs.Count -eq 0) { throw 'dotnet pack produced no nupkg.' }
+          if ($symbols.Count -eq 0) { throw 'dotnet pack produced no snupkg.' }
+          Write-Host "Packed $($packs.Count) nupkg + $($symbols.Count) snupkg."
+
+      - name: Version consistency (TaruiVersion == @tarui/api)
+        run: |
+          $version = Select-String -Path Directory.Build.props -Pattern '<TaruiVersion>([^<]+)</TaruiVersion>'
+          $tarui = $version.Matches[0].Groups[1].Value
+          $pkg = (Get-Content web/packages/api/package.json -Raw | ConvertFrom-Json).version
+          if ($pkg -ne $tarui) { throw "Version mismatch: Directory.Build.props=$tarui package.json=$pkg" }
+          Write-Host "Versions consistent: $tarui"
+
+      - name: Run self-tests
+        run: |
+          dotnet run --project tests/Tarui.Cli.Tests/Tarui.Cli.Tests.csproj -c Release --no-build
+          dotnet run --project tests/Tarui.Ipc.Tests/Tarui.Ipc.Tests.csproj -c Release --no-build
+          dotnet run --project tests/Tarui.Architecture.Tests/Tarui.Architecture.Tests.csproj -c Release --no-build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: artifacts/nuget/*.nupkg
+          retention-days: 5
+
+  web:
+    name: web lint & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install frozen
+        run: pnpm install --frozen-lockfile
+        working-directory: web
+
+      - name: Lint
+        run: pnpm lint
+        working-directory: web
+
+      - name: Build (@tarui/api + web)
+        run: pnpm build
+        working-directory: web
+
+      - name: npm pack dry-run (@tarui/api)
+        run: pnpm --filter @tarui/api pack --dry-run
+        working-directory: web
