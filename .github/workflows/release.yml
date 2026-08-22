@@ -52,10 +52,10 @@ jobs:
           if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
             $v = '${{ inputs.version }}'
             if ($v) { $v = $v -replace '^tarui-v', '' } else { $v = '' }
-            Write-Output "version=$v"
           } else {
-            Write-Output "version=$($env:GITHUB_REF_NAME -replace '^tarui-v', '')"
+            $v = $env:GITHUB_REF_NAME -replace '^tarui-v', ''
           }
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$v"
 
       - name: Restore & build (0 warnings/errors)
         run: |
