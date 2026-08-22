@@ -10,7 +10,7 @@
 
   <!--
     W0：打包基线（docs/dev-workflow-design.md §6）。
-    - 版本单源：全部可打包项目统一 Version = TaruiVersion，与 @tarui/api 0.1.0 对齐。
+    - 版本单源：全部可打包项目统一 Version = TaruiVersion，与 @lytree/api 0.1.0 对齐。
     - GenerateDocumentationFile 生成 XML 文档；缺注释类 CS1591/CS1573 等被抑制，
       以免在 TreatWarningsAsErrors 纪律下引发 289+ 编译错误。全包强制注释留待后续。
     - 需要单独排除打包的项目在其 .csproj 内显式设 IsPackable=false

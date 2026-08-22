@@ -1,12 +1,12 @@
 {
-  "name": "@tarui/workspace",
+  "name": "@lytree/workspace",
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "pnpm --filter @tarui/api build && pnpm --filter @tarui/web dev",
-    "build": "pnpm --filter @tarui/api build && pnpm --filter @tarui/web build",
-    "lint": "pnpm --filter @tarui/web lint",
-    "preview": "pnpm --filter @tarui/web preview"
+    "dev": "pnpm --filter @lytree/api build && pnpm --filter @lytree/web dev",
+    "build": "pnpm --filter @lytree/api build && pnpm --filter @lytree/web build",
+    "lint": "pnpm --filter @lytree/web lint",
+    "preview": "pnpm --filter @lytree/web preview"
   },
   "packageManager": "pnpm@11.15.1"
 }

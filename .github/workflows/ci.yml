@@ -50,7 +50,7 @@ jobs:
           if ($symbols.Count -eq 0) { throw 'dotnet pack produced no snupkg.' }
           Write-Host "Packed $($packs.Count) nupkg + $($symbols.Count) snupkg."
 
-      - name: Version consistency (TaruiVersion == @tarui/api)
+      - name: Version consistency (TaruiVersion == @lytree/api)
         run: |
           $version = Select-String -Path Directory.Build.props -Pattern '<TaruiVersion>([^<]+)</TaruiVersion>'
           $tarui = $version.Matches[0].Groups[1].Value
@@ -97,10 +97,10 @@ jobs:
         run: pnpm lint
         working-directory: web
 
-      - name: Build (@tarui/api + web)
+      - name: Build (@lytree/api + web)
         run: pnpm build
         working-directory: web
 
-      - name: npm pack dry-run (@tarui/api)
-        run: pnpm --filter @tarui/api pack --dry-run
+      - name: npm pack dry-run (@lytree/api)
+        run: pnpm --filter @lytree/api pack --dry-run
         working-directory: web

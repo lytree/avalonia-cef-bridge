@@ -16,7 +16,7 @@ import {
   type OsInfo,
   type Unlisten,
   type WindowState,
-} from '@tarui/api'
+} from '@lytree/api'
 import './App.css'
 
 type Health = 'ready' | 'checking' | 'offline'

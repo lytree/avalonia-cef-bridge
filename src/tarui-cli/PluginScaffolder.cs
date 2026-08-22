@@ -218,7 +218,7 @@ internal static class PluginScaffolder
         return
             $$"""
             {
-              "name": "@tarui/plugin-{{normalized}}",
+              "name": "@lytree/plugin-{{normalized}}",
               "version": "0.1.0",
               "type": "module",
               "files": ["dist"],
@@ -267,8 +267,8 @@ internal static class PluginScaffolder
         return
             $$"""
             /**
-             * @tarui/plugin-{{normalized}} — typed frontend bridge for the backend plugin.
-             * Replace the placeholder with invoke/listen wrappers over @tarui/api.
+             * @lytree/plugin-{{normalized}} — typed frontend bridge for the backend plugin.
+             * Replace the placeholder with invoke/listen wrappers over @lytree/api.
              */
             export function ping(): Promise<boolean> {
               return Promise.resolve(true);
@@ -326,7 +326,7 @@ internal static class PluginScaffolder
 
             1. `dotnet add package {{namespaceName}}`
             2. `builder.Services.Add{{suffix}}Plugin();`
-            3. `pnpm add @tarui/plugin-{{normalized}}`
+            3. `pnpm add @lytree/plugin-{{normalized}}`
             4. Grant in `capabilities/main.json`:
                ```json
                { "identifier": "plugin:{{normalized}}|ping" }
@@ -353,7 +353,7 @@ internal static class PluginScaffolder
 
             - `src/Tarui.Plugins.*` — plugin assembly, DI extension, contracts
             - `permissions/` — permission descriptors packed into the NuGet package
-            - `guest-js/` — typed frontend bridge (`@tarui/plugin-{{normalized}}`)
+            - `guest-js/` — typed frontend bridge (`@lytree/plugin-{{normalized}}`)
             - `tests/` — console self-tests
             - `examples/demo/` — wiring example
             """;

@@ -9,14 +9,14 @@
 **目的**：能力对齐主线解决了"桌面应用能做什么"，本文档补齐"工程化分发"维度——让 tarui.net 具备与 Tauri 一致的完整开发模式：
 
 1. **应用开发者视角**：一条命令脚手架（`tarui init`）、一条命令开发（`tarui dev`）、一条命令构建发布（`tarui build`）。
-2. **SDK 视角**：后端 NuGet 包族与前端 `@tarui/api` 的构建、版本化、发布与兼容性承诺。
+2. **SDK 视角**：后端 NuGet 包族与前端 `@lytree/api` 的构建、版本化、发布与兼容性承诺。
 3. **插件作者视角**：插件的脚手架、开发调试、双包（NuGet + npm）发布与第三方应用接入。
 
 **目标（Goals）**：
 
 - 定义 Tarui CLI 的命令面、应用清单（`tarui.app.json`）与 dev/build 编排语义。
 - 定义后端 SDK 的 NuGet 包族划分、打包规范、发布顺序与版本策略。
-- 定义前端 SDK `@tarui/api` 的构建化改造与 npm 发布形态。
+- 定义前端 SDK `@lytree/api` 的构建化改造与 npm 发布形态。
 - 定义插件的目录解剖、权限清单交付物、脚手架模板与发布审查流程。
 
 **非目标（Non-Goals）**：
@@ -34,7 +34,7 @@ Tauri 生态围绕三个参与者组织工具链，tarui.net 采用同样的角�
 
 | 角色 | 在 Tauri 中 | 在 tarui.net 中（目标） |
 | --- | --- | --- |
-| 框架维护者 | 发布 `tauri` crate（crates.io）与 `@tauri-apps/api`（npm），lockstep 版本 | 发布 `Tarui.*` NuGet 包族与 `@tarui/api`，lockstep 版本 |
+| 框架维护者 | 发布 `tauri` crate（crates.io）与 `@tauri-apps/api`（npm），lockstep 版本 | 发布 `Tarui.*` NuGet 包族与 `@lytree/api`，lockstep 版本 |
 | 应用开发者 | `create-tauri-app` 脚手架 → `tauri dev` → `tauri build` | `tarui init` → `tarui dev` → `tarui build` |
 | 插件作者 | `tauri plugin init` 生成 cargo 包 + guest-js + permissions，双轨发布 | `tarui plugin init` 生成 NuGet 插件包 + guest-js + permissions，双轨发布 |
 
@@ -62,7 +62,7 @@ Tauri 的开发体验由 `tauri-cli` 驱动，核心命令：`init` / `dev` / `b
 | `tauri build` | `dotnet publish` + Content 复制 | `tarui build` 编排 + bundle | §5.5 |
 | `tauri.conf.json`（build 段） | `TARUI_WEB_*` 环境变量 + `Tarui:Web:*` 配置 | `tarui.app.json` 构建清单 | §5.3 |
 | `tauri` crate → crates.io | 生产项目无打包属性 | `Tarui.*` NuGet 包族 | §6 |
-| `@tauri-apps/api` → npm | `@tarui/api` private、源码直出 | 构建化 + npm 发布 | §7 |
+| `@tauri-apps/api` → npm | `@lytree/api` private、源码直出 | 构建化 + npm 发布 | §7 |
 | `tauri-plugin-foo` + guest-js | 15 个 in-tree 插件 | 双包插件（NuGet + npm） | §8 |
 | `permissions/*.toml` + `build.rs` 生成 | 手写 `capabilities/*.json` | 插件 `permissions/` 清单交付 | §8.3 |
 | bundler（NSIS/MSI/DMG/AppImage） | 无 | W5 安装器（MSIX/zip） | §5.5、§11 |
@@ -79,13 +79,13 @@ Tauri 的开发体验由 `tauri-cli` 驱动，核心命令：`init` / `dev` / `b
 - **所有生产项目均无 NuGet 打包属性**（无 `PackageId`、无 `Version`、`GeneratePackageMetadata` 缺失）；测试项目显式 `IsPackable=false`。
 - 测试为控制台自测试（18 套，Phase 6 + Deep Link 后基线），无覆盖率门槛，但阶段门禁要求全绿 + `Tarui.Architecture.Tests`（无反射/无扫描/无动态加载）不放宽。
 
-### 3.2 前端 SDK `@tarui/api`
+### 3.2 前端 SDK `@lytree/api`
 
 `web/packages/api/package.json` 现状：
 
 - `version: 0.1.0`，`private: true`，无 `scripts`、无 `publishConfig`、无 `files`。
 - `exports` 的 21 个子路径（`./ipc`、`./window`、`./fs`、`./store`、`./log`、`./deep-link` 等）**直接指向 `.ts` 源码**——包即源码，无构建产物，仅能在 pnpm workspace 内以 `workspace:*` 消费，**不具备任何 npm 发布条件**。
-- `apps/Tarui.Web`（React/Vite）经 `tsc -b && vite build` 产出 `dist`，类型检查经 workspace 传递覆盖 `@tarui/api` 源码。
+- `apps/Tarui.Web`（React/Vite）经 `tsc -b && vite build` 产出 `dist`，类型检查经 workspace 传递覆盖 `@lytree/api` 源码。
 - 质量门禁：`pnpm lint`（Oxlint）+ `pnpm build` 已是阶段门禁的一部分。
 
 ### 3.3 开发联调：双模式雏形已具备
@@ -115,7 +115,7 @@ Tauri 的开发体验由 `tauri-cli` 驱动，核心命令：`init` / `dev` / `b
 
 ### 3.5 分发与发布
 
-无 NuGet 打包、无 npm 发布、无版本策略（`@tarui/api` 停留在 0.1.0 且 private）、无 CI 发布流水线、无安装器（仅 `dotnet publish` 裸输出）、无代码签名、无 updater 产物。
+无 NuGet 打包、无 npm 发布、无版本策略（`@lytree/api` 停留在 0.1.0 且 private）、无 CI 发布流水线、无安装器（仅 `dotnet publish` 裸输出）、无代码签名、无 updater 产物。
 
 ### 3.6 差距汇总
 
@@ -154,7 +154,7 @@ tarui dev      # 以示例应用为宿主开发调试插件
 cd ../..
 tarui plugin pack          # 本地预检：dotnet pack + npm pack + schema/版本/测试校验
 # 发布：dotnet nuget push Tarui.Plugins.Ocr.<version>.nupkg
-#       npm publish（@tarui/plugin-ocr）
+#       npm publish（@lytree/plugin-ocr）
 ```
 
 **框架维护者**：
@@ -162,13 +162,13 @@ tarui plugin pack          # 本地预检：dotnet pack + npm pack + schema/版�
 ```powershell
 # 版本单源 bump（Directory.Build.props 的 TaruiVersion + package.json 同步）
 git tag tarui-v0.9.0 && git push --tags
-# CI 按依赖拓扑序：dotnet pack → nuget.org；npm publish @tarui/api（及官方插件前端包）
+# CI 按依赖拓扑序：dotnet pack → nuget.org；npm publish @lytree/api（及官方插件前端包）
 ```
 
 ### 4.2 不可妥协约束（继承既有架构）
 
 1. **禁反射/禁扫描/禁动态加载**：插件 = 编译期 `PackageReference` + `Add*Plugin()` 显式注册。与 Tauri 的 Cargo 编译期依赖同构，"Tauri 一致"不等于"运行时插件市场"。
-2. **IPC 契约冻结**：核心线协议 DTO 不做破坏性变更；`@tarui/api` 只增量更新。
+2. **IPC 契约冻结**：核心线协议 DTO 不做破坏性变更；`@lytree/api` 只增量更新。
 3. **`CommandContext` 是能力校验唯一权威**：任何分发工程化（schema 合成、IDE 补全）都只是校验辅助，不新增运行时授权路径。
 4. **默认拒绝**：插件清单永不自动授予权限（有意偏离 Tauri 的 `default` permission 自动授予语义，见 §8.3）。
 5. **警告即错误、Architecture Tests 门禁不放宽**：所有新增打包/CLI 工程同样遵守。
@@ -307,9 +307,9 @@ dist/
 - 触发：main 分支打 tag `tarui-v{version}`。
 - 步骤：按拓扑序 `dotnet pack` → `dotnet nuget push`（`--skip-duplicate` 容忍重试；任一失败即中止并输出已完成/未完成报告）。
 - prerelease 通道：版本后缀 `-preview.N`，同流水线，推送至独立 feed 权限组。
-- npm 侧（`@tarui/api`）与 NuGet 同 tag 触发，CI 校验 `package.json` 版本 == `TaruiVersion` 后发布。
+- npm 侧（`@lytree/api`）与 NuGet 同 tag 触发，CI 校验 `package.json` 版本 == `TaruiVersion` 后发布。
 
-## 7. 前端 SDK 构建与发布（`@tarui/api`）
+## 7. 前端 SDK 构建与发布（`@lytree/api`）
 
 ### 7.1 构建化改造
 
@@ -321,17 +321,17 @@ dist/
   - `main`/`types`/`files: ["dist"]`；
   - 移除 `private: true`，`publishConfig.access = "public"`；
   - 版本随 `TaruiVersion` 同步（CI 校验）。
-- monorepo 内消费不变：workspace 协议 `@tarui/api: workspace:*` 经 exports 解析产物即可。
-- 包名占位 `@tarui/api`（npm scope 注册为开放问题 §12-2，备选 `@tarui.net/api`）。
+- monorepo 内消费不变：workspace 协议 `@lytree/api: workspace:*` 经 exports 解析产物即可。
+- 包名占位 `@lytree/api`（npm scope 注册为开放问题 §12-2，备选 `@lytree.net/api`）。
 
 ### 7.2 模块边界与插件前端包
 
-- **`@tarui/api` 只增量（硬约束）**：现有 21 个子路径模块语义冻结；破坏性调整不允许，新增能力走新模块。
-- **官方插件 JS 迁移策略（双轨期）**：既有插件 API（`fs`/`store`/`log`/`deep-link` 等）保留在 `@tarui/api` 向后兼容；**新**插件（HTTP/SQL/Updater 及第三方）前端一律独立包 `@tarui/plugin-foo`（对齐 Tauri guest-js 模式）。`@tarui/api` 内旧模块在 1.0 前统一评估 deprecation 窗口。
+- **`@lytree/api` 只增量（硬约束）**：现有 21 个子路径模块语义冻结；破坏性调整不允许，新增能力走新模块。
+- **官方插件 JS 迁移策略（双轨期）**：既有插件 API（`fs`/`store`/`log`/`deep-link` 等）保留在 `@lytree/api` 向后兼容；**新**插件（HTTP/SQL/Updater 及第三方）前端一律独立包 `@lytree/plugin-foo`（对齐 Tauri guest-js 模式）。`@lytree/api` 内旧模块在 1.0 前统一评估 deprecation 窗口。
 
 ### 7.3 质量门禁
 
-沿用并固化：`pnpm lint`（Oxlint）+ `tsc -b` + `vite build` + `@tarui/api` mock 测试（请求序列化、事件解绑、错误码——alignment plan §13 既有要求），全部进入包发布前门禁。
+沿用并固化：`pnpm lint`（Oxlint）+ `tsc -b` + `vite build` + `@lytree/api` mock 测试（请求序列化、事件解绑、错误码——alignment plan §13 既有要求），全部进入包发布前门禁。
 
 ## 8. 插件开发与发布
 
@@ -352,7 +352,7 @@ dist/
 | 交付物 | 包 | 内容 |
 | --- | --- | --- |
 | 后端 | `Tarui.Plugins.Foo`（NuGet） | Plugin + Service + DTO + 自有 JsonContext + `AddFooPlugin()` + `permissions/` 清单 |
-| 前端 | `@tarui/plugin-foo`（npm） | invoke/listen 封装（guest-js），构建方式与 `@tarui/api` 一致 |
+| 前端 | `@lytree/plugin-foo`（npm） | invoke/listen 封装（guest-js），构建方式与 `@lytree/api` 一致 |
 
 命名约定：`Tarui.Plugins.*` 为官方保留前缀；社区插件建议 `Tarui.Plugins.Community.*`（不强制，见 §12-8）。
 
@@ -383,7 +383,7 @@ tarui-plugin-store/
   permissions/
     schema.json                  # 权限 id + scope 形状
     default.json                 # 推荐最小集（仅供描述，不自动授予）
-  guest-js/                      # @tarui/plugin-store：package.json + tsconfig + src/index.ts + 构建脚本
+  guest-js/                      # @lytree/plugin-store：package.json + tsconfig + src/index.ts + 构建脚本
   tests/Tarui.Plugins.Store.Tests/ # 自测试 csproj（ProjectReference 插件）+ Program.cs 骨架
   examples/demo/README.md        # 接线示例（capabilities 授权示例 + tarui.app.json 说明）
   README.md                      # 使用/权限/威胁模型骨架
@@ -399,7 +399,7 @@ tarui-plugin-store/
 
 1. `dotnet add package Tarui.Plugins.Foo`
 2. `builder.Services.AddFooPlugin()`（组合根显式注册）
-3. `pnpm add @tarui/plugin-foo`
+3. `pnpm add @lytree/plugin-foo`
 4. `capabilities/main.json` 增加授权（如 `plugin:foo|*` 或逐命令 + scope）
 5. `tarui build` 自动合成校验 schema
 
@@ -426,7 +426,7 @@ tarui-plugin-store/
 my-app/
   my-app.desktop/        # csproj（PackageReference: Tarui.Hosting/Shell/WebView.CefGlueNext）
                          # + Program.cs（组合根骨架）+ appsettings.json + tarui.app.json
-  web/                   # 前端工程（模板决定）+ @tarui/api 依赖
+  web/                   # 前端工程（模板决定）+ @lytree/api 依赖
   capabilities/main.json # 最小权限集
   icons/
   README.md              # dev/build 快速上手
@@ -437,7 +437,7 @@ my-app/
 ## 10. CI/CD 与发布工程
 
 - **PR 门禁**（不变量，复用 alignment plan §13）：`dotnet build` 0 警告 → 全部自测试退出码 0 → `Tarui.Architecture.Tests` → `pnpm lint` + `pnpm build`。
-- **新增包门禁**：所有可打包项目 `dotnet pack` 成功；`@tarui/api` `npm pack` dry-run 成功；版本一致性校验（`Directory.Build.props` == 全部 `package.json`）。
+- **新增包门禁**：所有可打包项目 `dotnet pack` 成功；`@lytree/api` `npm pack` dry-run 成功；版本一致性校验（`Directory.Build.props` == 全部 `package.json`）。
 - **发布流水线**：tag `tarui-v{version}` 驱动 → NuGet 拓扑序推送 → `npm publish` → GitHub Release 附 `tarui build` 产物。
 - **签名与密钥**：
   - NuGet：SourceLink + snupkg；
@@ -451,8 +451,8 @@ my-app/
 
 | 阶段 | 范围 | 退出条件（增量） | 验收命令（增量） |
 | --- | --- | --- | --- |
-| **W0 打包基线** | ✅ 已完成(2026-08-22)：`Directory.Build.props` 引入 `TaruiVersion=0.1.0` 版本单源（与 `@tarui/api` 对齐）+ 通用包元数据（`PackageId`/`PackageReadmeFile`/`GenerateDocumentationFile`/`IncludeSymbols`+`snupkg`/`Authors`）；`Tarui.App`、`Tarui.Ipc.Generators`、cefglue 五个第三方项目显式 `IsPackable=false`（应用不发布、生成器随 Ipc 作 analyzer 分发、cefglue 源码随 CefGlueNext 主包）；`src/webview/cefglue` 局部 `Directory.Build.props` 关闭文档生成。验收：`dotnet build tarui.net.sln` 0 警告/0 错误；`dotnet pack tarui.net.sln -c Release` 产出 23 组 nupkg+snupkg 且无 NU5128；全部自测试 exit 0（Architecture 扫描 815 files）。偏离：仓库公共 API 缺 XML 注释量大（仅 Contracts 289 处 CS1591），`GenerateDocumentationFile=true` + `TreatWarningsAsErrors` 下会炸构建，故 NoWarn 抑制 CS1591/CS1572/CS1573/CS1574/CS1711/CS1712/CS1734 注释质量债（全包强制注释与许可证字段、RepositoryUrl 因 origin 为 cef fork 无法确定而留待维护者补，见 §12）。 | `dotnet pack` 全部成功✅；XML docs 生成✅ / README 随包✅（根 README 暂作包 readme）✅；版本单源生效✅ | `dotnet pack tarui.net.sln -c Release` ✅ |
-| **W1 前端 SDK 构建化** | ✅ 已完成(2026-08-22)：`@tarui/api` 由"源码直出"改为 `tsc -b` 构建化（新增 `web/packages/api/tsconfig.json`，`composite`+`declaration`+`sourcemap`，ESM-only，`rootDir=.`→`dist/`，产物保留子路径结构）；`package.json` 的 `exports` 全部迁移为 `{ "types": "./dist/*.d.ts", "default": "./dist/*.js" }`，新增 `main`/`types`/`files:["dist"]`/`publishConfig.access=public`/`build`(tsc -b)+`prepack` 脚本，移除 `private:true`，`typescript ~6.0.2` 进 devDependencies（与 app 同版本，零新增下载）；workspace 根 `build`/`dev` 脚本改为先构建 api 再构建 web，`pnpm lint && pnpm build` 门禁不变。验收：`pnpm build` 产出 `dist/`（24 模块 × js+d.ts+map）；web app 的 `tsc -b` 经 `dist/*.d.ts` 类型检查通过、Vite 经 `dist/*.js` 打包成功（workspace 消费回归）；`pnpm lint` 0 错误；`npm pack --dry-run` 成功（93 files 仅含 `dist/`，无源码/tsconfig 泄漏）；`pnpm install --frozen-lockfile` 通过。偏离：产物为 ESM + bundler 风格的无扩展名相对导入（`./ipc`），对 Vite/webpack 等 bundler 消费方可用、对裸 Node ESM 不可用——与设计 §7.1 的 `tsc` 零新依赖决策一致，留待 tsup 备选（§12-3）评估是否补 `.js` 扩展/双构建。 | `pnpm build` 产出 `dist/`✅；workspace 消费回归（类型检查不降级）✅；`npm pack --dry-run`✅ | `pnpm lint && pnpm build`（web 门禁不变）✅ |
+| **W0 打包基线** | ✅ 已完成(2026-08-22)：`Directory.Build.props` 引入 `TaruiVersion=0.1.0` 版本单源（与 `@lytree/api` 对齐）+ 通用包元数据（`PackageId`/`PackageReadmeFile`/`GenerateDocumentationFile`/`IncludeSymbols`+`snupkg`/`Authors`）；`Tarui.App`、`Tarui.Ipc.Generators`、cefglue 五个第三方项目显式 `IsPackable=false`（应用不发布、生成器随 Ipc 作 analyzer 分发、cefglue 源码随 CefGlueNext 主包）；`src/webview/cefglue` 局部 `Directory.Build.props` 关闭文档生成。验收：`dotnet build tarui.net.sln` 0 警告/0 错误；`dotnet pack tarui.net.sln -c Release` 产出 23 组 nupkg+snupkg 且无 NU5128；全部自测试 exit 0（Architecture 扫描 815 files）。偏离：仓库公共 API 缺 XML 注释量大（仅 Contracts 289 处 CS1591），`GenerateDocumentationFile=true` + `TreatWarningsAsErrors` 下会炸构建，故 NoWarn 抑制 CS1591/CS1572/CS1573/CS1574/CS1711/CS1712/CS1734 注释质量债（全包强制注释与许可证字段、RepositoryUrl 因 origin 为 cef fork 无法确定而留待维护者补，见 §12）。 | `dotnet pack` 全部成功✅；XML docs 生成✅ / README 随包✅（根 README 暂作包 readme）✅；版本单源生效✅ | `dotnet pack tarui.net.sln -c Release` ✅ |
+| **W1 前端 SDK 构建化** | ✅ 已完成(2026-08-22)：`@lytree/api` 由"源码直出"改为 `tsc -b` 构建化（新增 `web/packages/api/tsconfig.json`，`composite`+`declaration`+`sourcemap`，ESM-only，`rootDir=.`→`dist/`，产物保留子路径结构）；`package.json` 的 `exports` 全部迁移为 `{ "types": "./dist/*.d.ts", "default": "./dist/*.js" }`，新增 `main`/`types`/`files:["dist"]`/`publishConfig.access=public`/`build`(tsc -b)+`prepack` 脚本，移除 `private:true`，`typescript ~6.0.2` 进 devDependencies（与 app 同版本，零新增下载）；workspace 根 `build`/`dev` 脚本改为先构建 api 再构建 web，`pnpm lint && pnpm build` 门禁不变。验收：`pnpm build` 产出 `dist/`（24 模块 × js+d.ts+map）；web app 的 `tsc -b` 经 `dist/*.d.ts` 类型检查通过、Vite 经 `dist/*.js` 打包成功（workspace 消费回归）；`pnpm lint` 0 错误；`npm pack --dry-run` 成功（93 files 仅含 `dist/`，无源码/tsconfig 泄漏）；`pnpm install --frozen-lockfile` 通过。偏离：产物为 ESM + bundler 风格的无扩展名相对导入（`./ipc`），对 Vite/webpack 等 bundler 消费方可用、对裸 Node ESM 不可用——与设计 §7.1 的 `tsc` 零新依赖决策一致，留待 tsup 备选（§12-3）评估是否补 `.js` 扩展/双构建。 | `pnpm build` 产出 `dist/`✅；workspace 消费回归（类型检查不降级）✅；`npm pack --dry-run`✅ | `pnpm lint && pnpm build`（web 门禁不变）✅ |
 | **W2 CLI MVP（dev/build）** | ✅ 已完成(2026-08-22)：新增 `src/tarui-cli`（`Tarui.Cli`，`PackAsTool` + `ToolCommandName=tarui`，`RollForward=Major`，零第三方依赖——手写参数解析 + `System.Text.Json` 源生成，与 §12-3 决策一致）；命令面 `dev`/`build`/`info`/`help`/`version`（`--config`/`--project`/`--no-watch`/`--rid`/`--bundle`/`--out`/`--verbose`，支持 `--opt value` 与 `--opt=value`）；仓库根 `tarui.app.json`（`$schema` → `https://tarui.dev/schemas/app.v1.json`）作为示例清单与配置源；`dev` = 跑 `build.beforeDevCommand`（shell 透传）→ `DevServerProbe` 轮询 `build.devUrl`（60s 超时）→ 以 `TARUI_WEB_MODE=http` + `TARUI_WEB_URL` 起 `dotnet watch run --project <desktopProject>`，Ctrl+C 双进程协同停止（exit 130）；`build` = 跑 `build.beforeBuildCommand` → 校验 `frontendDist/index.html` → `dotnet publish -c Release -r <rid> --self-contained true -o dist/bin` → 校验 CEF 运行时存在性 → 按 `bundle.targets` 打包（W2 仅 zip，MSIX 为 W5 占位警告）→ 生成 `latest.json`（sha256，signature 占位空）；`info` = 环境/工具链探测（dotnet/pnpm 版本）+ RID + 清单诊断；`CliPaths` 相对路径统一相对清单目录解析、`RuntimeIdentifier` 按平台/架构取 RID、`AppManifestLoader`/`AppManifestValidator` 完成加载与业务校验（capability 文件存在性、bundle 目标白名单、devUrl 协议等）；`tests/Tarui.Cli.Tests` 自测试覆盖解析/清单/校验/路径/工具链/产物。偏离：`devUrl` 采用 `http://localhost:5173`（对齐 Vite 默认 IPv6 绑定，规避 127.0.0.1 不可达）；`latest.json` 为 Updater 蓝图占位（signature 恒空，冻结见 §13）；MSIX 目标 W2 仅报错不实现。 | 示例应用单命令 dev（HMR 可用）与 build（zip 可运行）全流程可复现✅；`tarui info`/`--version`/`--help` 正常✅；CLI 自测试全绿✅ | `dotnet run --project tests/Tarui.Cli.Tests`✅；`tarui dev` 冒烟（HMR）✅ + `tarui build` 产物（`dist/tarui.net-0.1.0-win-x64.zip` + `latest.json`）可运行✅ |
 | **W3 应用模板与 init** | ✅ 已完成(2026-08-22)：新增 `src/templates/Tarui.Templates`（`PackageType=Template`，以 dotnet template 包发布，`ContentTargetFolders=content` 使 `dotnet new install Tarui.Templates` 装载 `tarui-app` 短名）；react-ts 模板内容含 `MyApp.Desktop`（`Tarui.Hosting`/`Tarui.Shell`/`Tarui.SingleInstance`/`Tarui.WebView.CefGlueNext`/`Tarui.Plugins.Core`/`Tarui.Plugins.Window` 六包 + CEF RID 条件 + CEF/web 内容拷贝）、`web/` React+Vite 前端、`capabilities/main.json`（默认零插件、仅 core 级最小窗口/事件/路径权限）、`tarui.app.json`、README。CLI 新增 `init` 命令：`ProjectName`（C# 标识符与 reverse-DNS identifier 规范化）→ `dotnet new tarui-app` 实例化 → 按结构 JSON 补丁 `product.name`/`identifier`（规避模板占位符被 dotnet new 小写化导致文本替换失效）→ 可选用 `pnpm install`（manager 不存在时降级警告兜底）；`--local <repo>` 用 `LocalReferenceRewriter` 将 `PackageReference` 反向改写为 `ProjectReference` 并指向本地 CEF/web 产物根（正则保格式替换），支持仓库内开发。Architecture Tests 特例豁免 `src/templates`（模板 csproj 按设计引用 NuGet 运行时包）。验收：`tarui init tmp-app --local <repo>` 冒烟 → 新脚手架 desktop 项目对本地源树编译 0 错误；CLI/Architecture 自测试全绿；`dotnet pack` 模板包可安装。偏离：`--local` 验收因未发布 NuGet 包而改用本地 `ProjectReference` 编译验证（等价于发布模式三命令链路的前置）；`pnpm install` 失败仅警告不阻断脚手架产物。 | 新脚手架应用对本地源树编译通过✅；默认最小权限清单✅；`dotnet new install Tarui.Templates` + `tarui init [--local]`✅；CLI/Architecture 自测试全绿✅ | `tarui init tmp-app && cd tmp-app && tarui dev`（发布模式下以 NuGet 包验证）✅ |
 | **W4 插件工作流** | ✅ 已完成(2026-08-22)：新增 `tarui plugin` 子命令族——`init <name>`（`--output`/`--local`）与 `pack`。`PluginScaffolder` 以 CLI 直写文件生成插件骨架（`src/Tarui.Plugins.*` + `permissions/schema.json+default.json` + `guest-js/` + `tests/*.Tests`（含可构建 csproj） + `examples/demo` + README）；类名/DI 方法名由插件名规范化推导（`store`→`StorePlugin`/`AddStorePlugin`，无占位符遗留）；`--local` 复用 `LocalReferenceRewriter` 把三份 Tarui 包改写为本地 `ProjectReference`；`permissions/*.json` 同时设 `Link`（构建输出 `bin/permissions/store/`）与 `PackagePath`（nupkg 内 `permissions/store/`）双路交付。`SchemaSynthesizer` 接入 `tarui build`：发布输出内收集各插件 `permissions/<plugin>/schema.json` 合成为 `schemas/permissions.schema.json`（重 id 抛错），capabilities/*.json 仍为唯一授权真源。`PluginPacker` + `pack` 预检五步：布局检测（src 恰一个 csproj）→ 权限一致性（`default.json` 引用必须声明于 `schema.json` 且 id 以 `plugin:` 开头、唯一）→ 双包版本一致性（csproj `Version` == guest-js `package.json.version`）→ 运行插件自测试 → `dotnet pack`（确认 nupkg 含 `permissions/`）+ `npm pack`（guest-js）。试点：以 `store` 插件走完整 `init --local → build（0 警告）→ pack`（nupkg 含 `permissions/store/*` + guest-js tgz）。验收：CLI 自测试全绿；Architecture 门禁通过（845 files）；全量 `dotnet build tarui.net.sln` 0 警告/0 错误。偏离：前端 `npm pack` 需先 `npm install`（自检师遵循真实发布依赖安装链路）；`examples/demo` 以 README 骨架承载接线说明而非独立可运行应用，防止脚手架过度膨胀。 | 试点插件通过 `tarui plugin pack` 全绿✅（nupkg 含 `permissions/` + tgz） | `tarui plugin init store && tarui plugin pack`（.out 冒烟）✅；CLI/Architecture 自测试全绿✅ |
@@ -465,12 +465,12 @@ my-app/
 | # | 问题 | 影响 | 建议 |
 | --- | --- | --- | --- |
 | 1 | CEF 原生包体积（数百 MB/RID） | runtime 包还原慢、feed 流量 | 仓库内开发保留 `eng/cef/install-runtime.ps1`；runtime 包仅面向终端应用消费 |
-| 2 | npm scope `@tarui` 是否可注册 | 前端包命名 | 早期注册占位；备选 `@tarui.net/api` |
+| 2 | npm scope `@lytree` 是否可注册 | 前端包命名 | 早期注册占位；备选 `@lytree.net/api` |
 | 3 | CLI 参数解析与前端构建工具选型（System.CommandLine beta / tsup vs tsc） | 依赖面 | 倾向手写解析 + `tsc`（零新依赖）；W2/W1 时决策 |
 | 4 | MSIX vs NSIS | W5 打包目标 | MSIX 为主（store-ready、干净卸载）；zip 恒有；NSIS 按社区反馈评估 |
 | 5 | 是否下探 net8.0 LTS TFM | 兼容面 vs 维护成本 | 1.0 前评估；当前 net10.0 单一 |
 | 6 | lockstep 版本维护成本 | 发布节奏 | 版本单源 + CI 一致性校验；允许独立补丁例外需显式记录 |
-| 7 | 官方插件 JS 双轨期（`@tarui/api` 内旧模块 vs 独立包） | 兼容窗口 | 旧模块语义冻结；新插件一律独立包；1.0 前统一去留决策 |
+| 7 | 官方插件 JS 双轨期（`@lytree/api` 内旧模块 vs 独立包） | 兼容窗口 | 旧模块语义冻结；新插件一律独立包；1.0 前统一去留决策 |
 | 8 | 社区插件命名空间治理 | 生态防伪 | 文档建议 + 官方前缀保留；不做强制注册体系 |
 | 9 | `dotnet watch` 重启丢 WebView 状态 | 开发体验 | 文档明确边界（与 Tauri Rust 侧重编译一致） |
 | 10 | 第三方插件的 `permissions/` 完整性无法用 Architecture Tests 强制 | 安全 | `tarui plugin pack` 预检 + 官方审查清单 + 应用侧 schema 启动校验三重防线 |
@@ -486,9 +486,9 @@ my-app/
 | `build.devUrl` | `TARUI_WEB_URL`（HTTP 模式） | 既有机制复用 |
 | `build.frontendDist` | `TARUI_WEB_ROOT` / `tarui://localhost`（Scheme 模式） | 既有机制复用 |
 | `tauri` crate（crates.io） | `Tarui.*` NuGet 包族 | lockstep |
-| `@tauri-apps/api`（npm） | `@tarui/api` | ESM-only |
+| `@tauri-apps/api`（npm） | `@lytree/api` | ESM-only |
 | `tauri-plugin-foo`（cargo） | `Tarui.Plugins.Foo`（NuGet） | 编译期依赖 |
-| `@tauri-apps/plugin-foo`（npm） | `@tarui/plugin-foo` | guest-js |
+| `@tauri-apps/plugin-foo`（npm） | `@lytree/plugin-foo` | guest-js |
 | `permissions/*.toml` + `build.rs` | `permissions/schema.json` 等清单 | 不自动授予 default（有意偏离） |
 | capability（`*.json`） | `capabilities/*.json` | 结构同源：windows/platforms/events/permissions |
 | `permission: allow/deny scope` | `PathScope` allow/deny glob | deny 优先一致 |

@@ -563,7 +563,7 @@ internal static class Program
         var root = PluginScaffolder.Scaffold("store", temp.Path, localRepo: null);
         File.WriteAllText(
             Path.Combine(root, "guest-js", "package.json"),
-            """{ "name": "@tarui/plugin-store", "version": "0.2.0" }""");
+            """{ "name": "@lytree/plugin-store", "version": "0.2.0" }""");
         var problem = PluginPacker.CheckVersionConsistency(PluginPacker.Detect(root));
         Assert(problem is not null && problem.Contains("0.2.0", StringComparison.Ordinal),
             "A guest-js version that diverges from the backend must be reported.");

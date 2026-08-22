@@ -30,7 +30,7 @@ src/
     Tarui.WebView.*         Tarui browser abstraction and adapter
 web/
   apps/Tarui.Web/          React business application
-  packages/api/            @tarui/api bridge package
+  packages/api/            @lytree/api bridge package
 tests/                     Executable and integration tests
 capabilities/              Window/WebView permission manifests
 runtime/cef/               Locally installed native CEF distributions
@@ -59,7 +59,7 @@ pnpm lint
 pnpm build
 ```
 
-The Web workspace uses pnpm 11. `web/pnpm-workspace.yaml` defines the `apps/*` and `packages/*` members, and the shared `web/pnpm-lock.yaml` keeps dependency resolution reproducible. The application consumes `@tarui/api` through the `workspace:*` dependency specifier. Run all Web commands from the `web` directory.
+The Web workspace uses pnpm 11. `web/pnpm-workspace.yaml` defines the `apps/*` and `packages/*` members, and the shared `web/pnpm-lock.yaml` keeps dependency resolution reproducible. The application consumes `@lytree/api` through the `workspace:*` dependency specifier. Run all Web commands from the `web` directory.
 
 CefGlue managed assemblies and native CEF runtime assets are not restored from NuGet. The native runtime installer downloads the official CEF minimal distribution and verifies its published SHA-1. Avalonia itself remains a normal framework package dependency.
 
@@ -159,10 +159,10 @@ tarui --help     # full command surface
 
 GitHub Actions automates the integration and release gates (design `§10`):
 
-- `.github/workflows/ci.yml` — PR / branch gate: `dotnet build` 0 warnings, all self-tests, `Tarui.Architecture.Tests`, NuGet package baseline, version consistency (`Directory.Build.props` == `@tarui/api`), and `pnpm lint` + `pnpm build`.
-- `.github/workflows/release.yml` — tag `tarui-v<version>` (or manual dispatch): validates, pushes all NuGet packages topologically, publishes `@tarui/api`, builds the `zip;msix` installers on Windows (optional Authenticode), and creates a GitHub Release with the artifacts attached.
+- `.github/workflows/ci.yml` — PR / branch gate: `dotnet build` 0 warnings, all self-tests, `Tarui.Architecture.Tests`, NuGet package baseline, version consistency (`Directory.Build.props` == `@lytree/api`), and `pnpm lint` + `pnpm build`.
+- `.github/workflows/release.yml` — tag `tarui-v<version>` (or manual dispatch): validates, pushes all NuGet packages topologically, publishes `@lytree/api`, builds the `zip;msix` installers on Windows (optional Authenticode), and creates a GitHub Release with the artifacts attached.
 
-Release secrets live in the GitHub `release` environment. Required: `NUGET_API_KEY` (and optional `NUGET_SOURCE`); `NPM_TOKEN`. Optional for signed MSIX: `WINDOWS_CERT_BASE64`, `WINDOWS_CERT_PUBLISHER`, `WINDOWS_CERT_PASSWORD`, `WINDOWS_CERT_TIMESTAMP`; without a certificate the MSIX is emitted unsigned.
+Release secrets live in the GitHub `release` environment. NuGet publishing uses [trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing) (OIDC, no long-lived API key): allowlist the `release` environment and the `release.yml` workflow filename on nuget.org, then add the `NUGET_USER` env secret (nuget.org profile name, not email). `@lytree/api` is published to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements) (OIDC — add a `NPM_USER`-associated trusted-publisher entry for this repo on npmjs.com; no `NPM_TOKEN` needed). Optional: `NUGET_SOURCE`. Optional for signed MSIX: `WINDOWS_CERT_BASE64`, `WINDOWS_CERT_PUBLISHER`, `WINDOWS_CERT_PASSWORD`, `WINDOWS_CERT_TIMESTAMP`; without a certificate the MSIX is emitted unsigned.
 
 ## Native capability surface
 
@@ -180,7 +180,7 @@ The shell routes window lifecycle events to the owning Webview (`window://moved`
 
 ## Frontend bridge
 
-`web/packages/api` (`@tarui/api`) ships one typed module per plugin contract: `ipc`, `app`, `window`, `event`, `dialog`, `os`, `path`, `process`, `shell`, and `clipboard`. `Window.getCurrent()` returns a handle whose label-less calls target the window hosting the calling Webview; `Window.getByLabel`/`Window.create` address other windows. The barrel export renames the two `open` helpers to `openDialog` and `openExternal`; subpath exports such as `@tarui/api/window` keep the Tauri-style short names.
+`web/packages/api` (`@lytree/api`) ships one typed module per plugin contract: `ipc`, `app`, `window`, `event`, `dialog`, `os`, `path`, `process`, `shell`, and `clipboard`. `Window.getCurrent()` returns a handle whose label-less calls target the window hosting the calling Webview; `Window.getByLabel`/`Window.create` address other windows. The barrel export renames the two `open` helpers to `openDialog` and `openExternal`; subpath exports such as `@lytree/api/window` keep the Tauri-style short names.
 
 ## CefGlue port
 

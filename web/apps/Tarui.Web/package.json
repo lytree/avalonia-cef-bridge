@@ -1,5 +1,5 @@
 {
-  "name": "@tarui/web",
+  "name": "@lytree/web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tarui/api": "workspace:*",
+    "@lytree/api": "workspace:*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

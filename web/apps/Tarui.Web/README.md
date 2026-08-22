@@ -1,8 +1,8 @@
-# @tarui/web
+# @lytree/web
 
 React/TypeScript business UI hosted by the tarui.net desktop shell.
 
-The application is part of the pnpm 11 workspace declared by `web/pnpm-workspace.yaml`. Its dependencies are resolved from the shared `web/pnpm-lock.yaml`, and `@tarui/api` is linked from `web/packages/api` through the `workspace:*` dependency specifier.
+The application is part of the pnpm 11 workspace declared by `web/pnpm-workspace.yaml`. Its dependencies are resolved from the shared `web/pnpm-lock.yaml`, and `@lytree/api` is linked from `web/packages/api` through the `workspace:*` dependency specifier.
 
 Run commands from the `web` workspace root:
 

@@ -1,5 +1,5 @@
 /**
- * @tarui/api — typed frontend bindings for the tarui.net shell.
+ * @lytree/api — typed frontend bindings for the tarui.net shell.
  *
  * Every module mirrors one native plugin contract:
  * - ipc       : raw invoke/listen bridge (rarely needed directly)

@@ -10,7 +10,7 @@ importers:
 
   apps/Tarui.Web:
     dependencies:
-      '@tarui/api':
+      '@lytree/api':
         specifier: workspace:*
         version: link:../../packages/api
       react:
