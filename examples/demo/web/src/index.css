@@ -1,0 +1,121 @@
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+.app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+h1 {
+  margin-bottom: 0.25rem;
+}
+
+.muted {
+  color: rgba(127, 127, 127, 0.9);
+  font-size: 0.9rem;
+}
+
+section {
+  margin-top: 1.5rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+  border-left: 3px solid #4c8bf5;
+  padding-left: 0.5rem;
+}
+
+code {
+  background: rgba(127, 127, 127, 0.15);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.75rem;
+  margin: 0.75rem 0;
+  align-items: center;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.row input {
+  padding: 0.35rem 0.5rem;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  min-width: 9rem;
+  flex: 0 1 auto;
+}
+
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  margin-top: 0.5rem;
+  resize: vertical;
+}
+
+button {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid #4c8bf5;
+  border-radius: 6px;
+  background: #4c8bf5;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+}
+
+button:hover {
+  filter: brightness(1.1);
+}
+
+ul.muted {
+  margin: 0.5rem 0 0;
+}
+
+.log {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  font-size: 0.85rem;
+  max-height: 340px;
+  overflow: auto;
+  margin-top: 0.5rem;
+}
+
+.log-info {
+  color: #9ecbff;
+}
+
+.log-ok {
+  color: #4fd66b;
+}
+
+.log-err {
+  color: #ff6b6b;
+}

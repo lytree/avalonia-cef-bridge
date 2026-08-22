@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Tarui desktop host for this in-repo demo.
+
+    Local source mode: the Tarui runtime libraries are referenced directly as
+    ProjectReference entries into the sibling `src/` tree (equivalent to
+    `tarui init -local <repo>`), so the demo always tracks the current source.
+
+    CEF runtime: place the native binaries under `<repo>/runtime/cef/<rid>` or
+    point TARUI_CEF_ROOT at them. They are copied to the output as `CEF/<rid>`
+    so the webview host can locate them at startup.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>Demo</AssemblyName>
+    <RootNamespace>Demo</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\desktop\Tarui.Hosting\Tarui.Hosting.csproj" />
+    <ProjectReference Include="..\..\..\src\desktop\Tarui.Shell\Tarui.Shell.csproj" />
+    <ProjectReference Include="..\..\..\src\desktop\Tarui.SingleInstance\Tarui.SingleInstance.csproj" />
+    <ProjectReference Include="..\..\..\src\webview\Tarui.WebView.CefGlueNext\Tarui.WebView.CefGlueNext.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Core\Tarui.Plugins.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Window\Tarui.Plugins.Window.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Event\Tarui.Plugins.Event.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Store\Tarui.Plugins.Store.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.FileSystem\Tarui.Plugins.FileSystem.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\capabilities\*.json" Link="capabilities\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(PlatformTarget)' != 'arm64'">win-x64</TaruiCefRid>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(PlatformTarget)' == 'arm64'">win-arm64</TaruiCefRid>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('Linux')) and '$(PlatformTarget)' != 'arm64'">linux-x64</TaruiCefRid>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('Linux')) and '$(PlatformTarget)' == 'arm64'">linux-arm64</TaruiCefRid>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('OSX')) and '$(PlatformTarget)' != 'arm64'">osx-x64</TaruiCefRid>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('OSX')) and '$(PlatformTarget)' == 'arm64'">osx-arm64</TaruiCefRid>
+    <TaruiCefRuntimeRoot Condition="'$(TaruiCefRuntimeRoot)' == ''">$(TARUI_CEF_ROOT)</TaruiCefRuntimeRoot>
+    <TaruiWebDistRoot Condition="'$(TaruiWebDistRoot)' == ''">$(MSBuildThisFileDirectory)..\web\dist</TaruiWebDistRoot>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(TaruiCefRuntimeRoot)' != '' and Exists('$(TaruiCefRuntimeRoot)\$(TaruiCefRid)')">
+    <Content Include="$(TaruiCefRuntimeRoot)\$(TaruiCefRid)\**\*" Link="CEF\$(TaruiCefRid)\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('$(TaruiWebDistRoot)\index.html')">
+    <Content Include="$(TaruiWebDistRoot)\**\*" Link="web\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

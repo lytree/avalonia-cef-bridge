@@ -1,0 +1,27 @@
+{
+  "$schema": "https://tarui.dev/schemas/app.v1.json",
+  "product": {
+    "name": "demo",
+    "version": "0.1.0",
+    "identifier": "dev.demo"
+  },
+  "build": {
+    "frontend": "web",
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "pnpm build",
+    "frontendDist": "web/dist",
+    "desktopProject": "Demo.Desktop/Demo.Desktop.csproj"
+  },
+  "bundle": {
+    "targets": [
+      "zip"
+    ],
+    "shortDescription": "A Tarui desktop application"
+  },
+  "app": {
+    "capabilities": [
+      "main"
+    ]
+  }
+}

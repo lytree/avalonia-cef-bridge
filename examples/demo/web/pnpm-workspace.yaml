@@ -1,0 +1,2 @@
+minimumReleaseAgeExclude:
+  - '@lytree/api@0.1.0'
