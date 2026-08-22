@@ -144,14 +144,16 @@ When no mode is specified, a configured `TARUI_WEB_URL` selects HTTP; otherwise 
 ```powershell
 dotnet tool install -global Tarui.Cli
 
-tarui init   # scaffold a new app from the tarui-app template (--local <repo> for in-repo dev)
-tarui dev    # dev server (build.beforeDevCommand) + dotnet watch, Ctrl+C tears both down
-tarui build  # frontend build, self-contained publish, portable zip + latest.json
-tarui info   # environment / toolchain / manifest diagnostics
-tarui --help # full command surface
+tarui init       # scaffold a new app from the tarui-app template (--local <repo> for in-repo dev)
+tarui dev        # dev server (build.beforeDevCommand) + dotnet watch, Ctrl+C tears both down
+tarui build      # frontend build, self-contained publish, portable zip + latest.json
+tarui plugin init <name>   # scaffold a plugin skeleton (permissions/, guest-js/, tests/; --local <repo>)
+tarui plugin pack          # plugin pre-flight: layout/permissions/version parity, self-tests, pack both packages
+tarui info       # environment / toolchain / manifest diagnostics
+tarui --help     # full command surface
 ```
 
-`tarui dev` starts `build.beforeDevCommand` in `build.frontend`, waits for `build.devUrl` to become reachable, then launches the desktop project with `TARUI_WEB_MODE=http` and `TARUI_WEB_URL=<devUrl>`. `tarui build` runs `build.beforeBuildCommand`, validates `build.frontendDist`, publishes the desktop project self-contained for the current RID, and emits the configured `bundle.targets` (currently a portable zip) plus an updater blueprint `dist/latest.json` with SHA-256. Run from the repository root; see `docs/dev-workflow-design.md` for the manifest schema and the phased rollout (W3 application templates / `tarui init` complete, W4 plugin workflow, W5 installers).
+`tarui dev` starts `build.beforeDevCommand` in `build.frontend`, waits for `build.devUrl` to become reachable, then launches the desktop project with `TARUI_WEB_MODE=http` and `TARUI_WEB_URL=<devUrl>`. `tarui build` runs `build.beforeBuildCommand`, validates `build.frontendDist`, publishes the desktop project self-contained for the current RID, and emits the configured `bundle.targets` (currently a portable zip) plus an updater blueprint `dist/latest.json` with SHA-256. During `build` it also merges every referenced plugin's `permissions/<plugin>/schema.json` into `schemas/permissions.schema.json` (a validation aid only — `capabilities/*.json` remain the sole runtime authorization source). `tarui plugin init` scaffolds a plugin with permission descriptors, a typed guest-js bridge and console self-tests; `tarui plugin pack` validates layout, permission/version consistency, runs self-tests, and packs both the NuGet backend (with `permissions/`) and the npm frontend. Run from the repository root; see `docs/dev-workflow-design.md` for the manifest schema and the phased rollout (W3 application templates / `tarui init` complete, W4 plugin workflow complete, W5 installers).
 
 ## Native capability surface
 

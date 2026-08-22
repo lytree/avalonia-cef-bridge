@@ -10,6 +10,10 @@ namespace Tarui.Cli;
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(AppManifestDto))]
 [JsonSerializable(typeof(LatestManifestDto))]
+[JsonSerializable(typeof(PluginPermissionSchemaDto))]
+[JsonSerializable(typeof(SynthesizedPermissionSchemaDto))]
+[JsonSerializable(typeof(DefaultPermissionSetDto))]
+[JsonSerializable(typeof(GuestPackageDto))]
 internal sealed partial class TaruiCliJsonContext : JsonSerializerContext
 {
 }

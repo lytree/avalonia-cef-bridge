@@ -56,20 +56,27 @@ internal static class PluginScaffolder
 
         Directory.CreateDirectory(rootName);
 
-        Write(Path.Combine(rootName, sourceDirectory), packageName + ".csproj", BuildCsproj(packageName, namespaceName));
-        Write(Path.Combine(rootName, sourceDirectory), "Plugin.cs", BuildPluginCs(namespaceName));
-        Write(Path.Combine(rootName, sourceDirectory), "Contracts.cs", BuildContractsCs(namespaceName));
+        Write(Path.Combine(rootName, sourceDirectory), packageName + ".csproj", BuildCsproj(packageName, namespaceName, normalized));
+        Write(Path.Combine(rootName, sourceDirectory), "Plugin.cs", BuildPluginCs(namespaceName, csharpSuffix));
+        Write(Path.Combine(rootName, sourceDirectory), "Contracts.cs", BuildContractsCs(namespaceName, csharpSuffix));
 
         Write(Path.Combine(rootName, "permissions"), "schema.json", BuildSchemaJson(normalized));
+        Write(Path.Combine(rootName, "permissions"), "default.json", BuildDefaultJson(normalized));
 
         Write(Path.Combine(rootName, "guest-js"), "package.json", BuildGuestPackageJson(normalized));
+        Write(Path.Combine(rootName, "guest-js"), "tsconfig.json", BuildGuestTsconfigJson());
+        Write(Path.Combine(rootName, "guest-js", "src"), "index.ts", BuildGuestIndexTs(normalized));
 
         Write(
             Path.Combine(rootName, "tests", packageName + ".Tests"),
+            packageName + ".Tests.csproj",
+            BuildTestCsproj(packageName));
+        Write(
+            Path.Combine(rootName, "tests", packageName + ".Tests"),
             "Program.cs",
-            BuildTestProgramCs(packageName + ".Tests"));
+            BuildTestProgramCs(packageName));
 
-        Write(Path.Combine(rootName, "examples", "demo"), "README.md", BuildExampleReadme(namespaceName, normalized));
+        Write(Path.Combine(rootName, "examples", "demo"), "README.md", BuildExampleReadme(namespaceName, normalized, csharpSuffix));
         Write(Path.Combine(rootName), "README.md", BuildPluginReadme(normalized));
 
         if (!string.IsNullOrEmpty(localRepo))
@@ -82,7 +89,7 @@ internal static class PluginScaffolder
         return rootName;
     }
 
-    private static string BuildCsproj(string packageName, string namespaceName)
+    private static string BuildCsproj(string packageName, string namespaceName, string normalized)
     {
         return
             """
@@ -108,14 +115,19 @@ internal static class PluginScaffolder
               </ItemGroup>
               <ItemGroup>
                 <Content Include="..\..\permissions\*.json"
-                         Pack="true" PackagePath="permissions/"
+                         Pack="true"
+                         Link="permissions\{{normalized}}\%(Filename)%(Extension)"
+                         PackagePath="permissions\{{normalized}}\%(Filename)%(Extension)"
                          CopyToOutputDirectory="PreserveNewest" />
               </ItemGroup>
             </Project>
-            """.Replace("{0}", packageName).Replace("{1}", namespaceName).Replace("{2}", packageName);
+            """.Replace("{0}", packageName)
+                .Replace("{1}", namespaceName)
+                .Replace("{2}", packageName)
+                .Replace("{{normalized}}", normalized);
     }
 
-    private static string BuildPluginCs(string namespaceName)
+    private static string BuildPluginCs(string namespaceName, string suffix)
     {
         return
             $$"""
@@ -130,7 +142,7 @@ internal static class PluginScaffolder
             /// permission-checked; add the corresponding permission identifiers to the
             /// capabilities file of the calling window to grant them.
             /// </summary>
-            public sealed class FooPlugin : ITaruiPlugin
+            public sealed class {{suffix}}Plugin : ITaruiPlugin
             {
                 public void ConfigureCommands(CommandRouterBuilder commands)
                 {
@@ -138,20 +150,20 @@ internal static class PluginScaffolder
                     //     "plugin:foo|ping",
                     //     FooJsonContext.Default.EmptyArgs,
                     //     FooJsonContext.Default.FooPingResult,
-                    //     (_, _, ct) => ValueTask.FromResult(new FooPingResult { Pong = true }),
+                    //     (_, _, ct) => ValueTask.FromResult(new {{suffix}}PingResult(Pong: true)),
                     //     "plugin:foo|ping");
                 }
             }
 
-            public static class FooPluginServiceCollectionExtensions
+            public static class {{suffix}}PluginServiceCollectionExtensions
             {
-                public static IServiceCollection AddFooPlugin(this IServiceCollection services)
-                    => services.AddPlugin<FooPlugin>();
+                public static IServiceCollection Add{{suffix}}Plugin(this IServiceCollection services)
+                    => services.AddPlugin<{{suffix}}Plugin>();
             }
             """;
     }
 
-    private static string BuildContractsCs(string namespaceName)
+    private static string BuildContractsCs(string namespaceName, string suffix)
     {
         return
             $$"""
@@ -159,7 +171,7 @@ internal static class PluginScaffolder
 
             // Plugin-owned DTOs plus their source-generated JSON metadata. Because the
             // context lives here, this plugin needs no changes to core Tarui.Contracts.
-            public sealed record FooPingResult(bool Pong);
+            public sealed record {{suffix}}PingResult(bool Pong);
             """;
     }
 
@@ -186,6 +198,21 @@ internal static class PluginScaffolder
             """;
     }
 
+    private static string BuildDefaultJson(string normalized)
+    {
+        return
+            $$"""
+            {
+              "$schema": "https://tarui.dev/schemas/plugin-permission-set.schema.json",
+              "plugin": "{{normalized}}",
+              "description": "Recommended minimal permission set. For documentation only; NEVER auto-granted at runtime.",
+              "permissions": [
+                "plugin:{{normalized}}|ping"
+              ]
+            }
+            """;
+    }
+
     private static string BuildGuestPackageJson(string normalized)
     {
         return
@@ -204,8 +231,65 @@ internal static class PluginScaffolder
                 "build": "tsc -b",
                 "prepack": "tsc -b"
               },
+              "devDependencies": {
+                "typescript": "^5.0.0"
+              },
               "publishConfig": { "access": "public" }
             }
+            """;
+    }
+
+    private static string BuildGuestTsconfigJson()
+    {
+        return
+            $$"""
+            {
+              "compilerOptions": {
+                "composite": true,
+                "target": "ES2022",
+                "module": "NodeNext",
+                "moduleResolution": "NodeNext",
+                "declaration": true,
+                "declarationMap": true,
+                "sourceMap": true,
+                "rootDir": "src",
+                "outDir": "dist",
+                "strict": true,
+                "skipLibCheck": true
+              },
+              "include": ["src"]
+            }
+            """;
+    }
+
+    private static string BuildGuestIndexTs(string normalized)
+    {
+        return
+            $$"""
+            /**
+             * @tarui/plugin-{{normalized}} — typed frontend bridge for the backend plugin.
+             * Replace the placeholder with invoke/listen wrappers over @tarui/api.
+             */
+            export function ping(): Promise<boolean> {
+              return Promise.resolve(true);
+            }
+            """;
+    }
+
+    private static string BuildTestCsproj(string packageName)
+    {
+        return
+            $$"""
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <OutputType>Exe</OutputType>
+                <TargetFramework>net10.0</TargetFramework>
+                <RootNamespace>{{packageName}}.Tests</RootNamespace>
+              </PropertyGroup>
+              <ItemGroup>
+                <ProjectReference Include="..\..\src\{{packageName}}\{{packageName}}.csproj" />
+              </ItemGroup>
+            </Project>
             """;
     }
 
@@ -228,7 +312,7 @@ internal static class PluginScaffolder
             """;
     }
 
-    private static string BuildExampleReadme(string namespaceName, string normalized)
+    private static string BuildExampleReadme(string namespaceName, string normalized, string suffix)
     {
         return
             $$"""
@@ -237,11 +321,11 @@ internal static class PluginScaffolder
             End-to-end wiring example for `{{namespaceName}}`.
 
             ```csharp
-            builder.Services.AddFooPlugin();
+            builder.Services.Add{{suffix}}Plugin();
             ```
 
             1. `dotnet add package {{namespaceName}}`
-            2. `builder.Services.AddFooPlugin();`
+            2. `builder.Services.Add{{suffix}}Plugin();`
             3. `pnpm add @tarui/plugin-{{normalized}}`
             4. Grant in `capabilities/main.json`:
                ```json

@@ -374,17 +374,22 @@ permissions/
 生成目录：
 
 ```text
-tarui-plugin-foo/
-  src/Tarui.Plugins.Foo/          # csproj（PackageReference: Tarui.Ipc）+ Plugin + Service + Contracts.cs（含自有 JsonContext）
+tarui-plugin-store/
+  src/Tarui.Plugins.Store/        # csproj（发布模式 PackageReference: Tarui.Ipc/Contracts/Generators）
+                                 # + Plugin.cs（类名由插件名派生：StorePlugin + AddStorePlugin）
+                                 # + Contracts.cs（含自有 DTO）
   permissions/
-    schema.json                   # 权限 id + scope 形状
-    default.json                  # 推荐最小集
-    README.md                     # 威胁模型骨架
-  guest-js/                       # @tarui/plugin-foo：package.json + exports + tsconfig + 构建脚本
-  tests/Tarui.Foo.Tests/          # 自测试模板：正向/权限拒绝/非法参数/平台不支持 四类骨架
-  examples/demo/                  # 接线示例应用（capabilities 授权示例 + tarui.app.json）
-  README.md                       # 使用/权限/威胁模型骨架
+    schema.json                  # 权限 id + scope 形状
+    default.json                 # 推荐最小集（仅供描述，不自动授予）
+  guest-js/                      # @tarui/plugin-store：package.json + tsconfig + src/index.ts + 构建脚本
+  tests/Tarui.Plugins.Store.Tests/ # 自测试 csproj（ProjectReference 插件）+ Program.cs 骨架
+  examples/demo/README.md        # 接线示例（capabilities 授权示例 + tarui.app.json 说明）
+  README.md                      # 使用/权限/威胁模型骨架
 ```
+
+- 载体：CLI 直写文件（非 dotnet template 包），输出可完全控制与单测；`--local <repo>` 复用 `LocalReferenceRewriter` 将三份 Tarui 包改写为本地 `ProjectReference`。
+- 类名/方法名由插件名规范化推导（`store` → `StorePlugin`/`AddStorePlugin`），杜绝遗留占位符。
+- `permissions/*.json` 同时设 `Link`（构建输出 `bin/permissions/store/`，供 schema 合成）与 `PackagePath`（nupkg 内 `permissions/store/`，供发布后应用还原）。
 
 脚手架内建校验位：命令注册计数测试模板、权限 gate 反向测试模板、无反射约束说明（Architecture Tests 对第三方不生效，以文档 + 审查清单约束）。
 
@@ -448,7 +453,7 @@ my-app/
 | **W1 前端 SDK 构建化** | ✅ 已完成(2026-08-22)：`@tarui/api` 由"源码直出"改为 `tsc -b` 构建化（新增 `web/packages/api/tsconfig.json`，`composite`+`declaration`+`sourcemap`，ESM-only，`rootDir=.`→`dist/`，产物保留子路径结构）；`package.json` 的 `exports` 全部迁移为 `{ "types": "./dist/*.d.ts", "default": "./dist/*.js" }`，新增 `main`/`types`/`files:["dist"]`/`publishConfig.access=public`/`build`(tsc -b)+`prepack` 脚本，移除 `private:true`，`typescript ~6.0.2` 进 devDependencies（与 app 同版本，零新增下载）；workspace 根 `build`/`dev` 脚本改为先构建 api 再构建 web，`pnpm lint && pnpm build` 门禁不变。验收：`pnpm build` 产出 `dist/`（24 模块 × js+d.ts+map）；web app 的 `tsc -b` 经 `dist/*.d.ts` 类型检查通过、Vite 经 `dist/*.js` 打包成功（workspace 消费回归）；`pnpm lint` 0 错误；`npm pack --dry-run` 成功（93 files 仅含 `dist/`，无源码/tsconfig 泄漏）；`pnpm install --frozen-lockfile` 通过。偏离：产物为 ESM + bundler 风格的无扩展名相对导入（`./ipc`），对 Vite/webpack 等 bundler 消费方可用、对裸 Node ESM 不可用——与设计 §7.1 的 `tsc` 零新依赖决策一致，留待 tsup 备选（§12-3）评估是否补 `.js` 扩展/双构建。 | `pnpm build` 产出 `dist/`✅；workspace 消费回归（类型检查不降级）✅；`npm pack --dry-run`✅ | `pnpm lint && pnpm build`（web 门禁不变）✅ |
 | **W2 CLI MVP（dev/build）** | ✅ 已完成(2026-08-22)：新增 `src/tarui-cli`（`Tarui.Cli`，`PackAsTool` + `ToolCommandName=tarui`，`RollForward=Major`，零第三方依赖——手写参数解析 + `System.Text.Json` 源生成，与 §12-3 决策一致）；命令面 `dev`/`build`/`info`/`help`/`version`（`--config`/`--project`/`--no-watch`/`--rid`/`--bundle`/`--out`/`--verbose`，支持 `--opt value` 与 `--opt=value`）；仓库根 `tarui.app.json`（`$schema` → `https://tarui.dev/schemas/app.v1.json`）作为示例清单与配置源；`dev` = 跑 `build.beforeDevCommand`（shell 透传）→ `DevServerProbe` 轮询 `build.devUrl`（60s 超时）→ 以 `TARUI_WEB_MODE=http` + `TARUI_WEB_URL` 起 `dotnet watch run --project <desktopProject>`，Ctrl+C 双进程协同停止（exit 130）；`build` = 跑 `build.beforeBuildCommand` → 校验 `frontendDist/index.html` → `dotnet publish -c Release -r <rid> --self-contained true -o dist/bin` → 校验 CEF 运行时存在性 → 按 `bundle.targets` 打包（W2 仅 zip，MSIX 为 W5 占位警告）→ 生成 `latest.json`（sha256，signature 占位空）；`info` = 环境/工具链探测（dotnet/pnpm 版本）+ RID + 清单诊断；`CliPaths` 相对路径统一相对清单目录解析、`RuntimeIdentifier` 按平台/架构取 RID、`AppManifestLoader`/`AppManifestValidator` 完成加载与业务校验（capability 文件存在性、bundle 目标白名单、devUrl 协议等）；`tests/Tarui.Cli.Tests` 自测试覆盖解析/清单/校验/路径/工具链/产物。偏离：`devUrl` 采用 `http://localhost:5173`（对齐 Vite 默认 IPv6 绑定，规避 127.0.0.1 不可达）；`latest.json` 为 Updater 蓝图占位（signature 恒空，冻结见 §13）；MSIX 目标 W2 仅报错不实现。 | 示例应用单命令 dev（HMR 可用）与 build（zip 可运行）全流程可复现✅；`tarui info`/`--version`/`--help` 正常✅；CLI 自测试全绿✅ | `dotnet run --project tests/Tarui.Cli.Tests`✅；`tarui dev` 冒烟（HMR）✅ + `tarui build` 产物（`dist/tarui.net-0.1.0-win-x64.zip` + `latest.json`）可运行✅ |
 | **W3 应用模板与 init** | ✅ 已完成(2026-08-22)：新增 `src/templates/Tarui.Templates`（`PackageType=Template`，以 dotnet template 包发布，`ContentTargetFolders=content` 使 `dotnet new install Tarui.Templates` 装载 `tarui-app` 短名）；react-ts 模板内容含 `MyApp.Desktop`（`Tarui.Hosting`/`Tarui.Shell`/`Tarui.SingleInstance`/`Tarui.WebView.CefGlueNext`/`Tarui.Plugins.Core`/`Tarui.Plugins.Window` 六包 + CEF RID 条件 + CEF/web 内容拷贝）、`web/` React+Vite 前端、`capabilities/main.json`（默认零插件、仅 core 级最小窗口/事件/路径权限）、`tarui.app.json`、README。CLI 新增 `init` 命令：`ProjectName`（C# 标识符与 reverse-DNS identifier 规范化）→ `dotnet new tarui-app` 实例化 → 按结构 JSON 补丁 `product.name`/`identifier`（规避模板占位符被 dotnet new 小写化导致文本替换失效）→ 可选用 `pnpm install`（manager 不存在时降级警告兜底）；`--local <repo>` 用 `LocalReferenceRewriter` 将 `PackageReference` 反向改写为 `ProjectReference` 并指向本地 CEF/web 产物根（正则保格式替换），支持仓库内开发。Architecture Tests 特例豁免 `src/templates`（模板 csproj 按设计引用 NuGet 运行时包）。验收：`tarui init tmp-app --local <repo>` 冒烟 → 新脚手架 desktop 项目对本地源树编译 0 错误；CLI/Architecture 自测试全绿；`dotnet pack` 模板包可安装。偏离：`--local` 验收因未发布 NuGet 包而改用本地 `ProjectReference` 编译验证（等价于发布模式三命令链路的前置）；`pnpm install` 失败仅警告不阻断脚手架产物。 | 新脚手架应用对本地源树编译通过✅；默认最小权限清单✅；`dotnet new install Tarui.Templates` + `tarui init [--local]`✅；CLI/Architecture 自测试全绿✅ | `tarui init tmp-app && cd tmp-app && tarui dev`（发布模式下以 NuGet 包验证）✅ |
-| **W4 插件工作流** | `tarui plugin init`；`permissions/` 清单交付与 schema 合成；`tarui plugin pack`；以一个新插件（HTTP/SQL/Updater 候选）走完整流程 | 试点插件完成双包发布演练（可内部 feed）；权限 schema 合成进应用构建 | `tarui plugin pack` 预检全绿 + 试点插件测试 |
+| **W4 插件工作流** | ✅ 已完成(2026-08-22)：新增 `tarui plugin` 子命令族——`init <name>`（`--output`/`--local`）与 `pack`。`PluginScaffolder` 以 CLI 直写文件生成插件骨架（`src/Tarui.Plugins.*` + `permissions/schema.json+default.json` + `guest-js/` + `tests/*.Tests`（含可构建 csproj） + `examples/demo` + README）；类名/DI 方法名由插件名规范化推导（`store`→`StorePlugin`/`AddStorePlugin`，无占位符遗留）；`--local` 复用 `LocalReferenceRewriter` 把三份 Tarui 包改写为本地 `ProjectReference`；`permissions/*.json` 同时设 `Link`（构建输出 `bin/permissions/store/`）与 `PackagePath`（nupkg 内 `permissions/store/`）双路交付。`SchemaSynthesizer` 接入 `tarui build`：发布输出内收集各插件 `permissions/<plugin>/schema.json` 合成为 `schemas/permissions.schema.json`（重 id 抛错），capabilities/*.json 仍为唯一授权真源。`PluginPacker` + `pack` 预检五步：布局检测（src 恰一个 csproj）→ 权限一致性（`default.json` 引用必须声明于 `schema.json` 且 id 以 `plugin:` 开头、唯一）→ 双包版本一致性（csproj `Version` == guest-js `package.json.version`）→ 运行插件自测试 → `dotnet pack`（确认 nupkg 含 `permissions/`）+ `npm pack`（guest-js）。试点：以 `store` 插件走完整 `init --local → build（0 警告）→ pack`（nupkg 含 `permissions/store/*` + guest-js tgz）。验收：CLI 自测试全绿；Architecture 门禁通过（845 files）；全量 `dotnet build tarui.net.sln` 0 警告/0 错误。偏离：前端 `npm pack` 需先 `npm install`（自检师遵循真实发布依赖安装链路）；`examples/demo` 以 README 骨架承载接线说明而非独立可运行应用，防止脚手架过度膨胀。 | 试点插件通过 `tarui plugin pack` 全绿✅（nupkg 含 `permissions/` + tgz） | `tarui plugin init store && tarui plugin pack`（.out 冒烟）✅；CLI/Architecture 自测试全绿✅ |
 | **W5 安装器与签名** | MSIX（评估 NSIS）；Authenticode；`latest.json` 占位产物 | 签名安装包可安装/卸载干净；产物清单与校验和生成 | `tarui build --bundle msix` + 安装验证 |
 
 各阶段完成标准追加：零编译警告；不放宽 Architecture Tests；文档（本文档 + `docs/architecture.md` + README）与实际行为同步。

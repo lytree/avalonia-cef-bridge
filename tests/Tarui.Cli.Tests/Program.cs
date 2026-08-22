@@ -16,6 +16,8 @@ internal static class Program
             LatestManifest();
             Init();
             Plugin();
+            PluginPack();
+            SchemaSynthesis();
         }
         catch (Exception exception)
         {
@@ -477,12 +479,27 @@ internal static class Program
             "The scaffolder must emit Contracts.cs.");
         Assert(File.Exists(Path.Combine(root, "permissions", "schema.json")),
             "The scaffolder must emit the permissions schema.");
+        Assert(File.Exists(Path.Combine(root, "permissions", "default.json")),
+            "The scaffolder must emit the default permission set.");
         Assert(File.Exists(Path.Combine(root, "guest-js", "package.json")),
             "The scaffolder must emit the guest-js package.");
+        Assert(File.Exists(Path.Combine(root, "guest-js", "tsconfig.json")),
+            "The scaffolder must emit a buildable guest-js tsconfig.");
+        Assert(File.Exists(Path.Combine(root, "guest-js", "src", "index.ts")),
+            "The scaffolder must emit a guest-js entry point.");
         Assert(File.Exists(Path.Combine(root, "tests", "Tarui.Plugins.Store.Tests", "Program.cs")),
             "The scaffolder must emit the test project.");
+        Assert(File.Exists(Path.Combine(root, "tests", "Tarui.Plugins.Store.Tests", "Tarui.Plugins.Store.Tests.csproj")),
+            "The scaffolder must emit a buildable test project.");
         Assert(File.Exists(Path.Combine(root, "README.md")),
             "The scaffolder must emit a README.");
+
+        var pluginCs = File.ReadAllText(Path.Combine(root, "src", "Tarui.Plugins.Store", "Plugin.cs"));
+        Assert(pluginCs.Contains("class StorePlugin", StringComparison.Ordinal) &&
+               pluginCs.Contains("AddStorePlugin", StringComparison.Ordinal),
+            "The scaffolder must derive plugin class names from the plugin name.");
+        Assert(!pluginCs.Contains("FooPlugin", StringComparison.Ordinal),
+            "The scaffolder must not retain placeholder class names.");
     }
 
     private static void PluginNameNormalization()
@@ -490,6 +507,195 @@ internal static class Program
         Assert(PluginScaffolder.NormalizePluginName("My-Store") == "my-store", "Plugin names must be lower-cased.");
         Assert(PluginScaffolder.NormalizePluginName("Foo!Bar") == "foobar", "Invalid characters must be stripped.");
         Assert(PluginScaffolder.NormalizePluginName("") == string.Empty, "An empty name normalizes to empty.");
+    }
+
+    private static void PluginPack()
+    {
+        DetectScaffoldLayout();
+        ValidDefaultsPass();
+        UnknownDefaultReferenceIsReported();
+        VersionMismatchIsReported();
+        DuplicateSchemaIdentifierIsReported();
+        MalformedSchemaThrows();
+    }
+
+    private static void DetectScaffoldLayout()
+    {
+        using var temp = TempDirectory.Create();
+        var root = PluginScaffolder.Scaffold("store", temp.Path, localRepo: null);
+        var layout = PluginPacker.Detect(root);
+        Assert(layout.PackageId == "Tarui.Plugins.Store", "The scaffolded package id must be detected.");
+        Assert(layout.Version == "0.1.0", $"The scaffolded version must be detected, got '{layout.Version}'.");
+        Assert(PluginPacker.HasPermissionsContent(layout), "The scaffolded permissions directory must be non-empty.");
+    }
+
+    private static void ValidDefaultsPass()
+    {
+        using var temp = TempDirectory.Create();
+        var root = PluginScaffolder.Scaffold("store", temp.Path, localRepo: null);
+        var errors = PluginPacker.ValidatePermissions(
+            Path.Combine(root, "permissions", "schema.json"),
+            Path.Combine(root, "permissions", "default.json"));
+        Assert(errors.Count == 0, $"The scaffolded permission set must be valid, got: {string.Join("; ", errors)}");
+        Assert(PluginPacker.CheckVersionConsistency(PluginPacker.Detect(root)) is null,
+            "Scaffolded backend and guest-js versions must agree.");
+    }
+
+    private static void UnknownDefaultReferenceIsReported()
+    {
+        using var temp = TempDirectory.Create();
+        var root = PluginScaffolder.Scaffold("store", temp.Path, localRepo: null);
+        File.WriteAllText(
+            Path.Combine(root, "permissions", "default.json"),
+            """{ "plugin": "store", "permissions": ["plugin:store|missing"] }""");
+        var errors = PluginPacker.ValidatePermissions(
+            Path.Combine(root, "permissions", "schema.json"),
+            Path.Combine(root, "permissions", "default.json"));
+        Assert(errors.Any(error => error.Contains("plugin:store|missing", StringComparison.Ordinal)),
+            "A default reference to an undeclared identifier must be reported.");
+    }
+
+    private static void VersionMismatchIsReported()
+    {
+        using var temp = TempDirectory.Create();
+        var root = PluginScaffolder.Scaffold("store", temp.Path, localRepo: null);
+        File.WriteAllText(
+            Path.Combine(root, "guest-js", "package.json"),
+            """{ "name": "@tarui/plugin-store", "version": "0.2.0" }""");
+        var problem = PluginPacker.CheckVersionConsistency(PluginPacker.Detect(root));
+        Assert(problem is not null && problem.Contains("0.2.0", StringComparison.Ordinal),
+            "A guest-js version that diverges from the backend must be reported.");
+    }
+
+    private static void DuplicateSchemaIdentifierIsReported()
+    {
+        using var temp = TempDirectory.Create();
+        var root = PluginScaffolder.Scaffold("store", temp.Path, localRepo: null);
+        File.WriteAllText(
+            Path.Combine(root, "permissions", "schema.json"),
+            """
+            {
+              "plugin": "store",
+              "version": "0.1.0",
+              "permissions": [
+                { "identifier": "plugin:store|ping", "scope": null },
+                { "identifier": "plugin:store|ping", "scope": null }
+              ]
+            }
+            """);
+        var errors = PluginPacker.ValidatePermissions(
+            Path.Combine(root, "permissions", "schema.json"),
+            Path.Combine(root, "permissions", "default.json"));
+        Assert(errors.Any(error => error.Contains("Duplicate", StringComparison.Ordinal)),
+            "Duplicate schema identifiers must be reported.");
+    }
+
+    private static void MalformedSchemaThrows()
+    {
+        using var temp = TempDirectory.Create();
+        var root = PluginScaffolder.Scaffold("store", temp.Path, localRepo: null);
+        File.WriteAllText(Path.Combine(root, "permissions", "schema.json"), "{ not json");
+        Throws<CliException>(
+            () => PluginPacker.ValidatePermissions(
+                Path.Combine(root, "permissions", "schema.json"),
+                Path.Combine(root, "permissions", "default.json")),
+            "A malformed schema must be reported as a CliException.");
+    }
+
+    private static void SchemaSynthesis()
+    {
+        MergesPluginSchemas();
+        WritesMergedSchemaToOutput();
+        RejectsDuplicateIdentifiers();
+        RejectsMalformedSchema();
+        ScaffoldedCsprojNamespacesPermissions();
+    }
+
+    private static void MergesPluginSchemas()
+    {
+        using var temp = TempDirectory.Create();
+        var binDir = Path.Combine(temp.Path, "bin");
+        WritePluginSchema(binDir, "foo", "plugin:foo|ping");
+        WritePluginSchema(binDir, "bar", "plugin:bar|ping");
+
+        var schema = SchemaSynthesizer.Synthesize(binDir);
+        var plugins = schema.Plugins;
+        Assert(plugins is { Count: 2 }, "Both plugin schemas must be collected.");
+        Assert(plugins![0].Plugin == "bar" && plugins[1].Plugin == "foo",
+            "Plugins must be merged in deterministic name order.");
+        Assert(plugins[0].Permissions?[0].Identifier == "plugin:bar|ping",
+            "Each plugin's permission identifier must be preserved.");
+    }
+
+    private static void WritesMergedSchemaToOutput()
+    {
+        using var temp = TempDirectory.Create();
+        var binDir = Path.Combine(temp.Path, "bin");
+        WritePluginSchema(binDir, "foo", "plugin:foo|ping");
+
+        var schema = SchemaSynthesizer.Synthesize(binDir);
+        var output = SchemaSynthesizer.Write(binDir, schema);
+        Assert(File.Exists(output), "The synthesized schema must be written to the publish output.");
+        Assert(Path.GetFileName(output) == "permissions.schema.json",
+            "The synthesized schema output must be named permissions.schema.json.");
+
+        var roundTripped = System.Text.Json.JsonSerializer.Deserialize(
+            File.ReadAllText(output),
+            TaruiCliJsonContext.Default.SynthesizedPermissionSchemaDto);
+        Assert(roundTripped?.Plugins is { Count: 1 } && roundTripped.Plugins[0].Plugin == "foo",
+            "The written schema must survive a round trip.");
+    }
+
+    private static void RejectsDuplicateIdentifiers()
+    {
+        using var temp = TempDirectory.Create();
+        var binDir = Path.Combine(temp.Path, "bin");
+        WritePluginSchema(binDir, "foo", "plugin:shared|ping");
+        WritePluginSchema(binDir, "bar", "plugin:shared|ping");
+
+        Throws<CliException>(() => SchemaSynthesizer.Synthesize(binDir),
+            "Duplicate permission identifiers across plugins must be rejected during synthesis.");
+    }
+
+    private static void RejectsMalformedSchema()
+    {
+        using var temp = TempDirectory.Create();
+        var binDir = Path.Combine(temp.Path, "bin");
+        Directory.CreateDirectory(Path.Combine(binDir, "permissions", "foo"));
+        File.WriteAllText(Path.Combine(binDir, "permissions", "foo", "schema.json"), "{ not json");
+
+        Throws<CliException>(() => SchemaSynthesizer.Synthesize(binDir),
+            "A malformed plugin schema must be reported as a CliException.");
+    }
+
+    private static void ScaffoldedCsprojNamespacesPermissions()
+    {
+        using var temp = TempDirectory.Create();
+        var root = PluginScaffolder.Scaffold("store", temp.Path, localRepo: null);
+        var csproj = File.ReadAllText(Path.Combine(root, "src", "Tarui.Plugins.Store", "Tarui.Plugins.Store.csproj"));
+        Assert(csproj.Contains(@"Link=""permissions\store\%(Filename)%(Extension)""", StringComparison.Ordinal),
+            "Scaffolded plugin permissions must be namespaced under the normalized plugin name.");
+        Assert(!csproj.Contains("{{normalized}}", StringComparison.Ordinal),
+            "The csproj must not retain the raw {{normalized}} anchor.");
+    }
+
+    private static void WritePluginSchema(string binDir, string plugin, string identifier)
+    {
+        var directory = Path.Combine(binDir, "permissions", plugin);
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(
+            Path.Combine(directory, "schema.json"),
+            $$"""
+            {
+              "plugin": "{{plugin}}",
+              "version": "0.1.0",
+              "permissions": [
+                { "identifier": "{{identifier}}", "description": "test", "scope": null }
+              ],
+              "events": [],
+              "default": []
+            }
+            """);
     }
 
     private static bool Has(IEnumerable<string> errors, string fragment) =>

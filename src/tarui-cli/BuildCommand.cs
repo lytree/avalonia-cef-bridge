@@ -31,6 +31,7 @@ internal sealed class BuildCommand
         ValidateFrontendDist(frontendDist);
         var binDir = await PublishAsync(desktopProject, rid, outDir, paths).ConfigureAwait(false);
         ValidateCefRuntime(rid, paths);
+        SynthesizePermissions(binDir);
 
         foreach (var target in bundleTargets)
         {
@@ -114,6 +115,26 @@ internal sealed class BuildCommand
             _console.Warn(
                 $"CEF runtime not found at runtime/cef/{rid}. The published app will not start until it exists. " +
                 $"Run: ./eng/cef/install-runtime.ps1 -RuntimeIdentifier {rid}");
+        }
+    }
+
+    /// <summary>Merges all referenced plugins' permission schemas into the publish output.</summary>
+    private void SynthesizePermissions(string binDir)
+    {
+        _console.Section();
+        try
+        {
+            var schema = SchemaSynthesizer.Synthesize(binDir);
+            var path = SchemaSynthesizer.Write(binDir, schema);
+            var count = schema.Plugins?.Count ?? 0;
+            _console.Info(
+                count == 0
+                    ? "No plugin permission schemas found; skipping (capabilities/*.json remain authoritative)."
+                    : $"Synthesized {count} plugin permission schema(s) into {path}");
+        }
+        catch (CliException exception)
+        {
+            _console.Warn(exception.Message);
         }
     }
 
