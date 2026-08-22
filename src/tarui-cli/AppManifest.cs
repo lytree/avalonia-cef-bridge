@@ -22,7 +22,17 @@ internal sealed record AppManifestBuild(
 internal sealed record AppManifestBundle(
     IReadOnlyList<string> Targets,
     string? Icon,
-    string? ShortDescription);
+    string? ShortDescription,
+    AppManifestMsix? Msix);
+
+/// <summary>MSIX bundle configuration (design §5.5 / W5). Signing stays optional:
+/// the packer emits a structurally valid package, and Authenticode signing runs when
+/// a certificate + signtool are supplied (cert procurement is the W5 prerequisite).</summary>
+internal sealed record AppManifestMsix(
+    string? Publisher,
+    string? CertificatePath,
+    string? CertificatePassword,
+    string? TimeStamperUrl);
 
 internal sealed record AppManifestApp(IReadOnlyList<string> Capabilities);
 
@@ -57,6 +67,20 @@ internal sealed class AppManifestBundleDto
     [JsonPropertyName("targets")] public List<string>? Targets { get; set; }
     [JsonPropertyName("icon")] public string? Icon { get; set; }
     [JsonPropertyName("shortDescription")] public string? ShortDescription { get; set; }
+    [JsonPropertyName("msix")] public AppManifestMsixDto? Msix { get; set; }
+}
+
+internal sealed class AppManifestMsixDto
+{
+    [JsonPropertyName("publisher")] public string? Publisher { get; set; }
+    [JsonPropertyName("certificate")] public AppManifestMsixCertificateDto? Certificate { get; set; }
+}
+
+internal sealed class AppManifestMsixCertificateDto
+{
+    [JsonPropertyName("path")] public string? Path { get; set; }
+    [JsonPropertyName("password")] public string? Password { get; set; }
+    [JsonPropertyName("timeStamperUrl")] public string? TimeStamperUrl { get; set; }
 }
 
 internal sealed class AppManifestAppDto
@@ -101,10 +125,25 @@ internal static class AppManifestLoader
             new AppManifestBundle(
                 dto.Bundle?.Targets ?? [],
                 dto.Bundle?.Icon,
-                dto.Bundle?.ShortDescription),
+                dto.Bundle?.ShortDescription,
+                ToMsix(dto.Bundle?.Msix)),
             dto.App is null
                 ? null
                 : new AppManifestApp(dto.App.Capabilities ?? []));
+    }
+
+    private static AppManifestMsix? ToMsix(AppManifestMsixDto? dto)
+    {
+        if (dto is null)
+        {
+            return null;
+        }
+
+        return new AppManifestMsix(
+            dto.Publisher,
+            dto.Certificate?.Path,
+            dto.Certificate?.Password,
+            dto.Certificate?.TimeStamperUrl);
     }
 
     public static AppManifest Load(string manifestPath)

@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using Tarui.Cli;
 
 namespace Tarui.Cli.Tests;
@@ -18,6 +19,7 @@ internal static class Program
             Plugin();
             PluginPack();
             SchemaSynthesis();
+            Msix();
         }
         catch (Exception exception)
         {
@@ -697,6 +699,132 @@ internal static class Program
             }
             """);
     }
+
+    private static void Msix()
+    {
+        ParsesMsixManifest();
+        MsixManifestReportsTargetMismatch();
+        AppxManifestHasExpectedFields();
+        BlockMapMatchesPackageContents();
+        EndToEndPacksValidPackage();
+    }
+
+    private static void ParsesMsixManifest()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "my-app", "version": "0.1.0", "identifier": "com.example.app" },
+              "build": { "frontendDist": "web/dist" },
+              "bundle": {
+                "targets": ["msix"],
+                "msix": {
+                  "publisher": "CN=Contoso",
+                  "certificate": { "path": "cert.pfx", "password": "p", "timeStamperUrl": "http://ts.example" }
+                }
+              }
+            }
+            """);
+        Assert(manifest.Bundle.Msix?.Publisher == "CN=Contoso", "bundle.msix.publisher must be parsed.");
+        Assert(manifest.Bundle.Msix?.CertificatePath == "cert.pfx", "bundle.msix.certificate.path must be parsed.");
+        Assert(manifest.Bundle.Msix?.CertificatePassword == "p", "bundle.msix.certificate.password must be parsed.");
+        Assert(manifest.Bundle.Msix?.TimeStamperUrl == "http://ts.example", "bundle.msix.certificate.timeStamperUrl must be parsed.");
+    }
+
+    private static void MsixManifestReportsTargetMismatch()
+    {
+        using var directory = TempDirectory.Create();
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "a", "version": "0.1.0", "identifier": "a" },
+              "build": { "frontendDist": "d" },
+              "bundle": { "targets": ["zip"], "msix": { "publisher": "CN=X" } }
+            }
+            """);
+        var errors = AppManifestValidator.Validate(manifest, directory.Path);
+        Assert(Has(errors, "'msix'"), "bundle.msix without an 'msix' target must be reported.");
+    }
+
+    private static void AppxManifestHasExpectedFields()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "my-app", "version": "0.1.0", "identifier": "com.example.app" },
+              "build": { "frontendDist": "web/dist" },
+              "bundle": { "targets": ["msix"], "shortDescription": "A test app", "msix": { "publisher": "CN=Contoso" } }
+            }
+            """);
+        var xml = MsixPacker.BuildAppxManifest(manifest, "MyApp.exe", "win-x64");
+        Assert(xml.Contains($"Name=\"com.example.app\"", StringComparison.Ordinal), "The appx identity must carry the identifier.");
+        Assert(xml.Contains($"Publisher=\"CN=Contoso\"", StringComparison.Ordinal), "The appx identity must carry the publisher.");
+        Assert(xml.Contains("Version=\"0.1.0.0\"", StringComparison.Ordinal), "The version must be normalized to four parts.");
+        Assert(xml.Contains("ProcessorArchitecture=\"x64\"", StringComparison.Ordinal), "The win-x64 rid must map to x64.");
+        Assert(xml.Contains("Executable=\"MyApp.exe\"", StringComparison.Ordinal), "The entry executable must be registered.");
+        Assert(xml.Contains("DisplayName>my-app", StringComparison.Ordinal), "The display name must be emitted.");
+        Assert(xml.Contains("Description>A test app", StringComparison.Ordinal), "The short description must be emitted.");
+        Assert(xml.Contains("runFullTrust", StringComparison.Ordinal), "A full-trust desktop app must declare runFullTrust.");
+    }
+
+    private static void BlockMapMatchesPackageContents()
+    {
+        using var directory = TempDirectory.Create();
+        var binDir = Path.Combine(directory.Path, "bin");
+        Directory.CreateDirectory(binDir);
+        WriteSamplePayload(binDir);
+        var manifest = ManifestForMsix();
+        var result = MsixPacker.PackAsync(manifest, "my-app.exe", binDir, directory.Path, "win-x64").GetAwaiter().GetResult();
+        Assert(File.Exists(result.Path), "The MSIX must be written to the output directory.");
+        Assert(result.Path.EndsWith(".msix", StringComparison.OrdinalIgnoreCase), "The output must carry an .msix extension.");
+        Assert(!result.Signed, "Without a certificate the package must be emitted unsigned.");
+        Assert(result.Sha256.Length == 64, "The package SHA-256 must be computed.");
+        Assert(MsixPacker.VerifyBlockMap(result.Path), "The on-disk block map must match the stored payload hashes.");
+    }
+
+    private static void EndToEndPacksValidPackage()
+    {
+        using var directory = TempDirectory.Create();
+        var binDir = Path.Combine(directory.Path, "bin");
+        Directory.CreateDirectory(binDir);
+        var payload = WriteSamplePayload(binDir);
+        var manifest = ManifestForMsix();
+        var result = MsixPacker.PackAsync(manifest, "my-app.exe", binDir, directory.Path, "win-x64").GetAwaiter().GetResult();
+
+        using var archive = ZipFile.OpenRead(result.Path);
+        Assert(archive.GetEntry("[Content_Types].xml") is not null, "The OPC content types part must be present.");
+        Assert(archive.GetEntry("AppxManifest.xml") is not null, "The appx manifest part must be present.");
+        Assert(archive.GetEntry("AppxBlockMap.xml") is not null, "The appx block map part must be present.");
+
+        foreach (var relative in payload)
+        {
+            Assert(archive.GetEntry(relative) is not null, $"The payload part {relative} must be included.");
+        }
+
+        Assert(MsixPacker.VerifyBlockMap(result.Path), "The packaged payload must satisfy the block map.");
+    }
+
+    private static List<string> WriteSamplePayload(string binDir)
+    {
+        var files = new List<string>();
+        File.WriteAllText(Path.Combine(binDir, "my-app.exe"), "app-binary");
+        files.Add("my-app.exe");
+        File.WriteAllText(Path.Combine(binDir, "app.dll"), "managed");
+        files.Add("app.dll");
+        File.WriteAllText(Path.Combine(binDir, "index.html"), "<html></html>");
+        files.Add("index.html");
+        return files;
+    }
+
+    private static AppManifest ManifestForMsix() =>
+        AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "my-app", "version": "0.1.0", "identifier": "com.example.app" },
+              "build": { "frontendDist": "web/dist" },
+              "bundle": { "targets": ["msix"] }
+            }
+            """);
 
     private static bool Has(IEnumerable<string> errors, string fragment) =>
         errors.Any(error => error.Contains(fragment, StringComparison.Ordinal));

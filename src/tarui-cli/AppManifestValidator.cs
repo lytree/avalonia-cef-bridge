@@ -63,6 +63,28 @@ internal static class AppManifestValidator
             }
         }
 
+        ValidateMsix(manifest, errors);
+
         return errors;
+    }
+
+    private static void ValidateMsix(AppManifest manifest, List<string> errors)
+    {
+        var msix = manifest.Bundle.Msix;
+        if (msix is null)
+        {
+            return;
+        }
+
+        var hasMsixTarget = manifest.Bundle.Targets.Contains("msix");
+        if (!hasMsixTarget)
+        {
+            errors.Add("bundle.msix is configured but bundle.targets does not include 'msix'.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(msix.CertificatePath) && !File.Exists(msix.CertificatePath))
+        {
+            errors.Add($"bundle.msix.certificate.path not found: {msix.CertificatePath}");
+        }
     }
 }

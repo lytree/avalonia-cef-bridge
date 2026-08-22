@@ -153,7 +153,7 @@ internal sealed class BuildCommand
                 await BundleZipAsync(manifest, binDir, outDir, rid).ConfigureAwait(false);
                 break;
             case "msix":
-                _console.Warn("MSIX bundling is planned for W5 and is not available yet.");
+                await BundleMsixAsync(manifest, binDir, outDir, rid).ConfigureAwait(false);
                 break;
             default:
                 throw new CliException($"Unsupported bundle target '{target}'.");
@@ -184,6 +184,33 @@ internal sealed class BuildCommand
         var json = System.Text.Json.JsonSerializer.Serialize(latest, TaruiCliJsonContext.Default.LatestManifestDto);
         await File.WriteAllTextAsync(Path.Combine(outDir, "latest.json"), json).ConfigureAwait(false);
         _console.Info($"Wrote latest.json (sha256 {sha256[..16]}...).");
+    }
+
+    private async Task BundleMsixAsync(AppManifest manifest, string binDir, string outDir, string rid)
+    {
+        var exe = LocateAppExecutable(manifest.Product.Name, binDir);
+        _console.Info($"Packaging MSIX (unsigned unless a certificate is configured) from {binDir} ...");
+        var result = await MsixPacker.PackAsync(manifest, exe, binDir, outDir, rid).ConfigureAwait(false);
+        _console.Info(
+            result.Signed
+                ? $"Wrote and signed {Path.GetFileName(result.Path)} (sha256 {result.Sha256[..16]}...)."
+                : $"Wrote unsigned {Path.GetFileName(result.Path)} (sha256 {result.Sha256[..16]}...).");
+    }
+
+    private static string LocateAppExecutable(string productName, string binDir)
+    {
+        var direct = Path.Combine(binDir, $"{productName}.exe");
+        if (File.Exists(direct))
+        {
+            return $"{productName}.exe";
+        }
+
+        var exes = Directory.GetFiles(binDir, "*.exe", SearchOption.TopDirectoryOnly);
+        var matching = exes
+            .Where(path => string.Equals(Path.GetFileNameWithoutExtension(path), productName, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(path => path.Length)
+            .FirstOrDefault();
+        return Path.GetFileName(matching ?? exes.First(path => !path.EndsWith(".api.exe", StringComparison.OrdinalIgnoreCase)));
     }
 
     private static string ToBundleFileName(string name)
