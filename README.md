@@ -34,6 +34,7 @@ web/
 tests/                     Executable and integration tests
 capabilities/              Window/WebView permission manifests
 runtime/cef/               Locally installed native CEF distributions
+examples/demo/             In-repo demo app (local ProjectReference to src/)
 eng/cef/                   Native runtime installation tooling
 docs/                      Architecture and implementation notes
 ```
@@ -154,6 +155,17 @@ tarui --help     # full command surface
 ```
 
 `tarui dev` starts `build.beforeDevCommand` in `build.frontend`, waits for `build.devUrl` to become reachable, then launches the desktop project with `TARUI_WEB_MODE=http` and `TARUI_WEB_URL=<devUrl>`. `tarui build` runs `build.beforeBuildCommand`, validates `build.frontendDist`, publishes the desktop project self-contained for the current RID, then produces the configured `bundle.targets` — a portable `zip` plus an MSIX (`--bundle msix`, or `bundle.targets: ["zip","msix"]`) — and an updater blueprint `dist/latest.json` with SHA-256. The MSIX is built by the managed `MsixPacker` (OPC ZIP + `AppxManifest.xml` + SHA-256 `AppxBlockMap.xml`, no `makeappx` dependency); if `bundle.msix.certificate.{path,password,timeStamperUrl}` is configured it is Authenticode-signed via `signtool.exe`, otherwise it is emitted unsigned. During `build` it also merges every referenced plugin's `permissions/<plugin>/schema.json` into `schemas/permissions.schema.json` (a validation aid only — `capabilities/*.json` remain the sole runtime authorization source). `tarui plugin init` scaffolds a plugin with permission descriptors, a typed guest-js bridge and console self-tests; `tarui plugin pack` validates layout, permission/version consistency, runs self-tests, and packs both the NuGet backend (with `permissions/`) and the npm frontend. Run from the repository root; see `docs/dev-workflow-design.md` for the manifest schema and the phased rollout (W3 application templates / `tarui init` complete, W4 plugin workflow complete, W5 installers complete).
+
+## Demo app
+
+[`examples/demo`](examples/demo) is an in-repo sample application that wires the desktop host, the `core:window|*`, `core:event|emit`, `plugin:fs|*` and `plugin:store|*` plugins, and the `@lytree/api` frontend bridge end to end. It builds against the local `src/` tree via `ProjectReference` (no published packages), so it always tracks the current source.
+
+```powershell
+cd examples/demo/Demo.Desktop
+dotnet run --project Demo.Desktop.csproj
+```
+
+The React UI (`examples/demo/web`) demonstrates window+IPC state control, routed events, and isolated `appData` store/fs access. Its `capabilities/main.json` grants only the permissions the demo exercises.
 
 ## CI and releases
 
