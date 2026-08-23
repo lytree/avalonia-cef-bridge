@@ -410,7 +410,7 @@ tray://menu-item-clicked
 启动顺序必须保持：
 
 ```text
-CefGlueRuntimeBootstrap.RunSubProcess(args)
+CefGlueNextAvaloniaRuntime.RunSubProcess(args)
   -> 单实例主进程判定
   -> Tarui Host 构建和启动
   -> Avalonia 窗口创建
@@ -426,7 +426,7 @@ CefGlueRuntimeBootstrap.RunSubProcess(args)
 }
 ```
 
-主窗口未注册时进入有界队列，注册后发送 `app://second-instance`。Windows 使用命名 Mutex 加 Named Pipe；macOS/Linux 使用进程锁加本地 socket，并保证通信端点只对当前用户开放。
+主窗口未注册时进入有界队列，注册后发送 `app://second-instance`。Windows 使用命名 Mutex 加 Named Pipe；macOS/Linux 使用进程锁加本地 socket，并保证通信端点只对当前用户开放。应用关闭时先等待所有 WebView native close 完成，再让 Avalonia loop 与 Host Stop/Dispose 完成，最后由 `Program` 的 `finally` 执行 CEF runtime shutdown。
 
 ### 7.2 窗口状态
 

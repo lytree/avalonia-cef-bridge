@@ -104,6 +104,11 @@ namespace Xilium.CefGlue.Common
         /// Event fired when the browser is initialized.
         /// </summary>
         public event Action BrowserInitialized { add => _adapter.Initialized += value; remove => _adapter.Initialized -= value; }
+
+        /// <summary>
+        /// Event fired after the native browser has completed its close sequence.
+        /// </summary>
+        public event Action BrowserClosed { add => _adapter.BrowserClosed += value; remove => _adapter.BrowserClosed -= value; }
         
         /// <summary>
         /// Event fired when the browser starts loading a frame.

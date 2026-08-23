@@ -238,7 +238,7 @@ CLI 在 `dev`/`build` 启动时校验：schema 合法、`frontendDist` 含 `inde
 1. 读取并校验 `tarui.app.json`。
 2. spawn `build.beforeDevCommand`（如 `pnpm dev`），轮询 `devUrl` 直到 HTTP 可达（超时 60s，失败输出子进程日志尾部）。
 3. 以 `TARUI_WEB_MODE=http`、`TARUI_WEB_URL=<devUrl>` 启动 `dotnet watch run --project <desktop>`（可配置退化为 `dotnet run`）。
-4. Ctrl+C 时按进程组优雅终止双进程（CEF 子进程沿用 `CefGlueRuntimeBootstrap.RunSubProcess` 既有分发清理）。
+4. Ctrl+C 时按进程组优雅终止双进程（CEF 子进程沿用 `CefGlueNextAvaloniaRuntime.RunSubProcess` 分发；所有浏览器 native close 完成、Avalonia loop 退出且 Host Stop/Dispose 完成后，由 `Program` 的 `finally` 执行 runtime shutdown）。
 
 热重载边界（与 Tauri 对齐，明确文档化）：
 
@@ -280,15 +280,17 @@ dist/
 | `Tarui.Contracts` | `src/core/Tarui.Contracts` | 核心契约 DTO + `TaruiJsonContext` 元数据 | — |
 | `Tarui.Ipc` | `src/core/Tarui.Ipc` | `CommandRouter`/`CapabilitySet`/`EventRouter`/`ITaruiPlugin` + Roslyn 命令目录生成器 | `Tarui.Contracts` |
 | `Tarui.WebView.Abstractions` | `src/webview/Tarui.WebView.Abstractions` | `IWebView`/请求策略/拖拽区域 | `Tarui.Ipc` |
+| `Tarui.WebView.Avalonia` | `src/webview/Tarui.WebView.Avalonia` | Avalonia `Control` 承载契约 | `Tarui.WebView.Abstractions` + Avalonia |
 | `Tarui.Hosting` | `src/desktop/Tarui.Hosting` | `TaruiHost`/`TaruiApplicationBuilder` | `Tarui.Ipc` |
 | `Tarui.Shell` | `src/desktop/Tarui.Shell` | Avalonia 窗口壳 + 平台服务 | `Tarui.Hosting` |
-| `Tarui.WebView.CefGlueNext` | `src/webview/Tarui.WebView.CefGlueNext` | CEF 实现（含仓库内 cefglue 源码） | `Tarui.WebView.Abstractions` |
-| `Tarui.Runtime.Cef.<rid>` | 新增 | CEF 原生二进制（`runtimes/<rid>/native` 布局） | — |
+| `CefGlue.Next.Avalonia` | `src/webview/CefGlue.Next.Avalonia` | 直接 Avalonia 浏览器控件、CEF handler、runtime/subprocess 生命周期；包内嵌托管 CefGlue DLL | Avalonia；仓库内 vendored CefGlue 项目 |
+| `Tarui.WebView.CefGlueNext` | `src/webview/Tarui.WebView.CefGlueNext` | Tarui 配置、IPC、capability policy 与组件事件适配 | `Tarui.WebView.Abstractions` + `Tarui.WebView.Avalonia` + `CefGlue.Next.Avalonia` |
+| `Tarui.Runtime.Cef.<rid>` | 新增/规划 | CEF 原生二进制（`runtimes/<rid>/native` 布局） | — |
 | `Tarui.Plugins.*`（15 个） | `src/plugins/*` | 每插件一包（§8） | `Tarui.Ipc`（部分含 `Tarui.Contracts`） |
 | `Tarui.Cli` | `src/tarui-cli`（新增） | dotnet tool | — |
 | `Tarui.Templates` | 新增 | `dotnet new` 模板包 | — |
 
-发布顺序（拓扑序）：`Tarui.Contracts` → `Tarui.Ipc` → `Tarui.WebView.Abstractions` → `Tarui.Hosting` → `Tarui.Shell` / `Tarui.WebView.CefGlueNext`（+Runtime 包）→ `Tarui.Plugins.*` → `Tarui.Cli` / `Tarui.Templates`（无依赖，独立）。
+发布顺序（拓扑序）：`Tarui.Contracts` → `Tarui.Ipc` → `Tarui.WebView.Abstractions` → `Tarui.WebView.Avalonia` / `CefGlue.Next.Avalonia` → `Tarui.Hosting` → `Tarui.Shell` / `Tarui.WebView.CefGlueNext`（+Runtime 包）→ `Tarui.Plugins.*` → `Tarui.Cli` / `Tarui.Templates`（无依赖，独立）。
 
 ### 6.2 打包规范
 
@@ -297,8 +299,9 @@ dist/
 - **可复现构建**：`ContinuousIntegrationBuild=true`（deterministic + SourceLink）、符号包 `SymbolPackageFormat=snupkg`。
 - **生成器随包分发**：`Tarui.Ipc` 的 Roslyn 生成器以 analyzer 资产打包（`build/` 目标注入，`DevelopmentDependency=true`，`PrivateAssets=all`），消费方 ProjectReference→PackageReference 后行为不变。
 - **CEF 特殊性**：
-  - cefglue 托管源码随 `Tarui.WebView.CefGlueNext` 主包发布；
-  - CEF **原生二进制不进主包**，拆 `Tarui.Runtime.Cef.win-x64` / `win-arm64` / `linux-x64` / `linux-arm64` / `osx-*` 运行时包，主包按 RID 声明依赖；终端应用 `dotnet add package` 即得完整运行时；
+  - `CefGlue.Next.Avalonia` 主包随包发布 `CefGlue.Next.Avalonia.dll`、`Xilium.CefGlue.dll`、`Xilium.CefGlue.Common.dll`、`Xilium.CefGlue.Common.Shared.dll`、`Xilium.CefGlue.BrowserProcess.Core.dll` 和 `Xilium.CefGlue.Avalonia.dll`；nuspec 不得声明任何 Xilium/CefGlue 包依赖；
+  - `Tarui.WebView.CefGlueNext` 只引用 `CefGlue.Next.Avalonia`，不直接引用 vendored CefGlue；
+  - CEF **原生二进制不进 managed 主包**，拆 `Tarui.Runtime.Cef.win-x64` / `win-arm64` / `linux-x64` / `linux-arm64` / `osx-*` 运行时包，或继续由仓库安装器提供；
   - 仓库内开发继续走 `eng/cef/install-runtime.ps1`（避免日常 restore 数百 MB）。
 - TFM：`net10.0` 起步；是否下探 `net8.0` LTS 为开放问题（§12-5）。
 
@@ -436,8 +439,8 @@ my-app/
 
 ## 10. CI/CD 与发布工程
 
-- **PR 门禁**（不变量，复用 alignment plan §13）：`dotnet build` 0 警告 → 全部自测试退出码 0 → `Tarui.Architecture.Tests` → `pnpm lint` + `pnpm build`。
-- **新增包门禁**：所有可打包项目 `dotnet pack` 成功；`@lytree/api` `npm pack` dry-run 成功；版本一致性校验（`Directory.Build.props` == 全部 `package.json`）。
+- **PR 门禁**（不变量，复用 alignment plan §13）：`dotnet build` 0 警告 → `dotnet pack` → `Tarui.Architecture.Tests --require-package`（ProjectReference 边界 + CefGlue.Next.Avalonia 包内容/nuspec）→ 全部自测试退出码 0 → `pnpm lint` + `pnpm build`。
+- **新增包门禁**：所有可打包项目 `dotnet pack` 成功；`CefGlue.Next.Avalonia` 必须包含全部托管 CefGlue DLL 且无 Xilium 包依赖；临时外部 classlib 必须能仅通过 NuGet 包 restore/build；`@lytree/api` `npm pack` dry-run 成功；版本一致性校验（`Directory.Build.props` == 全部 `package.json`）。
 - **发布流水线**：tag `tarui-v{version}` 驱动 → NuGet 拓扑序推送 → `npm publish` → GitHub Release 附 `tarui build` 产物。
 - **签名与密钥**：
   - NuGet：SourceLink + snupkg；

@@ -2,9 +2,27 @@
 
 ## Ownership boundaries
 
-Avalonia owns the window, native dialogs, platform services, WebView lifecycle, and recovery UI. The Web application owns routes, forms, tables, and business state.
+Avalonia owns the window, native dialogs, platform services, WebView presentation lifecycle, and recovery UI. The Web application owns routes, forms, tables, and business state. The browser implementation is a replaceable component boundary rather than a Shell concern.
 
-The Shell depends only on `Tarui.WebView.Abstractions`. `Tarui.App` registers the CefGlue WebView through `AddCefGlueWebView()`. Plugins are referenced and registered explicitly at the composition root through `AddPlugin<T>()` / `Add*Plugin()`; there is no plugin scan, runtime type lookup, or reflection-based dependency injection.
+The Shell depends on `Tarui.WebView.Abstractions` and the Avalonia-only `Tarui.WebView.Avalonia` hosting contract; it never references Xilium CefGlue. `Tarui.App` registers `Tarui.WebView.CefGlueNext` through `AddCefGlueWebView()`, and that adapter consumes `CefGlue.Next.Avalonia` as its only CefGlue component entry. Plugins are referenced and registered explicitly at the composition root through `AddPlugin<T>()` / `Add*Plugin()`; there is no plugin scan, runtime type lookup, or reflection-based dependency injection.
+
+## Browser package graph
+
+```text
+Tarui.WebView.Abstractions
+  UI-neutral WebView contracts
+       |
+Tarui.WebView.Avalonia
+  Avalonia Control hosting contract
+       |
+Tarui.Shell ----------------------+
+                                  |
+Tarui.WebView.CefGlueNext --------+--> CefGlue.Next.Avalonia
+                                       Avalonia control + CefGlue handlers
+                                       runtime/subprocess lifecycle
+```
+
+`Tarui.WebView.Abstractions` must not reference Avalonia or Xilium assemblies. `Tarui.Shell` and `Tarui.Hosting` may use Avalonia for native UI, but must not reference Xilium CefGlue. The vendored projects under `src/webview/cefglue` are implementation inputs consumed only by `CefGlue.Next.Avalonia`; they are not application-facing package dependencies.
 
 ## Hosting
 
@@ -14,15 +32,15 @@ The Shell depends only on `Tarui.WebView.Abstractions`. `Tarui.App` registers th
 
 ## Managed browser stack
 
-The browser stack is compiled entirely from projects under `src/webview/cefglue`:
+The browser stack is compiled from projects under `src/webview/cefglue` and published through `CefGlue.Next.Avalonia`:
 
 - `CefGlue.Core`: generated CEF P/Invoke bindings and native API wrappers.
 - `CefGlue.Common.Shared`: process messages, pipes, and generated JSON metadata.
 - `CefGlue.Common`: browser lifecycle and windowed hosting.
 - `CefGlue.BrowserProcess.Core`: same-executable CEF subprocess entry and renderer bridge.
-- `CefGlue.Avalonia`: Avalonia 12 native control host.
+- `CefGlue.Avalonia`: Avalonia 12 native control host, embedded in the component package.
 
-No CefGlue, ReactiveUI, System.Reactive, Avalonia WebView, or CEF runtime NuGet package is referenced. The remaining Avalonia package references provide the application framework itself.
+The `CefGlue.Next.Avalonia` nupkg contains `CefGlue.Next.Avalonia.dll` plus all five required `Xilium.CefGlue*.dll` assemblies. Its nuspec declares Avalonia but no Xilium/CefGlue package dependency. No other Tarui project may reference the vendored CefGlue projects directly.
 
 ## IPC
 
@@ -72,11 +90,13 @@ Adding a command means: DTO record in `Tarui.Contracts` (plus `TaruiJsonContext`
 
 ## Process model
 
-`Tarui.App.Program` calls `CefGlueRuntimeBootstrap.RunSubProcess(args)` before the host builder is created. CEF renderer and utility process launches therefore reuse the same executable, while the normal browser process continues into the host and Avalonia.
+`Tarui.App.Program` calls `CefGlueNextAvaloniaRuntime.RunSubProcess(args)` before the host builder is created. CEF renderer and utility process launches therefore reuse the same executable, while the normal browser process continues into the host and Avalonia. `Tarui.WebView.CefGlueNext` keeps a compatibility forwarding method for Tarui callers, but the component runtime is the lifecycle owner.
 
 ## Native runtime
 
 CEF native binaries are installed with `eng/cef/install-runtime.ps1` into `runtime/cef/<rid>`. They are downloaded from the official CEF automated build endpoint, checksum verified, and copied into application output when present. This keeps large binaries out of normal Git history without introducing a NuGet runtime dependency.
+
+The managed component and native runtime have separate distribution responsibilities: `CefGlue.Next.Avalonia` carries managed CefGlue assemblies, while the application supplies the matching native CEF distribution. A future RID runtime package can replace the repository installer without changing the Avalonia component API.
 
 ## Web resource transport
 
@@ -90,3 +110,21 @@ Scheme requests accept GET and HEAD only. Resolution validates the exact origin,
 ## Rendering scope
 
 The Avalonia 12 port currently supports native windowed rendering. OSR, shared-frame delivery UI, and Avalonia 11 drag-and-drop adapters are excluded from the Avalonia project until a dedicated Avalonia 12 implementation is required.
+
+## Lifecycle order
+
+The process-level order is intentionally explicit:
+
+```text
+CefGlueNextAvaloniaRuntime.RunSubProcess(args)
+  -> create Host and Avalonia lifetime
+  -> initialize CefGlue runtime once
+  -> create windows and WebViews
+  -> close windows
+  -> await every WebView CloseAsync/DisposeAsync and BrowserClosed callback
+  -> Avalonia loop exits
+  -> Host StopAsync and Dispose complete
+  -> Program finally calls CefGlueNextAvaloniaRuntime.Shutdown()
+```
+
+The runtime must not be shut down while a browser control is still waiting for its native close callback. Avalonia and the Host must finish their stop/dispose sequence before the composition root's `finally` block shuts down CEF. This ordering is part of the component contract and is checked by the application composition and release documentation.

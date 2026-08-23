@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>CefGlue.Next.Avalonia</RootNamespace>
+    <AssemblyName>CefGlue.Next.Avalonia</AssemblyName>
+    <PackageId>CefGlue.Next.Avalonia</PackageId>
+    <Description>CEF browser control and runtime integration for Avalonia.</Description>
+    <PackageTags>cef;cefglue;avalonia;webview;browser</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA1716</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../cefglue/CefGlue.Avalonia/CefGlue.Avalonia.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../cefglue/CefGlue.BrowserProcess.Core/CefGlue.BrowserProcess.Core.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../cefglue/CefGlue.Common/CefGlue.Common.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="CefGlue.Next.Avalonia.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeCefGlueAssembliesInPackage</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+
+  <Target Name="IncludeCefGlueAssembliesInPackage">
+    <ItemGroup>
+      <BuildOutputInPackage Include="$(OutputPath)Xilium.CefGlue*.dll" />
+      <BuildOutputInPackage Include="$(OutputPath)Xilium.CefGlue*.xml" />
+    </ItemGroup>
+  </Target>
+</Project>

@@ -8,11 +8,21 @@ namespace Xilium.CefGlue.Common
 {
     public static class CefRuntimeLoader
     {
+        private static readonly object SyncRoot = new object();
         private static Action<BrowserProcessHandler> _delayedInitialization;
+        private static bool _processExitHooked;
 
         public static void Initialize(CefSettings settings = null, KeyValuePair<string, string>[] flags = null, CustomScheme[] customSchemes = null)
         {
-            _delayedInitialization = (browserProcessHandler) => InternalInitialize(settings, flags, customSchemes, browserProcessHandler);
+            lock (SyncRoot)
+            {
+                if (CefRuntime.IsInitialized)
+                {
+                    return;
+                }
+
+                _delayedInitialization = (browserProcessHandler) => InternalInitialize(settings, flags, customSchemes, browserProcessHandler);
+            }
         }
 
         private static void InternalInitialize(CefSettings settings = null, KeyValuePair<string, string>[] flags = null, CustomScheme[] customSchemes = null, BrowserProcessHandler browserProcessHandler = null)
@@ -80,7 +90,14 @@ namespace Xilium.CefGlue.Common
                     break;
             }
 
-            AppDomain.CurrentDomain.ProcessExit += delegate { CefRuntime.Shutdown(); };
+            lock (SyncRoot)
+            {
+                if (!_processExitHooked)
+                {
+                    AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+                    _processExitHooked = true;
+                }
+            }
 
             IsOSREnabled = settings.WindowlessRenderingEnabled;
 
@@ -117,16 +134,40 @@ namespace Xilium.CefGlue.Common
             }
         }
 
-        internal static void Load(BrowserProcessHandler browserProcessHandler = null)
+        public static void Load(BrowserProcessHandler browserProcessHandler = null)
         {
-            if (_delayedInitialization != null)
+            Action<BrowserProcessHandler> initialization;
+            lock (SyncRoot)
             {
-                _delayedInitialization.Invoke(browserProcessHandler);
-                _delayedInitialization = null;
+                if (CefRuntime.IsInitialized)
+                {
+                    return;
+                }
+
+                initialization = _delayedInitialization ?? (handler => InternalInitialize(browserProcessHandler: handler));
             }
-            else
+
+            initialization(browserProcessHandler);
+
+            lock (SyncRoot)
             {
-                InternalInitialize(browserProcessHandler: browserProcessHandler);
+                if (CefRuntime.IsInitialized)
+                {
+                    _delayedInitialization = null;
+                }
+            }
+        }
+
+        public static void Shutdown()
+        {
+            lock (SyncRoot)
+            {
+                _delayedInitialization = null;
+                IsOSREnabled = false;
+                if (CefRuntime.IsInitialized)
+                {
+                    CefRuntime.Shutdown();
+                }
             }
         }
 
@@ -134,18 +175,15 @@ namespace Xilium.CefGlue.Common
 
         internal static bool IsOSREnabled { get; private set; }
 
-        private static string BrowserProcessFileName
+        private static void OnProcessExit(object sender, EventArgs e)
         {
-            get
+            try
             {
-                const string Filename = "Xilium.CefGlue.BrowserProcess";
-                switch (CefRuntime.Platform)
-                {
-                    case CefRuntimePlatform.Windows:
-                        return Filename + ".exe";
-                    default:
-                        return Filename;
-                }
+                Shutdown();
+            }
+            catch
+            {
+                // Process exit must not be interrupted by a native shutdown error.
             }
         }
     }

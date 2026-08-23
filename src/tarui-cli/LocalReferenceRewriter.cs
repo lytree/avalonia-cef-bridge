@@ -17,6 +17,8 @@ internal static class LocalReferenceRewriter
             ["Tarui.Shell"] = "src/desktop/Tarui.Shell/Tarui.Shell.csproj",
             ["Tarui.SingleInstance"] = "src/desktop/Tarui.SingleInstance/Tarui.SingleInstance.csproj",
             ["Tarui.WebView.CefGlueNext"] = "src/webview/Tarui.WebView.CefGlueNext/Tarui.WebView.CefGlueNext.csproj",
+            ["Tarui.WebView.Avalonia"] = "src/webview/Tarui.WebView.Avalonia/Tarui.WebView.Avalonia.csproj",
+            ["CefGlue.Next.Avalonia"] = "src/webview/CefGlue.Next.Avalonia/CefGlue.Next.Avalonia.csproj",
             ["Tarui.Plugins.Core"] = "src/plugins/Tarui.Plugins.Core/Tarui.Plugins.Core.csproj",
             ["Tarui.Plugins.Window"] = "src/plugins/Tarui.Plugins.Window/Tarui.Plugins.Window.csproj",
             ["Tarui.Ipc"] = "src/core/Tarui.Ipc/Tarui.Ipc.csproj",

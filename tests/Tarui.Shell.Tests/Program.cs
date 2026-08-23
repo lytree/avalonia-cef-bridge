@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -7,6 +8,7 @@ using Tarui.Plugins.Events;
 using Tarui.Plugins.System;
 using Tarui.Plugins.Window;
 using Tarui.WebView.Abstractions;
+using Tarui.WebView.Avalonia;
 
 namespace Tarui.Shell.Tests;
 
@@ -24,6 +26,9 @@ internal static class Program
         await WebViewHostGatesDownloadByPolicyAndCapability();
         await WebViewHostGatesNavigationByPolicyAndCapability();
         await WebViewHostDeniesUnsafeSchemeWithoutThrowing();
+        await WebViewHostDeniesMalformedDownloadUrlWithoutThrowing();
+        await WebViewHostDisposeIsIdempotent();
+        await WebViewHostDisposeAsyncIsIdempotent();
         await CapabilityLoaderMergesWindowPermissions();
         await CapabilityLoaderHandlesMissingDirectory();
         ComposerRegistersPluginCommands();
@@ -436,7 +441,7 @@ internal static class Program
 
         Assert(deniedSink.Events.Count == 0, "A denied download must not be delivered.");
 
-        // Policy allows the host but the window lacks the event capability => allowed but not delivered.
+        // Policy allows the host but the window lacks the event capability => denied and not delivered.
         var lackEventCapability = new CapabilitySet([], [], []);
         var (silentHost, silentSink, silentWebView) = CreateWebViewHost(
             lackEventCapability,
@@ -445,13 +450,57 @@ internal static class Program
         using (silentHost)
         {
             var args = silentWebView.RaiseDownload("https://cdn.example/file.zip", "file.zip");
-            Assert(args.Decision == TaruiWebViewDownloadAction.Allow,
-                "Policy may still allow the download for a window without the event capability.");
+            Assert(args.Decision == TaruiWebViewDownloadAction.Deny,
+                "A window without the download event capability must deny the download.");
         }
 
         Assert(silentSink.Events.Count == 0, "A window without the event capability must not receive the download event.");
 
         return Task.CompletedTask;
+    }
+
+    private static Task WebViewHostDeniesMalformedDownloadUrlWithoutThrowing()
+    {
+        var capabilities = new CapabilitySet([], ["webview://download-requested"], []);
+        var (host, sink, webView) = CreateWebViewHost(
+            capabilities,
+            new WebViewRequestPolicy(new WebViewPolicyOptions([], [], [], WebViewRequestDecision.Allow)));
+
+        using (host)
+        {
+            var args = webView.RaiseDownload("not a valid absolute uri", "payload.bin");
+            Assert(
+                args.Decision == TaruiWebViewDownloadAction.Deny,
+                "A malformed download URL must be denied without throwing.");
+        }
+
+        Assert(sink.Events.Count == 0, "A malformed download URL must not be delivered to the window.");
+        return Task.CompletedTask;
+    }
+
+    private static Task WebViewHostDisposeIsIdempotent()
+    {
+        var (host, _, webView) = CreateWebViewHost(new CapabilitySet([], [], []));
+
+        host.Dispose();
+        host.Dispose();
+        webView.RaiseFileDropLeft();
+
+        Assert(webView.DisposeCallCount == 1, "Synchronous WebViewHost disposal must call Dispose exactly once.");
+        Assert(webView.DisposeAsyncCallCount == 0, "Synchronous WebViewHost disposal must not call DisposeAsync.");
+        return Task.CompletedTask;
+    }
+
+    private static async Task WebViewHostDisposeAsyncIsIdempotent()
+    {
+        var (host, _, webView) = CreateWebViewHost(new CapabilitySet([], [], []));
+
+        await host.DisposeAsync();
+        await host.DisposeAsync();
+        webView.RaiseFileDropLeft();
+
+        Assert(webView.DisposeCallCount == 0, "Asynchronous WebViewHost disposal must not call Dispose.");
+        Assert(webView.DisposeAsyncCallCount == 1, "Asynchronous WebViewHost disposal must call DisposeAsync exactly once.");
     }
 
     private static Task WebViewHostGatesNavigationByPolicyAndCapability()
@@ -556,12 +605,12 @@ internal static class Program
         return (host, sink, webView);
     }
 
-    private sealed class FixedWebViewFactory(ITaruiWebView webView) : ITaruiWebViewFactory
+    private sealed class FixedWebViewFactory(ITaruiAvaloniaWebView webView) : ITaruiAvaloniaWebViewFactory
     {
-        public ITaruiWebView Create(TaruiWebViewOptions options) => webView;
+        public ITaruiAvaloniaWebView Create(TaruiWebViewOptions options) => webView;
     }
 
-    private sealed class FakeWebView : ITaruiWebView
+    private sealed class FakeWebView : ITaruiAvaloniaWebView, IAsyncDisposable
     {
 #pragma warning disable CS0067 // The message and drag-region events are part of the interface but unused by routing tests.
         public event EventHandler<TaruiWebMessage>? MessageReceived;
@@ -573,12 +622,17 @@ internal static class Program
         public event EventHandler<TaruiWebViewDragRegionEventArgs>? DragRegionsUpdated;
 #pragma warning restore CS0067
 
-        public Avalonia.Controls.Control Control => null!;
+        public Control Control { get; } = new Border();
 
-        public Uri? Source { get; }
+        public Uri? Source { get; private set; }
+
+        public int DisposeCallCount { get; private set; }
+
+        public int DisposeAsyncCallCount { get; private set; }
 
         public void Navigate(Uri source)
         {
+            Source = source;
         }
 
         public ValueTask<string?> ExecuteScriptAsync(
@@ -589,6 +643,13 @@ internal static class Program
 
         public void Dispose()
         {
+            DisposeCallCount++;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeAsyncCallCount++;
+            return ValueTask.CompletedTask;
         }
 
         public TaruiWebViewFileDropEventArgs RaiseFileDropEntered(

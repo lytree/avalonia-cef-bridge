@@ -9,8 +9,28 @@ namespace Xilium.CefGlue;
 public static class CefRuntimeLocator
 {
     private const string Icudtl= "icudtl.dat";
-    
+    private static string _runtimeDirectory;
+
     private static readonly Dictionary<string, string> CachedPaths = new();
+
+    public static string RuntimeDirectory => _runtimeDirectory;
+
+    public static void SetRuntimeDirectory(string runtimeDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(runtimeDirectory))
+        {
+            throw new ArgumentException("A runtime directory is required.", nameof(runtimeDirectory));
+        }
+
+        var fullPath = Path.GetFullPath(runtimeDirectory);
+        if (!Directory.Exists(fullPath))
+        {
+            throw new DirectoryNotFoundException($"CEF runtime directory does not exist: {fullPath}");
+        }
+
+        _runtimeDirectory = fullPath;
+        CachedPaths.Clear();
+    }
     
     public static string FindLibrary(string libraryName = libcef.DllName)
     {
@@ -30,6 +50,18 @@ public static class CefRuntimeLocator
     private static string FindFile(string fileName)
     {
         if (CachedPaths.TryGetValue(fileName, out var path)) return path;
+
+        if (!string.IsNullOrWhiteSpace(_runtimeDirectory))
+        {
+            try
+            {
+                var configuredFile = Directory.EnumerateFiles(_runtimeDirectory, fileName, SearchOption.AllDirectories).FirstOrDefault();
+                if (configuredFile != null) return CachedPaths[fileName] = configuredFile;
+            }
+            catch
+            {
+            }
+        }
         
         // search in common resolve paths
         foreach (var libPath in GetCommonResolvePaths().Select(d => Path.Combine(d, fileName)))
@@ -37,19 +69,6 @@ public static class CefRuntimeLocator
             if (File.Exists(libPath)) return CachedPaths[fileName] = libPath;
         }
         
-        var configuredRoot = Environment.GetEnvironmentVariable("TARUI_CEF_ROOT");
-        if (!string.IsNullOrWhiteSpace(configuredRoot) && Directory.Exists(configuredRoot))
-        {
-            try
-            {
-                var configuredFile = Directory.EnumerateFiles(configuredRoot, fileName, SearchOption.AllDirectories).FirstOrDefault();
-                if (configuredFile != null) return CachedPaths[fileName] = configuredFile;
-            }
-            catch
-            {
-            }
-        }
-
         var rootPath = GetRootPath();
         
         // Search in AppDomain base directory and subdirectories
@@ -89,10 +108,9 @@ public static class CefRuntimeLocator
     
     private static IEnumerable<string> GetCommonResolvePaths()
     {
-        var configuredRoot = Environment.GetEnvironmentVariable("TARUI_CEF_ROOT");
-        if (!string.IsNullOrWhiteSpace(configuredRoot) && Directory.Exists(configuredRoot))
+        if (!string.IsNullOrWhiteSpace(_runtimeDirectory))
         {
-            yield return configuredRoot;
+            yield return _runtimeDirectory;
         }
 
         yield return AppDomain.CurrentDomain.BaseDirectory;

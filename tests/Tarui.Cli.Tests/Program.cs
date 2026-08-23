@@ -405,6 +405,9 @@ internal static class Program
             <Project Sdk="Microsoft.NET.Sdk">
               <ItemGroup>
                 <PackageReference Include="Tarui.Hosting" Version="0.1.0" />
+                <PackageReference Include="Tarui.WebView.CefGlueNext" Version="0.1.0" />
+                <PackageReference Include="CefGlue.Next.Avalonia" Version="0.1.0" />
+                <PackageReference Include="Tarui.WebView.Avalonia" Version="0.1.0" />
                 <PackageReference Include="NotInRepo" Version="0.1.0" />
                 <PackageReference Include="Tarui.Plugins.Window" Version="0.1.0" />
               </ItemGroup>
@@ -415,6 +418,12 @@ internal static class Program
             "In-repo Tarui package references must be replaced.");
         Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/desktop/Tarui.Hosting/Tarui.Hosting.csproj\" />", StringComparison.Ordinal),
             "Tarui.Hosting must resolve to its local project path.");
+        Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/webview/Tarui.WebView.CefGlueNext/Tarui.WebView.CefGlueNext.csproj\" />", StringComparison.Ordinal),
+            "Tarui.WebView.CefGlueNext must resolve to its local project path.");
+        Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/webview/CefGlue.Next.Avalonia/CefGlue.Next.Avalonia.csproj\" />", StringComparison.Ordinal),
+            "CefGlue.Next.Avalonia must resolve to its local project path.");
+        Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/webview/Tarui.WebView.Avalonia/Tarui.WebView.Avalonia.csproj\" />", StringComparison.Ordinal),
+            "Tarui.WebView.Avalonia must resolve to its local project path.");
         Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/plugins/Tarui.Plugins.Window/Tarui.Plugins.Window.csproj\" />", StringComparison.Ordinal),
             "Tarui.Plugins.Window must resolve to its local project path.");
         Assert(rewritten.Contains("PackageReference Include=\"NotInRepo\"", StringComparison.Ordinal),

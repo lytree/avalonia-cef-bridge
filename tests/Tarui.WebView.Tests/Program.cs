@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.WebView.Abstractions;
+using Tarui.WebView.Avalonia;
 using Tarui.WebView.CefGlueNext;
 
 namespace Tarui.WebView.Tests;
@@ -169,6 +170,12 @@ internal static class Program
         var services = new ServiceCollection()
             .AddSingleton<IConfiguration>(configuration)
             .AddCefGlueWebView();
+        Assert(
+            services.Any(static descriptor => descriptor.ServiceType == typeof(ITaruiAvaloniaWebViewFactory)),
+            "AddCefGlueWebView should register the Avalonia WebView factory contract.");
+        Assert(
+            services.Any(static descriptor => descriptor.ServiceType == typeof(ITaruiWebViewFactory)),
+            "AddCefGlueWebView should register the UI-neutral WebView factory contract.");
         using (var provider = services.BuildServiceProvider())
         {
             var options = provider.GetRequiredService<CefGlueNextWebAppOptions>();

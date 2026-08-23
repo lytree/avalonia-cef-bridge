@@ -23,6 +23,7 @@ namespace Xilium.CefGlue.Avalonia.Platform
         private static IPlatformHandle _hostWindowPlatformHandle;
 
         private IHandleHolder _browserView;
+        private ExtendedAvaloniaNativeControlHost _nativeControlHost;
         private readonly IAvaloniaList<Visual> _controlVisualChildren;
 
         protected readonly Control _control;
@@ -193,10 +194,25 @@ namespace Xilium.CefGlue.Avalonia.Platform
 
                 }
             }
+
+            if (_nativeControlHost != null)
+            {
+                _controlVisualChildren.Remove(_nativeControlHost);
+                _nativeControlHost = null;
+            }
+
+            _control.GotFocus -= OnGotFocus;
+            _control.LayoutUpdated -= OnLayoutUpdated;
         }
 
         protected void SetContent(Control content)
         {
+            if (_nativeControlHost != null)
+            {
+                _controlVisualChildren.Remove(_nativeControlHost);
+            }
+
+            _nativeControlHost = content as ExtendedAvaloniaNativeControlHost;
             _controlVisualChildren.Add(content);
             _control.InvalidateArrange();
         }

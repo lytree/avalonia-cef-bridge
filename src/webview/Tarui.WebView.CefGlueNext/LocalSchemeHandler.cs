@@ -1,57 +1,10 @@
 using System.Collections.Frozen;
-using System.Collections.Specialized;
 using System.Text;
-using Xilium.CefGlue;
-using Xilium.CefGlue.Common.Handlers;
+using CefGlue.Next.Avalonia;
 
 namespace Tarui.WebView.CefGlueNext;
 
-internal sealed class LocalSchemeHandlerFactory(
-    string contentRoot,
-    string schemeName,
-    string domainName,
-    bool spaFallback,
-    string contentSecurityPolicy,
-    long maxAssetBytes) : CefSchemeHandlerFactory
-{
-    private readonly LocalWebAssetResolver _resolver = new(
-        contentRoot,
-        schemeName,
-        domainName,
-        spaFallback,
-        maxAssetBytes);
-
-    protected override CefResourceHandler Create(
-        CefBrowser browser,
-        CefFrame frame,
-        string schemeName,
-        CefRequest request)
-    {
-        var allowSpaFallback = frame?.IsMain == true &&
-            request.ResourceType == CefResourceType.MainFrame;
-        var asset = _resolver.Resolve(
-            request.Url,
-            request.Method,
-            allowSpaFallback);
-        var handler = new DefaultResourceHandler
-        {
-            Status = asset.Status,
-            StatusText = asset.StatusText,
-            MimeType = asset.MimeType,
-            Response = new MemoryStream(asset.Content, writable: false),
-            ResponseLength = asset.ResponseLength,
-            Headers = new NameValueCollection
-            {
-                ["X-Content-Type-Options"] = "nosniff",
-                ["Cache-Control"] = asset.CacheControl,
-                ["Content-Security-Policy"] = contentSecurityPolicy
-            }
-        };
-        return handler;
-    }
-}
-
-internal sealed class LocalWebAssetResolver
+internal sealed class LocalWebAssetResolver : ICefGlueNextAvaloniaResourceProvider
 {
     private static readonly FrozenDictionary<string, string> MimeTypes =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -87,13 +40,15 @@ internal sealed class LocalWebAssetResolver
     private readonly StringComparison _pathComparison;
     private readonly bool _spaFallback;
     private readonly long _maxAssetBytes;
+    private readonly string _contentSecurityPolicy;
 
     public LocalWebAssetResolver(
         string contentRoot,
         string schemeName,
         string domainName,
         bool spaFallback,
-        long maxAssetBytes)
+        long maxAssetBytes,
+        string contentSecurityPolicy = "")
     {
         _contentRoot = Path.GetFullPath(contentRoot)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
@@ -105,6 +60,7 @@ internal sealed class LocalWebAssetResolver
         DomainName = domainName;
         _spaFallback = spaFallback;
         _maxAssetBytes = maxAssetBytes;
+        _contentSecurityPolicy = contentSecurityPolicy;
 
         if (IsReparsePoint(_contentRoot))
         {
@@ -115,6 +71,25 @@ internal sealed class LocalWebAssetResolver
     public string SchemeName { get; }
 
     public string DomainName { get; }
+
+    CefGlueNextAvaloniaResourceResponse ICefGlueNextAvaloniaResourceProvider.Resolve(
+        CefGlueNextAvaloniaResourceRequest request)
+    {
+        var asset = Resolve(request.Url, request.Method, request.IsMainFrameResource);
+        return new CefGlueNextAvaloniaResourceResponse(
+            asset.Status,
+            asset.StatusText,
+            asset.MimeType,
+            asset.CacheControl,
+            asset.ResponseLength,
+            asset.Content,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["X-Content-Type-Options"] = "nosniff",
+                ["Cache-Control"] = asset.CacheControl,
+                ["Content-Security-Policy"] = _contentSecurityPolicy
+            });
+    }
 
     public LocalWebAsset Resolve(
         string requestUrl,

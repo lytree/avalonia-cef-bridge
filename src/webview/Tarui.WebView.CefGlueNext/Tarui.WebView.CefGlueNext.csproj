@@ -5,15 +5,13 @@
     <AssemblyName>Tarui.WebView.CefGlueNext</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Tarui.WebView.Abstractions/Tarui.WebView.Abstractions.csproj" />
-    <ProjectReference Include="../cefglue/CefGlue.Avalonia/CefGlue.Avalonia.csproj" />
-    <ProjectReference Include="../cefglue/CefGlue.BrowserProcess.Core/CefGlue.BrowserProcess.Core.csproj" />
-    <ProjectReference Include="../cefglue/CefGlue.Common/CefGlue.Common.csproj" />
+    <ProjectReference Include="../Tarui.WebView.Avalonia/Tarui.WebView.Avalonia.csproj" />
+    <ProjectReference Include="../CefGlue.Next.Avalonia/CefGlue.Next.Avalonia.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Tarui.WebView.Tests" />

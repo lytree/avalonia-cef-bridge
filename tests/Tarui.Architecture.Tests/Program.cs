@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Xml;
 using System.Xml.Linq;
 using System.Text.RegularExpressions;
@@ -35,14 +36,19 @@ internal static class Program
         "Avalonia.Controls.WebView"
     ];
 
-    public static int Main()
+    public static int Main(string[] args)
     {
         try
         {
             var repositoryRoot = RepositoryRoot.Find();
-            var result = new ArchitectureGate(repositoryRoot).Run();
+            var options = GateOptions.Parse(args);
+            var result = new ArchitectureGate(repositoryRoot, options.PackagePath, options.RequirePackage).Run();
 
             Console.WriteLine($"Tarui architecture gate scanned {result.FileCount} active files.");
+            if (result.PackagePath is not null)
+            {
+                Console.WriteLine($"Tarui package gate checked {result.PackagePath}.");
+            }
 
             if (result.Violations.Count == 0)
             {
@@ -66,19 +72,56 @@ internal static class Program
         }
     }
 
+    private sealed record GateOptions(string? PackagePath, bool RequirePackage)
+    {
+        public static GateOptions Parse(string[] args)
+        {
+            string? packagePath = null;
+            var requirePackage = false;
+
+            for (var index = 0; index < args.Length; index++)
+            {
+                switch (args[index])
+                {
+                    case "--require-package":
+                        requirePackage = true;
+                        break;
+                    case "--package":
+                        if (index + 1 >= args.Length || string.IsNullOrWhiteSpace(args[++index]))
+                        {
+                            throw new ArgumentException("--package requires a path to a CefGlue.Next.Avalonia nupkg.");
+                        }
+
+                        packagePath = args[index];
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown architecture gate argument '{args[index]}'.");
+                }
+            }
+
+            return new GateOptions(packagePath, requirePackage);
+        }
+    }
+
     private sealed class ArchitectureGate
     {
         private readonly string _repositoryRoot;
         private readonly string _sourceRoot;
         private readonly string _vendoredCefGlueRoot;
+        private readonly string _cefGlueAvaloniaComponentRoot;
         private readonly string _templateRoot;
+        private readonly string? _packagePath;
+        private readonly bool _requirePackage;
 
-        public ArchitectureGate(string repositoryRoot)
+        public ArchitectureGate(string repositoryRoot, string? packagePath, bool requirePackage)
         {
             _repositoryRoot = repositoryRoot;
             _sourceRoot = Path.Combine(repositoryRoot, "src");
             _vendoredCefGlueRoot = Path.Combine(_sourceRoot, "webview", "cefglue");
+            _cefGlueAvaloniaComponentRoot = Path.Combine(_sourceRoot, "webview", "CefGlue.Next.Avalonia");
             _templateRoot = Path.Combine(_sourceRoot, "templates");
+            _packagePath = packagePath;
+            _requirePackage = requirePackage;
         }
 
         public GateResult Run()
@@ -98,7 +141,8 @@ internal static class Program
                 ScanSource(file, violations);
             }
 
-            return new GateResult(files.Length, violations);
+            var packagePath = ValidatePackage(violations);
+            return new GateResult(files.Length, violations, packagePath);
         }
 
         private IEnumerable<string> EnumerateProjectFiles()
@@ -253,6 +297,18 @@ internal static class Program
             var source = File.ReadAllText(file);
             var maskedSource = CSharpMasker.Mask(source);
 
+            if (!IsUnder(file, _vendoredCefGlueRoot) &&
+                !IsUnder(file, _cefGlueAvaloniaComponentRoot) &&
+                maskedSource.Contains("Xilium.CefGlue", StringComparison.Ordinal))
+            {
+                violations.Add(CreateViolation(
+                    file,
+                    maskedSource,
+                    maskedSource.IndexOf("Xilium.CefGlue", StringComparison.Ordinal),
+                    "TN-CEF-ENTRY",
+                    "Tarui-side source must access CefGlue only through CefGlue.Next.Avalonia."));
+            }
+
             foreach (var rule in ForbiddenSourceRules)
             {
                 var searchStart = 0;
@@ -335,8 +391,264 @@ internal static class Program
                         "TN-PACKAGE",
                         $"CEF/WebView/Reactive runtime package '{packageId}' is forbidden; use vendored source and explicit project references."));
                 }
+
+                if (IsWebViewAbstractionsProject(file) && IsAvaloniaOrCefGlueReference(packageId))
+                {
+                    violations.Add(CreateProjectViolation(
+                        file,
+                        packageReference,
+                        "TN-BOUNDARY",
+                        $"Tarui.WebView.Abstractions must not reference Avalonia or CefGlue package '{packageId}'."));
+                }
+
+                if (IsShellOrHostingProject(file) && IsXiliumReference(packageId))
+                {
+                    violations.Add(CreateProjectViolation(
+                        file,
+                        packageReference,
+                        "TN-BOUNDARY",
+                        $"Tarui.Shell/Tarui.Hosting must not reference Xilium CefGlue package '{packageId}'."));
+                }
+
+                if (IsTaruiCefGlueAdapterProject(file) && IsXiliumReference(packageId))
+                {
+                    violations.Add(CreateProjectViolation(
+                        file,
+                        packageReference,
+                        "TN-BOUNDARY",
+                        $"Tarui.WebView.CefGlueNext must use CefGlue.Next.Avalonia instead of Xilium package '{packageId}'."));
+                }
+            }
+
+            ScanProjectReferences(file, document, violations);
+        }
+
+        private void ScanProjectReferences(string file, XDocument document, List<Violation> violations)
+        {
+            var references = document.Descendants()
+                .Where(static element => element.Name.LocalName == "ProjectReference")
+                .ToArray();
+
+            var isComponent = IsCefGlueAvaloniaComponentProject(file);
+            var isAdapter = IsTaruiCefGlueAdapterProject(file);
+
+            foreach (var reference in references)
+            {
+                var include = reference.Attribute("Include")?.Value ??
+                              reference.Elements().FirstOrDefault(static child => child.Name.LocalName == "Include")?.Value;
+                if (string.IsNullOrWhiteSpace(include))
+                {
+                    violations.Add(CreateProjectViolation(
+                        file,
+                        reference,
+                        "TN-PROJECT-REFERENCE",
+                        "ProjectReference must declare a static Include path."));
+                    continue;
+                }
+
+                var target = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(file)!, include));
+                if (IsUnder(target, _vendoredCefGlueRoot) &&
+                    !isComponent &&
+                    !IsUnder(file, _vendoredCefGlueRoot))
+                {
+                    violations.Add(CreateProjectViolation(
+                        file,
+                        reference,
+                        "TN-CEF-ENTRY",
+                        "Only CefGlue.Next.Avalonia may reference vendored CefGlue projects directly."));
+                }
+
+                if (isAdapter && IsUnder(target, _vendoredCefGlueRoot))
+                {
+                    violations.Add(CreateProjectViolation(
+                        file,
+                        reference,
+                        "TN-CEF-ENTRY",
+                        "Tarui.WebView.CefGlueNext must reference the CefGlue.Next.Avalonia component, not vendored CefGlue."));
+                }
+            }
+
+            if (isAdapter && !references.Any(reference =>
+                    IsCefGlueAvaloniaComponentPath(Path.GetFullPath(Path.Combine(
+                        Path.GetDirectoryName(file)!,
+                        reference.Attribute("Include")?.Value ?? string.Empty)))))
+            {
+                violations.Add(new Violation(
+                    "TN-CEF-ENTRY",
+                    RelativePath(file),
+                    1,
+                    1,
+                    "Tarui.WebView.CefGlueNext must reference CefGlue.Next.Avalonia as its sole CefGlue component entry."));
             }
         }
+
+        private string? ValidatePackage(List<Violation> violations)
+        {
+            var packagePath = ResolvePackagePath();
+            if (packagePath is null)
+            {
+                if (_requirePackage)
+                {
+                    violations.Add(new Violation(
+                        "TN-PACKAGE-CONTENT",
+                        "artifacts/nuget",
+                        1,
+                        1,
+                        "CefGlue.Next.Avalonia nupkg was required but no package was found."));
+                }
+
+                return null;
+            }
+
+            if (!File.Exists(packagePath))
+            {
+                violations.Add(new Violation(
+                    "TN-PACKAGE-CONTENT",
+                    RelativePath(packagePath),
+                    1,
+                    1,
+                    "Configured CefGlue.Next.Avalonia package does not exist."));
+                return packagePath;
+            }
+
+            try
+            {
+                using var archive = ZipFile.OpenRead(packagePath);
+                var entries = archive.Entries
+                    .Where(static entry => !string.IsNullOrEmpty(entry.Name))
+                    .Select(static entry => entry.FullName.Replace('\\', '/'))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                var requiredAssemblies = new[]
+                {
+                    "CefGlue.Next.Avalonia.dll",
+                    "Xilium.CefGlue.dll",
+                    "Xilium.CefGlue.Common.dll",
+                    "Xilium.CefGlue.Common.Shared.dll",
+                    "Xilium.CefGlue.BrowserProcess.Core.dll",
+                    "Xilium.CefGlue.Avalonia.dll"
+                };
+
+                foreach (var assembly in requiredAssemblies)
+                {
+                    if (!entries.Any(entry =>
+                            entry.StartsWith("lib/", StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(Path.GetFileName(entry), assembly, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        violations.Add(new Violation(
+                            "TN-PACKAGE-CONTENT",
+                            RelativePath(packagePath),
+                            1,
+                            1,
+                            $"Package is missing managed assembly '{assembly}'."));
+                    }
+                }
+
+                var nuspecEntry = archive.Entries.FirstOrDefault(static entry =>
+                    entry.FullName.EndsWith(".nuspec", StringComparison.OrdinalIgnoreCase) &&
+                    !entry.FullName.EndsWith(".symbols.nuspec", StringComparison.OrdinalIgnoreCase));
+                if (nuspecEntry is null)
+                {
+                    violations.Add(new Violation(
+                        "TN-PACKAGE-METADATA",
+                        RelativePath(packagePath),
+                        1,
+                        1,
+                        "Package is missing its primary nuspec."));
+                }
+                else
+                {
+                    using var nuspecStream = nuspecEntry.Open();
+                    var nuspec = XDocument.Load(nuspecStream);
+                    var dependencyIds = nuspec.Descendants()
+                        .Where(static element => element.Name.LocalName == "dependency")
+                        .Select(static element => element.Attribute("id")?.Value)
+                        .Where(static id => !string.IsNullOrWhiteSpace(id))
+                        .Select(static id => id!.Trim())
+                        .ToArray();
+
+                    if (!dependencyIds.Any(static id => id.StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        violations.Add(new Violation(
+                            "TN-PACKAGE-METADATA",
+                            RelativePath(packagePath),
+                            1,
+                            1,
+                            "Package nuspec must declare Avalonia as its framework dependency."));
+                    }
+
+                    foreach (var dependencyId in dependencyIds.Where(IsXiliumReference))
+                    {
+                        violations.Add(new Violation(
+                            "TN-PACKAGE-METADATA",
+                            RelativePath(packagePath),
+                            1,
+                            1,
+                            $"Package nuspec must embed CefGlue managed assemblies instead of declaring '{dependencyId}'."));
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                violations.Add(new Violation(
+                    "TN-PACKAGE-CONTENT",
+                    RelativePath(packagePath),
+                    1,
+                    1,
+                    $"Could not inspect package: {exception.Message}"));
+            }
+
+            return packagePath;
+        }
+
+        private string? ResolvePackagePath()
+        {
+            if (!string.IsNullOrWhiteSpace(_packagePath))
+            {
+                return Path.GetFullPath(Path.IsPathRooted(_packagePath)
+                    ? _packagePath
+                    : Path.Combine(_repositoryRoot, _packagePath));
+            }
+
+            if (!_requirePackage)
+            {
+                return null;
+            }
+
+            var packageDirectories = new[]
+            {
+                Path.Combine(_repositoryRoot, "artifacts", "nuget"),
+                Path.Combine(_repositoryRoot, "artifacts", "cefglue-next-avalonia")
+            };
+
+            return packageDirectories
+                .Where(Directory.Exists)
+                .SelectMany(static directory => Directory.EnumerateFiles(directory, "CefGlue.Next.Avalonia.*.nupkg"))
+                .Where(static path => !path.EndsWith(".symbols.nupkg", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
+        }
+
+        private static bool IsWebViewAbstractionsProject(string path) =>
+            string.Equals(Path.GetFileNameWithoutExtension(path), "Tarui.WebView.Abstractions", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsTaruiCefGlueAdapterProject(string path) =>
+            string.Equals(Path.GetFileNameWithoutExtension(path), "Tarui.WebView.CefGlueNext", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsShellOrHostingProject(string path)
+        {
+            var name = Path.GetFileNameWithoutExtension(path);
+            return string.Equals(name, "Tarui.Shell", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(name, "Tarui.Hosting", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool IsCefGlueAvaloniaComponentProject(string path) =>
+            IsUnder(path, _cefGlueAvaloniaComponentRoot) &&
+            string.Equals(Path.GetFileNameWithoutExtension(path), "CefGlue.Next.Avalonia", StringComparison.OrdinalIgnoreCase);
+
+        private bool IsCefGlueAvaloniaComponentPath(string path) =>
+            IsUnder(path, _cefGlueAvaloniaComponentRoot) &&
+            string.Equals(Path.GetFileNameWithoutExtension(path), "CefGlue.Next.Avalonia", StringComparison.OrdinalIgnoreCase);
 
         private Violation CreateProjectViolation(
             string file,
@@ -396,6 +708,17 @@ internal static class Program
         private static bool IsAllowedAvaloniaPackage(string packageId) =>
             packageId.StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase) &&
             !packageId.Contains("WebView", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsAvaloniaOrCefGlueReference(string packageId) =>
+            packageId.StartsWith("Avalonia", StringComparison.OrdinalIgnoreCase) ||
+            IsXiliumReference(packageId) ||
+            (packageId.StartsWith("CefGlue", StringComparison.OrdinalIgnoreCase) &&
+             !string.Equals(packageId, "CefGlue.Next.Avalonia", StringComparison.OrdinalIgnoreCase));
+
+        private static bool IsXiliumReference(string packageId) =>
+            packageId.Contains("Xilium", StringComparison.OrdinalIgnoreCase) ||
+            packageId.StartsWith("CefGlue", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(packageId, "CefGlue.Next.Avalonia", StringComparison.OrdinalIgnoreCase);
 
         private static bool IsForbiddenRuntimePackage(string packageId)
         {
@@ -735,5 +1058,5 @@ internal static class Program
         int Column,
         string Message);
 
-    private sealed record GateResult(int FileCount, List<Violation> Violations);
+    private sealed record GateResult(int FileCount, List<Violation> Violations, string? PackagePath);
 }

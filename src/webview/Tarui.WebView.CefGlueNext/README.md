@@ -1,8 +1,43 @@
 # Tarui.WebView.CefGlueNext
 
-This project adapts the vendored CefGlue source to `ITaruiWebView`. It owns runtime initialization, same-executable subprocess startup, navigation, script execution, resource transport, and conversion of CEF process messages into `TaruiWebMessage`.
+This project adapts `CefGlue.Next.Avalonia` to the Tarui WebView contracts. It owns Tarui configuration, capability-aware policy/event translation and conversion of component events into `TaruiWebMessage` and other Tarui events.
 
-The implementation has no CefGlue NuGet dependency. Managed CefGlue projects live in `../cefglue`; native CEF assets are installed through `eng/cef/install-runtime.ps1`.
+The project references only `Tarui.WebView.Abstractions`, `Tarui.WebView.Avalonia` and `CefGlue.Next.Avalonia`. It does not reference vendored CefGlue projects or `Xilium.*` directly. CEF runtime initialization, browser controls, native handlers and scheme provider dispatch are owned by `CefGlue.Next.Avalonia`.
+
+## Composition
+
+```text
+Tarui.WebView.Abstractions
+  navigation, script, download, file-drop and drag-region contracts
+
+Tarui.WebView.Avalonia
+  Control-bearing adapter contract for Avalonia hosts
+
+CefGlue.Next.Avalonia
+  standalone browser control, CefGlue managed assemblies and runtime lifecycle
+
+Tarui.WebView.CefGlueNext
+  Tarui configuration, IPC/policy translation and DI registration
+```
+
+The application composition root registers `AddCefGlueWebView()`. A direct Avalonia application that does not use Tarui should consume `CefGlue.Next.Avalonia` instead of this adapter.
+
+## Lifecycle
+
+The composition root dispatches subprocess arguments first, starts the host, and creates windows after runtime initialization. Shutdown is ordered as follows:
+
+```text
+CefGlueNextAvaloniaRuntime.RunSubProcess(args)
+  -> host/application startup
+  -> CefGlueNextAvaloniaRuntime.Initialize(...)
+  -> create Tarui WebViews
+  -> close windows and await each WebView CloseAsync/DisposeAsync
+  -> Avalonia loop exits
+  -> Host StopAsync and Dispose complete
+  -> Program finally calls CefGlueNextAvaloniaRuntime.Shutdown()
+```
+
+`Tarui.WebView.CefGlueNext` translates component decisions into Tarui events and policies. It must remain unaware of vendored CefGlue implementation types.
 
 ## Resource modes
 

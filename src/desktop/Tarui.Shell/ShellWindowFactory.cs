@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
 using Tarui.WebView.Abstractions;
+using Tarui.WebView.Avalonia;
 
 namespace Tarui.Shell;
 
@@ -27,7 +28,7 @@ public sealed class ShellWindowFactory(
         // after the dispatcher is fully built, so they always observe it.
         var dispatcher = services.GetRequiredService<IpcDispatcher>();
         var host = new WebViewHost(
-            services.GetRequiredService<ITaruiWebViewFactory>(),
+            services.GetRequiredService<ITaruiAvaloniaWebViewFactory>(),
             dispatcher,
             eventRouter,
             requestPolicy,
@@ -76,19 +77,39 @@ public sealed class ShellWindowFactory(
                 "window://close-requested",
                 JsonSerializer.SerializeToElement(new WindowLabelOptions(label), TaruiJsonContext.Default.WindowLabelOptions)));
         };
-        window.Closed += (_, _) =>
-        {
-            registry.Remove(label);
-            if (entry.Sink is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
+        window.Closed += (_, _) => FireAndForget(HandleWindowClosedAsync(
+            registry,
+            eventRouter,
+            shutdownCoordinator,
+            label,
+            entry));
+    }
 
-            shutdownCoordinator.NotifyWindowClosed(label, registry.Labels.Count);
-            FireAndForget(eventRouter.EmitToAllAsync(
-                "window://destroyed",
-                JsonSerializer.SerializeToElement(new WindowLabelOptions(label), TaruiJsonContext.Default.WindowLabelOptions)));
-        };
+    private static async ValueTask HandleWindowClosedAsync(
+        WindowRegistry registry,
+        EventRouter eventRouter,
+        IAppShutdownCoordinator shutdownCoordinator,
+        string label,
+        WindowRegistry.Entry entry)
+    {
+        if (!registry.Remove(label))
+        {
+            return;
+        }
+
+        if (entry.Sink is IAsyncDisposable asyncDisposable)
+        {
+            await asyncDisposable.DisposeAsync();
+        }
+        else if (entry.Sink is IDisposable disposable)
+        {
+            disposable.Dispose();
+        }
+
+        shutdownCoordinator.NotifyWindowClosed(label, registry.Labels.Count);
+        await eventRouter.EmitToAllAsync(
+            "window://destroyed",
+            JsonSerializer.SerializeToElement(new WindowLabelOptions(label), TaruiJsonContext.Default.WindowLabelOptions));
     }
 
     private static WindowGeometry BuildGeometry(Window window)

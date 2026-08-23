@@ -18,6 +18,7 @@ using Tarui.Plugins.WindowState;
 using Tarui.Shell;
 using Tarui.SingleInstance;
 using Tarui.WebView.CefGlueNext;
+using CefGlue.Next.Avalonia;
 
 namespace Tarui.App;
 
@@ -29,7 +30,10 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        CefGlueRuntimeBootstrap.RunSubProcess(args);
+        if (CefGlueNextAvaloniaRuntime.RunSubProcess(args))
+        {
+            return;
+        }
 
         // Second instances forward their arguments to the running primary and exit before the host
         // is ever built. The primary holds the instance lock for the rest of its lifetime.
@@ -72,6 +76,13 @@ internal static class Program
             window.Height = 820;
         });
 
-        builder.Build().Run();
+        try
+        {
+            builder.Build().Run();
+        }
+        finally
+        {
+            CefGlueNextAvaloniaRuntime.Shutdown();
+        }
     }
 }

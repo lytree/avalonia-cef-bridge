@@ -25,6 +25,7 @@
     <PackageReference Include="Tarui.Shell" Version="0.1.0" />
     <PackageReference Include="Tarui.SingleInstance" Version="0.1.0" />
     <PackageReference Include="Tarui.WebView.CefGlueNext" Version="0.1.0" />
+    <PackageReference Include="CefGlue.Next.Avalonia" Version="0.1.0" />
     <PackageReference Include="Tarui.Plugins.Core" Version="0.1.0" />
     <PackageReference Include="Tarui.Plugins.Window" Version="0.1.0" />
   </ItemGroup>

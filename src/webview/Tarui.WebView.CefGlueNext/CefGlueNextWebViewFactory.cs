@@ -1,107 +1,55 @@
-using System.Globalization;
-using System.Runtime.InteropServices;
+using System.Diagnostics;
 using Avalonia.Controls;
-using Avalonia.Threading;
+using CefGlue.Next.Avalonia;
 using Tarui.WebView.Abstractions;
-using Xilium.CefGlue;
-using Xilium.CefGlue.Avalonia;
-using Xilium.CefGlue.BrowserProcess;
-using Xilium.CefGlue.Common;
-using Xilium.CefGlue.Common.Shared;
+using Tarui.WebView.Avalonia;
 
 namespace Tarui.WebView.CefGlueNext;
 
 public static class CefGlueRuntimeBootstrap
 {
-    private static int _initialized;
-
     public static void RunSubProcess(string[] args)
     {
-        CefSubProcess.Run(args);
+        CefGlueNextAvaloniaRuntime.RunSubProcess(args);
     }
 
     public static void Initialize(CefGlueNextWebAppOptions webAppOptions)
     {
-        if (Interlocked.Exchange(ref _initialized, 1) != 0) return;
+        ArgumentNullException.ThrowIfNull(webAppOptions);
 
-        var runtimeRoot = ResolveRuntimeRoot();
-        if (runtimeRoot != null)
-        {
-            Environment.SetEnvironmentVariable("TARUI_CEF_ROOT", runtimeRoot);
-        }
-        var resourcesRoot = CefRuntimeLocator.GetResourceDirPath() ?? runtimeRoot;
-        var cacheRoot = Path.Combine(Path.GetTempPath(), "tarui.net", "cef", Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
-        Directory.CreateDirectory(cacheRoot);
-        CustomScheme[]? customSchemes = null;
-        if (webAppOptions.Mode == TaruiWebResourceMode.Scheme)
-        {
-            customSchemes =
-            [
-                new CustomScheme
-                {
-                    SchemeName = webAppOptions.SchemeName,
-                    DomainName = webAppOptions.DomainName,
-                    IsStandard = true,
-                    IsLocal = false,
-                    IsDisplayIsolated = true,
-                    IsSecure = true,
-                    IsCorsEnabled = false,
-                    IsCSPBypassing = false,
-                    IsFetchEnabled = true,
-                    SchemeHandlerFactory = new LocalSchemeHandlerFactory(
-                        webAppOptions.ContentRoot!,
-                        webAppOptions.SchemeName,
-                        webAppOptions.DomainName,
-                        webAppOptions.SpaFallback,
-                        webAppOptions.ContentSecurityPolicy,
-                        webAppOptions.MaxAssetBytes)
-                }
-            ];
-        }
-
-        CefRuntimeLoader.Initialize(
-            new CefSettings
+        CefGlueNextAvaloniaRuntime.Initialize(
+            new CefGlueNextAvaloniaRuntimeOptions
             {
-                RootCachePath = cacheRoot,
-                BrowserSubprocessPath = ResolveSubprocessPath(),
-                WindowlessRenderingEnabled = false,
-                NoSandbox = true,
-                LogSeverity = CefLogSeverity.Warning,
-                LogFile = Path.Combine(cacheRoot, "cef.log"),
-                ResourcesDirPath = resourcesRoot,
-                LocalesDirPath = ResolveLocalesRoot(runtimeRoot, resourcesRoot)
-            },
-            flags:
-            [
-                new KeyValuePair<string, string>("do-not-de-elevate", string.Empty)
-            ],
-            customSchemes: customSchemes);
-    }
-
-    private static string? ResolveSubprocessPath()
-    {
-        var fileName = OperatingSystem.IsWindows() ? "tarui.net.exe" : "tarui.net";
-        var appHost = Path.Combine(AppContext.BaseDirectory, fileName);
-        return File.Exists(appHost) ? appHost : Environment.ProcessPath;
-    }
-
-    private static string? ResolveLocalesRoot(string? runtimeRoot, string? resourcesRoot)
-    {
-        if (resourcesRoot != null)
-        {
-            var adjacent = Path.Combine(resourcesRoot, "locales");
-            if (Directory.Exists(adjacent)) return adjacent;
-        }
-
-        if (runtimeRoot == null) return null;
-        try
-        {
-            return Directory.EnumerateDirectories(runtimeRoot, "locales", SearchOption.AllDirectories).FirstOrDefault();
-        }
-        catch
-        {
-            return null;
-        }
+                RuntimeDirectory = ResolveRuntimeRoot(),
+                CacheDirectory = Path.Combine(
+                    Path.GetTempPath(),
+                    "tarui.net",
+                    "cef",
+                    Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                Schemes = webAppOptions.Mode == TaruiWebResourceMode.Scheme
+                    ?
+                    [
+                        new CefGlueNextAvaloniaSchemeOptions
+                        {
+                            SchemeName = webAppOptions.SchemeName,
+                            DomainName = webAppOptions.DomainName,
+                            IsStandard = true,
+                            IsDisplayIsolated = true,
+                            IsSecure = true,
+                            IsCorsEnabled = false,
+                            IsCspBypassing = false,
+                            IsFetchEnabled = true,
+                            ResourceProvider = new LocalWebAssetResolver(
+                                webAppOptions.ContentRoot!,
+                                webAppOptions.SchemeName,
+                                webAppOptions.DomainName,
+                                webAppOptions.SpaFallback,
+                                webAppOptions.MaxAssetBytes,
+                                webAppOptions.ContentSecurityPolicy)
+                        }
+                    ]
+                    : []
+            });
     }
 
     private static string? ResolveRuntimeRoot()
@@ -112,33 +60,40 @@ public static class CefGlueRuntimeBootstrap
             return Path.GetFullPath(configured);
         }
 
-        var rid = OperatingSystem.IsWindows()
-            ? (RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "win-arm64" : "win-x64")
-            : OperatingSystem.IsMacOS()
-                ? (RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "osx-arm64" : "osx-x64")
-                : (RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "linux-arm64" : "linux-x64");
-        var bundled = Path.Combine(AppContext.BaseDirectory, "CEF", rid);
+        var architecture = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
+        var architectureName = architecture == System.Runtime.InteropServices.Architecture.Arm64
+            ? "arm64"
+            : "x64";
+        var platform = OperatingSystem.IsWindows()
+            ? "win"
+            : OperatingSystem.IsMacOS() ? "osx" : "linux";
+        var bundled = Path.Combine(AppContext.BaseDirectory, "CEF", $"{platform}-{architectureName}");
         return Directory.Exists(bundled) ? bundled : null;
     }
 }
 
-public sealed class CefGlueNextWebViewFactory : ITaruiWebViewFactory
+public sealed class CefGlueNextWebViewFactory : ITaruiWebViewFactory, ITaruiAvaloniaWebViewFactory
 {
     public CefGlueNextWebViewFactory(CefGlueNextWebAppOptions webAppOptions)
     {
+        ArgumentNullException.ThrowIfNull(webAppOptions);
         CefGlueRuntimeBootstrap.Initialize(webAppOptions);
     }
 
-    public ITaruiWebView Create(TaruiWebViewOptions options) =>
-        new CefGlueNextWebView(options);
+    ITaruiWebView ITaruiWebViewFactory.Create(TaruiWebViewOptions options) => Create(options);
+
+    ITaruiAvaloniaWebView ITaruiAvaloniaWebViewFactory.Create(TaruiWebViewOptions options) => Create(options);
+
+    public CefGlueNextWebView Create(TaruiWebViewOptions options)
+    {
+        GC.KeepAlive(this);
+        return new CefGlueNextWebView(options);
+    }
 }
 
-public sealed class CefGlueNextWebView : ITaruiWebView
+public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
 {
-    private readonly AvaloniaCefBrowser _browser;
-    private readonly CefNavigationRequestHandler _navigationHandler;
-    private readonly CefDownloadHandler _downloadHandler;
-    private readonly CefDragHandler _dragHandler;
+    private readonly CefGlueNextAvaloniaWebView _component;
     private EventHandler<TaruiWebMessage>? _messageReceived;
     private EventHandler<TaruiWebViewFileDropEventArgs>? _fileDropEntered;
     private EventHandler<TaruiWebViewFileDropLeftEventArgs>? _fileDropLeft;
@@ -146,26 +101,25 @@ public sealed class CefGlueNextWebView : ITaruiWebView
     private EventHandler<TaruiWebViewDownloadEventArgs>? _downloadRequested;
     private EventHandler<TaruiWebViewNavigationEventArgs>? _navigationRequested;
     private EventHandler<TaruiWebViewDragRegionEventArgs>? _dragRegionsUpdated;
-    private IReadOnlyList<DraggableRegion> _dragRegions = [];
+    private int _disposeState;
 
     public CefGlueNextWebView(TaruiWebViewOptions options)
     {
-        Source = options.InitialSource;
-        _browser = new AvaloniaCefBrowser();
-        _browser.WebMessageReceived += OnWebMessageReceived;
-        _navigationHandler = new CefNavigationRequestHandler(this);
-        _downloadHandler = new CefDownloadHandler(this);
-        _dragHandler = new CefDragHandler(this);
-        _browser.RequestHandler = _navigationHandler;
-        _browser.DownloadHandler = _downloadHandler;
-        _browser.DragHandler = _dragHandler;
-        _browser.Address = options.InitialSource.AbsoluteUri;
-        Control = _browser;
+        ArgumentNullException.ThrowIfNull(options);
+        _component = new CefGlueNextAvaloniaWebView(options.InitialSource);
+        _component.MessageReceived += OnComponentMessageReceived;
+        _component.FileDropEntered += OnComponentFileDropEntered;
+        _component.FileDropLeft += OnComponentFileDropLeft;
+        _component.FileDropped += OnComponentFileDropped;
+        _component.DownloadRequested += OnComponentDownloadRequested;
+        _component.NavigationRequested += OnComponentNavigationRequested;
+        _component.ExternalNavigationRequested += OnComponentExternalNavigationRequested;
+        _component.DragRegionsUpdated += OnComponentDragRegionsUpdated;
     }
 
-    public Control Control { get; }
+    public Control Control => _component;
 
-    public Uri? Source { get; private set; }
+    public Uri? Source => _component.Source;
 
     public event EventHandler<TaruiWebMessage>? MessageReceived
     {
@@ -209,32 +163,56 @@ public sealed class CefGlueNextWebView : ITaruiWebView
         remove => _dragRegionsUpdated -= value;
     }
 
-    public void Navigate(Uri source)
-    {
-        Source = source;
-        Dispatcher.UIThread.Post(() => _browser.Address = source.AbsoluteUri);
-    }
+    public void Navigate(Uri source) => _component.Navigate(source);
 
     public async ValueTask<string?> ExecuteScriptAsync(
         string script,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        await Dispatcher.UIThread.InvokeAsync(() =>
-            _browser.ExecuteJavaScript(script)).GetTask();
+        _component.ExecuteScript(script);
+        await ValueTask.CompletedTask;
         return null;
     }
 
     public IReadOnlyList<DraggableRegion> SetDragRegions(IReadOnlyList<DraggableRegion> regions)
     {
-        var previous = _dragRegions;
-        _dragRegions = regions;
-        return previous;
+        ArgumentNullException.ThrowIfNull(regions);
+        var mapped = regions
+            .Select(static region => new CefGlueNextAvaloniaDraggableRegion(
+                checked((int)region.X),
+                checked((int)region.Y),
+                checked((int)region.Width),
+                checked((int)region.Height),
+                region.Kind == DraggableRegionKind.Drag))
+            .ToArray();
+        var previous = _component.SetDragRegions(mapped);
+        return previous
+            .Select(static region => new DraggableRegion(
+                region.X,
+                region.Y,
+                region.Width,
+                region.Height,
+                region.IsDraggable ? DraggableRegionKind.Drag : DraggableRegionKind.NoDrag))
+            .ToArray();
     }
 
     public void Dispose()
     {
-        _browser.WebMessageReceived -= OnWebMessageReceived;
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+        {
+            return;
+        }
+
+        _component.MessageReceived -= OnComponentMessageReceived;
+        _component.FileDropEntered -= OnComponentFileDropEntered;
+        _component.FileDropLeft -= OnComponentFileDropLeft;
+        _component.FileDropped -= OnComponentFileDropped;
+        _component.DownloadRequested -= OnComponentDownloadRequested;
+        _component.NavigationRequested -= OnComponentNavigationRequested;
+        _component.ExternalNavigationRequested -= OnComponentExternalNavigationRequested;
+        _component.DragRegionsUpdated -= OnComponentDragRegionsUpdated;
+        _component.Dispose();
         _messageReceived = null;
         _fileDropEntered = null;
         _fileDropLeft = null;
@@ -242,41 +220,125 @@ public sealed class CefGlueNextWebView : ITaruiWebView
         _downloadRequested = null;
         _navigationRequested = null;
         _dragRegionsUpdated = null;
-        _browser.RequestHandler = null;
-        _browser.DownloadHandler = null;
-        _browser.DragHandler = null;
-        _browser.Dispose();
     }
 
-    internal TaruiWebViewNavigationAction RaiseNavigation(Uri url, bool isMainFrame)
+    public async ValueTask DisposeAsync()
     {
-        var args = new TaruiWebViewNavigationEventArgs(url, isMainFrame);
-        _navigationRequested?.Invoke(this, args);
-        return args.Decision ?? TaruiWebViewNavigationAction.Deny;
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+        {
+            return;
+        }
+
+        DetachComponentEvents();
+        await _component.CloseAsync();
+        ClearEventHandlers();
     }
 
-    internal TaruiWebViewDownloadAction RaiseDownload(string url, string? suggestedFilename)
+    private void DetachComponentEvents()
     {
-        var args = new TaruiWebViewDownloadEventArgs(url, suggestedFilename);
-        _downloadRequested?.Invoke(this, args);
-        return args.Decision;
+        _component.MessageReceived -= OnComponentMessageReceived;
+        _component.FileDropEntered -= OnComponentFileDropEntered;
+        _component.FileDropLeft -= OnComponentFileDropLeft;
+        _component.FileDropped -= OnComponentFileDropped;
+        _component.DownloadRequested -= OnComponentDownloadRequested;
+        _component.NavigationRequested -= OnComponentNavigationRequested;
+        _component.ExternalNavigationRequested -= OnComponentExternalNavigationRequested;
+        _component.DragRegionsUpdated -= OnComponentDragRegionsUpdated;
     }
 
-    internal bool RaiseFileDropEntered(string[] paths, string? text, double x, double y)
+    private void ClearEventHandlers()
     {
-        var args = new TaruiWebViewFileDropEventArgs(paths, text, x, y);
-        _fileDropEntered?.Invoke(this, args);
-        return args.Accepted;
+        _messageReceived = null;
+        _fileDropEntered = null;
+        _fileDropLeft = null;
+        _fileDropped = null;
+        _downloadRequested = null;
+        _navigationRequested = null;
+        _dragRegionsUpdated = null;
     }
 
-    internal void RaiseDragRegionsUpdated(IReadOnlyList<DraggableRegion> regions)
+    private void OnComponentMessageReceived(object? sender, string message) =>
+        _messageReceived?.Invoke(this, new TaruiWebMessage(message));
+
+    private void OnComponentFileDropEntered(object? sender, CefGlueNextAvaloniaFileDropEventArgs args)
     {
-        _dragRegions = regions;
+        var mapped = new TaruiWebViewFileDropEventArgs(
+            args.Paths.ToArray(),
+            args.Text,
+            args.Position.X,
+            args.Position.Y);
+        _fileDropEntered?.Invoke(this, mapped);
+        args.Accepted = mapped.Accepted;
+    }
+
+    private void OnComponentFileDropLeft(object? sender, CefGlueNextAvaloniaFileDropEventArgs args) =>
+        _fileDropLeft?.Invoke(this, TaruiWebViewFileDropLeftEventArgs.Instance);
+
+    private void OnComponentFileDropped(object? sender, CefGlueNextAvaloniaFileDropEventArgs args)
+    {
+        var mapped = new TaruiWebViewFileDropEventArgs(
+            args.Paths.ToArray(),
+            args.Text,
+            args.Position.X,
+            args.Position.Y);
+        _fileDropped?.Invoke(this, mapped);
+        args.Accepted = mapped.Accepted;
+    }
+
+    private void OnComponentDownloadRequested(
+        object? sender,
+        CefGlueNextAvaloniaDownloadRequestedEventArgs args)
+    {
+        var mapped = new TaruiWebViewDownloadEventArgs(args.Uri.AbsoluteUri, args.SuggestedFileName);
+        _downloadRequested?.Invoke(this, mapped);
+        args.Decision = mapped.Decision == TaruiWebViewDownloadAction.Allow
+            ? CefGlueNextAvaloniaDownloadDecision.Allow
+            : CefGlueNextAvaloniaDownloadDecision.Deny;
+    }
+
+    private void OnComponentNavigationRequested(
+        object? sender,
+        CefGlueNextAvaloniaNavigationRequestedEventArgs args)
+    {
+        var mapped = new TaruiWebViewNavigationEventArgs(args.Uri, args.IsMainFrame);
+        _navigationRequested?.Invoke(this, mapped);
+        args.Decision = mapped.Decision switch
+        {
+            TaruiWebViewNavigationAction.Allow => CefGlueNextAvaloniaNavigationDecision.Allow,
+            TaruiWebViewNavigationAction.External => CefGlueNextAvaloniaNavigationDecision.External,
+            _ => CefGlueNextAvaloniaNavigationDecision.Deny
+        };
+    }
+
+    private void OnComponentExternalNavigationRequested(
+        object? sender,
+        CefGlueNextAvaloniaExternalNavigationEventArgs args)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(args.Uri.AbsoluteUri) { UseShellExecute = true });
+            args.Handled = true;
+        }
+        catch
+        {
+            args.Handled = false;
+        }
+    }
+
+    private void OnComponentDragRegionsUpdated(
+        object? sender,
+        CefGlueNextAvaloniaDragRegionsUpdatedEventArgs args)
+    {
+        var regions = args.Regions
+            .Select(static region => new DraggableRegion(
+                region.X,
+                region.Y,
+                region.Width,
+                region.Height,
+                region.IsDraggable ? DraggableRegionKind.Drag : DraggableRegionKind.NoDrag))
+            .ToArray();
         _dragRegionsUpdated?.Invoke(this, new TaruiWebViewDragRegionEventArgs(regions));
     }
-
-    private void OnWebMessageReceived(string message) =>
-        _messageReceived?.Invoke(this, new TaruiWebMessage(message));
 }
 
 public static class CefGlueNextPortInfo

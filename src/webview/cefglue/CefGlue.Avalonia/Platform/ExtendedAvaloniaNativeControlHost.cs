@@ -22,7 +22,6 @@ namespace Xilium.CefGlue.Avalonia.Platform
                 PropertyChanged += OnPropertyChanged;
             
                 AttachedToVisualTree += OnAttachedToVisualTree;
-                DetachedFromVisualTree += OnDetachedFromVisualTree;
             }
         }
 
@@ -36,7 +35,14 @@ namespace Xilium.CefGlue.Avalonia.Platform
 
         protected override IPlatformHandle CreateNativeControlCore(IPlatformHandle handle)
         {
-            return new PlatformHandle(_browserHandle, "HWND");
+            var handleType = CefRuntime.Platform switch
+            {
+                CefRuntimePlatform.Windows => "HWND",
+                CefRuntimePlatform.Linux => "XID",
+                CefRuntimePlatform.MacOS => "NSView",
+                _ => "CEF"
+            };
+            return new PlatformHandle(_browserHandle, handleType);
         }
 
         protected override void DestroyNativeControlCore(IPlatformHandle control)
@@ -55,13 +61,20 @@ namespace Xilium.CefGlue.Avalonia.Platform
             FixNativeNativeControlBounds();
         }
 
-        private void OnDetachedFromVisualTree(object sender, VisualTreeAttachmentEventArgs e)
+        protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
         {
+            base.OnDetachedFromVisualTree(e);
             _isAttached = false;
             if (_rootWindow != null)
             {
                 _rootWindow.Opened -= OnRootWindowOpened;
                 _rootWindow = null;
+            }
+
+            if (CefRuntime.Platform == CefRuntimePlatform.MacOS)
+            {
+                PropertyChanged -= OnPropertyChanged;
+                AttachedToVisualTree -= OnAttachedToVisualTree;
             }
         }
         

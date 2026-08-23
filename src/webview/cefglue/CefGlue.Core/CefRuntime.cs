@@ -257,6 +257,7 @@ namespace Xilium.CefGlue
             }
 
             libcef.shutdown();
+            _initialized = false;
         }
 
         /// <summary>

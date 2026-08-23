@@ -13,6 +13,7 @@
     <ProjectReference Include="..\Tarui.Shell\Tarui.Shell.csproj" />
     <ProjectReference Include="..\Tarui.SingleInstance\Tarui.SingleInstance.csproj" />
     <ProjectReference Include="..\..\webview\Tarui.WebView.CefGlueNext\Tarui.WebView.CefGlueNext.csproj" />
+    <ProjectReference Include="..\..\webview\CefGlue.Next.Avalonia\CefGlue.Next.Avalonia.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Core\Tarui.Plugins.Core.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Dialog\Tarui.Plugins.Dialog.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Event\Tarui.Plugins.Event.csproj" />

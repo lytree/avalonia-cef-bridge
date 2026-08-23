@@ -101,6 +101,7 @@ namespace Xilium.CefGlue.Common
         public event LoadErrorEventHandler LoadError;
 
         public event Action Initialized;
+        public event Action BrowserClosed;
         public event AddressChangedEventHandler AddressChanged;
         public event TitleChangedEventHandler TitleChanged;
         public event ConsoleMessageEventHandler ConsoleMessage;
@@ -481,6 +482,7 @@ namespace Xilium.CefGlue.Common
         void ICefBrowserHost.HandleBrowserDestroyed(CefBrowser browser)
         {
             IsJavascriptEngineInitialized = false;
+            BrowserClosed?.Invoke();
         }
 
         bool ICefBrowserHost.HandleBrowserClose(CefBrowser browser)

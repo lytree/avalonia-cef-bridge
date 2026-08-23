@@ -1,11 +1,12 @@
 # tarui.net
 
-`tarui.net` combines an Avalonia native shell with a React/TypeScript business UI and an in-repository CefGlue browser backend.
+`tarui.net` combines an Avalonia native shell with a React/TypeScript business UI and the standalone `CefGlue.Next.Avalonia` browser component.
 
 ## Architecture
 
 - Avalonia owns the native window shell and platform components.
-- CefGlue.Next managed sources are vendored under `src/webview/cefglue` and adapted to Avalonia 12.1.1.
+- `CefGlue.Next.Avalonia` is the only Tarui-side entry point for the vendored CefGlue implementation and Avalonia browser control.
+- `Tarui.WebView.CefGlueNext` adapts that component to Tarui policies, IPC and events; Shell and Hosting do not reference CefGlue types.
 - IPC follows the Tauri shape: Command, Event, Channel, and Capability.
 - Runtime reflection, assembly scanning, dynamic plugin loading, and JSON reflection fallback are prohibited.
 - Hosting follows the ASP.NET Core pattern: `TaruiHost.CreateApplicationBuilder` composes the shell through `AddTaruiShell()` / `Add*Plugin()` DI extensions on top of `Microsoft.Extensions.Hosting`.
@@ -27,7 +28,8 @@ src/
   plugins/                 Explicit native capability modules
   webview/
     cefglue/                Vendored CefGlue managed source projects
-    Tarui.WebView.*         Tarui browser abstraction and adapter
+    CefGlue.Next.Avalonia/  Standalone Avalonia browser component and runtime lifecycle
+    Tarui.WebView.*         Tarui browser contracts and component adapter
 web/
   apps/Tarui.Web/          React business application
   packages/api/            @lytree/api bridge package
@@ -54,6 +56,9 @@ dotnet run --project tests/Tarui.Plugins.Tests --no-build
 dotnet run --project tests/Tarui.Hosting.Tests --no-build
 dotnet run --project tests/Tarui.Architecture.Tests --no-build
 
+dotnet pack tarui.net.sln -c Release -o artifacts/nuget
+dotnet run --project tests/Tarui.Architecture.Tests --no-build -- --require-package --package artifacts/nuget/CefGlue.Next.Avalonia.0.1.0.nupkg
+
 cd web
 pnpm install --frozen-lockfile
 pnpm lint
@@ -73,10 +78,17 @@ pnpm install --frozen-lockfile
 
 ## Hosting and runtime configuration
 
-`Tarui.App` boots through the Tarui.Hosting builder, which wraps `Microsoft.Extensions.Hosting` and exposes the familiar `Configuration` / `Logging` / `Services` / `Window` members:
+`Tarui.App` boots through the Tarui.Hosting builder, which wraps `Microsoft.Extensions.Hosting` and exposes the familiar `Configuration` / `Logging` / `Services` / `Window` members. The CEF subprocess dispatch belongs to `CefGlue.Next.Avalonia`:
 
 ```csharp
-CefGlueRuntimeBootstrap.RunSubProcess(args); // CEF subprocess dispatch, must run first
+using CefGlue.Next.Avalonia;
+using Tarui.Hosting;
+using Tarui.Shell;
+
+if (CefGlueNextAvaloniaRuntime.RunSubProcess(args))
+{
+    return;
+}
 
 var builder = TaruiHost.CreateApplicationBuilder(args);
 
@@ -96,8 +108,28 @@ builder.Window.Configure(window =>
     window.Height = 820;
 });
 
-builder.Build().Run();
+try
+{
+    builder.Build().Run();
+}
+finally
+{
+    CefGlueNextAvaloniaRuntime.Shutdown();
+}
 ```
+
+## WebView component boundaries
+
+The browser stack is intentionally split into four layers:
+
+| Layer | Responsibility | May reference |
+| --- | --- | --- |
+| `Tarui.WebView.Abstractions` | UI-neutral navigation, script, download, file-drop and drag-region contracts | no Avalonia, no CefGlue |
+| `Tarui.WebView.Avalonia` | `Control`-bearing Avalonia contract | Avalonia + Tarui WebView contracts |
+| `CefGlue.Next.Avalonia` | Direct Avalonia browser control, CefGlue handlers, runtime and native browser lifecycle | Avalonia + vendored CefGlue |
+| `Tarui.WebView.CefGlueNext` | Tarui configuration, IPC, capability policy and event translation | Tarui contracts + `CefGlue.Next.Avalonia` |
+
+For a direct Avalonia application, install `CefGlue.Next.Avalonia`, call `CefGlueNextAvaloniaRuntime.RunSubProcess(args)` before host startup, initialize one runtime configuration, embed `CefGlueNextAvaloniaWebView`, and await every WebView close before leaving the Avalonia loop. The application then stops and disposes its Host and calls `CefGlueNextAvaloniaRuntime.Shutdown()` from `Program`'s `finally` block. Tarui applications normally use `Tarui.WebView.CefGlueNext` so the Shell can apply window capabilities and IPC policy.
 
 Runtime settings load from `appsettings.json` next to the executable, environment variables, and the command line:
 
@@ -171,8 +203,8 @@ The React UI (`examples/demo/web`) demonstrates window+IPC state control, routed
 
 GitHub Actions automates the integration and release gates (design `§10`):
 
-- `.github/workflows/ci.yml` — PR / branch gate: `dotnet build` 0 warnings, all self-tests, `Tarui.Architecture.Tests`, NuGet package baseline, version consistency (`Directory.Build.props` == `@lytree/api`), and `pnpm lint` + `pnpm build`.
-- `.github/workflows/release.yml` — tag `tarui-v<version>` (or manual dispatch): validates, pushes all NuGet packages topologically, publishes `@lytree/api`, builds the `zip;msix` installers on Windows (optional Authenticode), and creates a GitHub Release with the artifacts attached.
+- `.github/workflows/ci.yml` — PR / branch gate: `dotnet build` 0 warnings, package/nuspec validation for `CefGlue.Next.Avalonia`, an external NuGet consumer restore/build smoke test, all self-tests, `Tarui.Architecture.Tests`, version consistency (`Directory.Build.props` == `@lytree/api`), and `pnpm lint` + `pnpm build`.
+- `.github/workflows/release.yml` — tag `tarui-v<version>` (or manual dispatch): performs the same component package and external-consumer gates before pushing NuGet packages, publishes `@lytree/api`, builds the `zip;msix` installers on Windows (optional Authenticode), and creates a GitHub Release with the artifacts attached.
 
 Release secrets live in the GitHub `release` environment. NuGet publishing uses [trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing) (OIDC, no long-lived API key): allowlist the `release` environment and the `release.yml` workflow filename on nuget.org, then add the `NUGET_USER` env secret (nuget.org profile name, not email). `@lytree/api` is published to npm with [provenance](https://docs.npmjs.com/generating-provenance-statements) (OIDC — add a `NPM_USER`-associated trusted-publisher entry for this repo on npmjs.com; no `NPM_TOKEN` needed). Optional: `NUGET_SOURCE`. Optional for signed MSIX: `WINDOWS_CERT_BASE64`, `WINDOWS_CERT_PUBLISHER`, `WINDOWS_CERT_PASSWORD`, `WINDOWS_CERT_TIMESTAMP`; without a certificate the MSIX is emitted unsigned.
 
@@ -198,4 +230,4 @@ The shell routes window lifecycle events to the owning Webview (`window://moved`
 
 The source port is based on upstream commit `e3389315dad795374be1a1e52c42d4e49cb6fe7b`, CEF `150.0.11`, and targets Avalonia `12.1.1`. Reflection-based ObjectBinding, generic JavaScript evaluation, ReactiveUI, and System.Reactive were removed. Tarui IPC enters through the fixed `window.invokeCSharpAction` CEF process-message bridge.
 
-The current port supports native windowed rendering. OSR and its Avalonia 11 drag-and-drop layer are intentionally excluded.
+The current port supports native windowed rendering through `CefGlue.Next.Avalonia`. OSR and its Avalonia 11 drag-and-drop layer are intentionally excluded. The managed component package embeds all required Xilium CefGlue assemblies and intentionally has no Xilium package dependency; native CEF files remain application/runtime assets installed by `eng/cef/install-runtime.ps1` or a future RID runtime package.

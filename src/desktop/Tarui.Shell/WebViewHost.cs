@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Tarui.Contracts;
 using Tarui.Ipc;
 using Tarui.WebView.Abstractions;
+using Tarui.WebView.Avalonia;
 
 namespace Tarui.Shell;
 
@@ -15,7 +16,7 @@ namespace Tarui.Shell;
 /// is rejected up front when the window may not receive the drop, so un-authorized windows never carry
 /// the drop payload at the OS level.
 /// </summary>
-public sealed class WebViewHost : Border, IEventSink, IDisposable
+public sealed class WebViewHost : Border, IEventSink, IDisposable, IAsyncDisposable
 {
     private const string FileDropEnteredEvent = "window://file-drop-entered";
     private const string FileDropLeftEvent = "window://file-drop-left";
@@ -28,10 +29,11 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable
     private readonly WebViewRequestPolicy _policy;
     private readonly CommandContext _context;
     private readonly string _label;
-    private readonly ITaruiWebView _webView;
+    private readonly ITaruiAvaloniaWebView _webView;
+    private int _disposeState;
 
     public WebViewHost(
-        ITaruiWebViewFactory webViewFactory,
+        ITaruiAvaloniaWebViewFactory webViewFactory,
         IpcDispatcher dispatcher,
         EventRouter eventRouter,
         WebViewRequestPolicy policy,
@@ -122,13 +124,20 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable
 
     private void OnDownloadRequested(object? sender, TaruiWebViewDownloadEventArgs args)
     {
-        var decision = DecideDownload(new Uri(args.Url, UriKind.Absolute));
+        if (!Uri.TryCreate(args.Url, UriKind.Absolute, out var url))
+        {
+            args.Decision = TaruiWebViewDownloadAction.Deny;
+            return;
+        }
+
+        var decision = DecideDownload(url);
         args.Decision = decision == WebViewRequestDecision.Allow
             ? TaruiWebViewDownloadAction.Allow
             : TaruiWebViewDownloadAction.Deny;
 
         if (decision != WebViewRequestDecision.Allow || !MayReceive(DownloadRequestedEvent))
         {
+            args.Decision = TaruiWebViewDownloadAction.Deny;
             return;
         }
 
@@ -145,6 +154,7 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable
         args.Decision = ToAction(DecideNavigation(args.Url));
         if (args.Decision == TaruiWebViewNavigationAction.Deny || !MayReceive(NavigationRequestedEvent))
         {
+            args.Decision = TaruiWebViewNavigationAction.Deny;
             return;
         }
 
@@ -217,12 +227,40 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+        {
+            return;
+        }
+
+        DetachWebViewEvents();
+        _webView.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposeState, 1) != 0)
+        {
+            return;
+        }
+
+        DetachWebViewEvents();
+        if (_webView is IAsyncDisposable asyncDisposable)
+        {
+            await asyncDisposable.DisposeAsync();
+        }
+        else
+        {
+            _webView.Dispose();
+        }
+    }
+
+    private void DetachWebViewEvents()
+    {
         _webView.MessageReceived -= OnMessageReceived;
         _webView.FileDropEntered -= OnFileDropEntered;
         _webView.FileDropLeft -= OnFileDropLeft;
         _webView.FileDropped -= OnFileDropped;
         _webView.DownloadRequested -= OnDownloadRequested;
         _webView.NavigationRequested -= OnNavigationRequested;
-        _webView.Dispose();
     }
 }
