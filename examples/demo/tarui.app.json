@@ -21,7 +21,8 @@
   },
   "app": {
     "capabilities": [
-      "main"
+      "main",
+      "editor"
     ]
   }
 }

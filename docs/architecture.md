@@ -4,7 +4,7 @@
 
 Avalonia owns the window, native dialogs, platform services, WebView presentation lifecycle, and recovery UI. The Web application owns routes, forms, tables, and business state. The browser implementation is a replaceable component boundary rather than a Shell concern.
 
-The Shell depends on `Tarui.WebView.Abstractions` and the Avalonia-only `Tarui.WebView.Avalonia` hosting contract; it never references Xilium CefGlue. `Tarui.App` registers `Tarui.WebView.CefGlueNext` through `AddCefGlueWebView()`, and that adapter consumes `CefGlue.Next.Avalonia` as its only CefGlue component entry. Plugins are referenced and registered explicitly at the composition root through `AddPlugin<T>()` / `Add*Plugin()`; there is no plugin scan, runtime type lookup, or reflection-based dependency injection.
+The Shell depends on `Tarui.WebView.Abstractions` and the Avalonia-only `Tarui.WebView.Avalonia` hosting contract; it never references Xilium CefGlue. `examples/demo` (the `Demo` app) registers `Tarui.WebView.CefGlueNext` through `AddCefGlueWebView()`, and that adapter consumes `CefGlue.Next.Avalonia` as its only CefGlue component entry. Plugins are referenced and registered explicitly at the composition root through `AddPlugin<T>()` / `Add*Plugin()`; there is no plugin scan, runtime type lookup, or reflection-based dependency injection.
 
 ## Browser package graph
 
@@ -28,7 +28,7 @@ Tarui.WebView.CefGlueNext --------+--> CefGlue.Next.Avalonia
 
 `Tarui.Hosting` owns the host layer: `TaruiHost.CreateApplicationBuilder()` returns a `TaruiApplicationBuilder` (`Configuration`, `Logging`, `Services`, `Window`) built on `Microsoft.Extensions.Hosting`. The content root is fixed to `AppContext.BaseDirectory`, so `appsettings.json` and the copied `capabilities/*.json` resolve from the application output. `TaruiApplication.Run()` starts the host, uses the Avalonia classic desktop lifetime as the blocking run loop, and stops and disposes the host on exit. `IHostApplicationLifetime.StopApplication()` (including the Ctrl+C console-lifetime semantics) closes the UI through `TaruiLifetimeBridge` and `HostShutdownWatcher`; closing the window lets Avalonia exit and stops the host cooperatively.
 
-`Tarui.App` is the composition root: it registers the shell and plugins explicitly through `AddTaruiShell()` and the `Add*Plugin()` extensions, and configures the main window through `builder.Window`, merged over the `Tarui:Window:*` configuration keys (defaults < configuration < code). `tests/Tarui.Hosting.Tests` covers the builder, configuration merging, and the lifetime bridge. See `docs/hosting.md` for the full design and the configuration key table.
+`examples/demo` (the `Demo` app) is the composition root: it registers the shell and plugins explicitly through `AddTaruiShell()` and the `Add*Plugin()` extensions, and configures the main window through `builder.Window`, merged over the `Tarui:Window:*` configuration keys (defaults < configuration < code). `tests/Tarui.Hosting.Tests` covers the builder, configuration merging, and the lifetime bridge. See `docs/hosting.md` for the full design and the configuration key table.
 
 ## Managed browser stack
 
@@ -55,7 +55,7 @@ The upstream reflection-based ObjectBinding and generic JavaScript serializer we
 
 ## Shell composition
 
-`Tarui.App.Program` composes the application on `TaruiHost.CreateApplicationBuilder`. `AddTaruiShell()` registers the shell services and each `Add*Plugin()` extension registers one plugin through `AddPlugin<T>()` — explicit, compile-time registration with no plugin scan, runtime type lookup, or reflection-based dependency injection.
+`Demo.Program` composes the application on `TaruiHost.CreateApplicationBuilder`. `AddTaruiShell()` registers the shell services and each `Add*Plugin()` extension registers one plugin through `AddPlugin<T>()` — explicit, compile-time registration with no plugin scan, runtime type lookup, or reflection-based dependency injection.
 
 `AddTaruiShell()` builds, in order:
 
@@ -90,7 +90,7 @@ Adding a command means: DTO record in `Tarui.Contracts` (plus `TaruiJsonContext`
 
 ## Process model
 
-`Tarui.App.Program` calls `CefGlueNextAvaloniaRuntime.RunSubProcess(args)` before the host builder is created. CEF renderer and utility process launches therefore reuse the same executable, while the normal browser process continues into the host and Avalonia. `Tarui.WebView.CefGlueNext` keeps a compatibility forwarding method for Tarui callers, but the component runtime is the lifecycle owner.
+`Demo.Program` calls `CefGlueNextAvaloniaRuntime.RunSubProcess(args)` before the host builder is created. CEF renderer and utility process launches therefore reuse the same executable, while the normal browser process continues into the host and Avalonia. `Tarui.WebView.CefGlueNext` keeps a compatibility forwarding method for Tarui callers, but the component runtime is the lifecycle owner.
 
 ## Native runtime
 

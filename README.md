@@ -23,21 +23,20 @@ src/
   desktop/
     Tarui.Hosting/          ASP.NET Core style host: builder, DI, configuration, logging, host lifetime
     Tarui.Shell/            Declarative shell and window composition
-    Tarui.App/              Application composition root
   generators/              Compile-time Roslyn generators
   plugins/                 Explicit native capability modules
   webview/
     cefglue/                Vendored CefGlue managed source projects
     CefGlue.Next.Avalonia/  Standalone Avalonia browser component and runtime lifecycle
     Tarui.WebView.*         Tarui browser contracts and component adapter
+examples/
+  demo/                    In-repo demo application (composition root + frontend) built on the runtime
 web/
   apps/Tarui.Web/          React business application
   packages/api/            @lytree/api bridge package
 tests/                     Executable and integration tests
 capabilities/              Window/WebView permission manifests
 runtime/cef/               Locally installed native CEF distributions
-examples/demo/             In-repo demo app (local ProjectReference to src/)
-eng/cef/                   Native runtime installation tooling
 docs/                      Architecture and implementation notes
 ```
 
@@ -78,7 +77,7 @@ pnpm install --frozen-lockfile
 
 ## Hosting and runtime configuration
 
-`Tarui.App` boots through the Tarui.Hosting builder, which wraps `Microsoft.Extensions.Hosting` and exposes the familiar `Configuration` / `Logging` / `Services` / `Window` members. The CEF subprocess dispatch belongs to `CefGlue.Next.Avalonia`:
+`examples/demo` (the `Demo` application) is the in-repo composition root. It boots through the Tarui.Hosting builder, which wraps `Microsoft.Extensions.Hosting` and exposes the familiar `Configuration` / `Logging` / `Services` / `Window` members. The CEF subprocess dispatch belongs to `CefGlue.Next.Avalonia`:
 
 ```csharp
 using CefGlue.Next.Avalonia;
@@ -137,7 +136,7 @@ Runtime settings load from `appsettings.json` next to the executable, environmen
 - `Tarui:Web:*` — WebView resource mode parameters (`Mode`, `Url`, `Root`, `Scheme`, `Host`, `SpaFallback`, `Csp`, `MaxAssetBytes`). The `TARUI_WEB_*` environment variables below remain supported as a fallback.
 - `Logging:LogLevel:*` — standard `Microsoft.Extensions.Logging` configuration.
 
-The `capabilities/` directory lives at the repository root; the build copies `capabilities/*.json` into the application output next to `appsettings.json`, and the host resolves both from `AppContext.BaseDirectory`. See `docs/hosting.md` for the full design and the complete configuration key table.
+The demo app keeps its capability manifests in `examples/demo/capabilities/`; the build copies `capabilities/*.json` into the application output next to `appsettings.json`, and the host resolves both from `AppContext.BaseDirectory`. See `docs/hosting.md` for the full design and the complete configuration key table.
 
 ## Web resource modes
 
@@ -157,7 +156,7 @@ cd web
 pnpm build
 cd ..
 $env:TARUI_WEB_MODE = "scheme"
-dotnet run --project src/desktop/Tarui.App/Tarui.App.csproj
+dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj
 ```
 
 Scheme mode serves `tarui://localhost/index.html`. The build copies Web `dist` files into the application output. Override the defaults with the `Tarui:Web:*` configuration keys or the equivalent environment variables:
@@ -174,7 +173,7 @@ HTTP and a custom app scheme can coexist: when a content root is configured (via
 
 ## Tarui CLI
 
-`src/tarui-cli` (`Tarui.Cli`) is a zero-dependency orchestration tool that reads the `tarui.app.json` manifest at the repository root and drives the frontend/backend pipeline. It is published as a `dotnet tool` named `tarui`:
+`src/tarui-cli` (`Tarui.Cli`) is a zero-dependency orchestration tool that reads the `tarui.app.json` manifest (by default `./tarui.app.json` in the current directory; pass `--config <path>` for the in-repo `examples/demo/tarui.app.json`) and drives the frontend/backend pipeline. It is published as a `dotnet tool` named `tarui`:
 
 ```powershell
 dotnet tool install -global Tarui.Cli
@@ -188,7 +187,7 @@ tarui info       # environment / toolchain / manifest diagnostics
 tarui --help     # full command surface
 ```
 
-`tarui dev` starts `build.beforeDevCommand` in `build.frontend`, waits for `build.devUrl` to become reachable, then launches the desktop project with `TARUI_WEB_MODE=http` and `TARUI_WEB_URL=<devUrl>`. `tarui build` runs `build.beforeBuildCommand`, validates `build.frontendDist`, publishes the desktop project self-contained for the current RID, then produces the configured `bundle.targets` — a portable `zip` plus an MSIX (`--bundle msix`, or `bundle.targets: ["zip","msix"]`) — and an updater blueprint `dist/latest.json` with SHA-256. The MSIX is built by the managed `MsixPacker` (OPC ZIP + `AppxManifest.xml` + SHA-256 `AppxBlockMap.xml`, no `makeappx` dependency); if `bundle.msix.certificate.{path,password,timeStamperUrl}` is configured it is Authenticode-signed via `signtool.exe`, otherwise it is emitted unsigned. During `build` it also merges every referenced plugin's `permissions/<plugin>/schema.json` into `schemas/permissions.schema.json` (a validation aid only — `capabilities/*.json` remain the sole runtime authorization source). `tarui plugin init` scaffolds a plugin with permission descriptors, a typed guest-js bridge and console self-tests; `tarui plugin pack` validates layout, permission/version consistency, runs self-tests, and packs both the NuGet backend (with `permissions/`) and the npm frontend. Run from the repository root; see `docs/dev-workflow-design.md` for the manifest schema and the phased rollout (W3 application templates / `tarui init` complete, W4 plugin workflow complete, W5 installers complete).
+`tarui dev` starts `build.beforeDevCommand` in `build.frontend`, waits for `build.devUrl` to become reachable, then launches the desktop project with `TARUI_WEB_MODE=http` and `TARUI_WEB_URL=<devUrl>`. `tarui build` runs `build.beforeBuildCommand`, validates `build.frontendDist`, publishes the desktop project self-contained for the current RID, then produces the configured `bundle.targets` — a portable `zip` plus an MSIX (`--bundle msix`, or `bundle.targets: ["zip","msix"]`) — and an updater blueprint `dist/latest.json` with SHA-256. The MSIX is built by the managed `MsixPacker` (OPC ZIP + `AppxManifest.xml` + SHA-256 `AppxBlockMap.xml`, no `makeappx` dependency); if `bundle.msix.certificate.{path,password,timeStamperUrl}` is configured it is Authenticode-signed via `signtool.exe`, otherwise it is emitted unsigned. During `build` it also merges every referenced plugin's `permissions/<plugin>/schema.json` into `schemas/permissions.schema.json` (a validation aid only — `capabilities/*.json` remain the sole runtime authorization source). `tarui plugin init` scaffolds a plugin with permission descriptors, a typed guest-js bridge and console self-tests; `tarui plugin pack` validates layout, permission/version consistency, runs self-tests, and packs both the NuGet backend (with `permissions/`) and the npm frontend. Run from the app directory (or pass `--config <path>` for the in-repo `examples/demo/tarui.app.json`); see `docs/dev-workflow-design.md` for the manifest schema and the phased rollout (W3 application templates / `tarui init` complete, W4 plugin workflow complete, W5 installers complete).
 
 ## Demo app
 

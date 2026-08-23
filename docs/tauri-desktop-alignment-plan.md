@@ -685,7 +685,7 @@ macOS 的 warm 激活**不经 argv**，需 AppKit `application(_:openURLs:)` del
 
 **当前事实（决定方案的前提）**：
 
-- 发布形态：`Tarui.App` 为 framework-dependent WinExe（net10.0），CEF `win-x64` 原生运行时与 web dist 均拷贝进输出目录；无 self-contained、无安装器、无发布脚本 → 部署即”整目录拷贝“。
+- 发布形态：演示组合根 `examples/demo/Demo.Desktop`（AssemblyName `Demo`）为 framework-dependent WinExe（net10.0），CEF `win-x64` 原生运行时与 web dist 均拷贝进输出目录；无 self-contained、无安装器、无发布脚本 → 部署即”整目录拷贝“。
 - 签名基础设施：仓库尚无一例代码签名证书、ECDSA（P-384/SHA-384）私钥治理（public key 注入）或升级服务器/TLS pin。**这三样在 apply 之前必须就位。**
 - 信任先例：仅 CEF 运行时安装脚本做“官方 SHA-1 + 固定来源”，不足以支撑对宿主 exe 的自动替换，因为运行中的 exe/CEF DLL 在 Windows 上被锁定，无法就地原子替换。
 
@@ -797,7 +797,7 @@ Contracts <- Ipc / Capabilities <- Plugin contracts
                                   ^
 Hosting / Shell / Platform implementations
                                   ^
-Tarui.App composition root
+examples/demo/Demo.Desktop composition root
 ```
 
 插件项目不得直接依赖 `Tarui.Shell`。Avalonia 相关实现由 Shell 或专用 desktop 项目提供，并在组合根显式注册。
@@ -810,7 +810,7 @@ Tarui.App composition root
 2. 将所有 DTO 显式加入 `TaruiJsonContext`。
 3. 在独立插件项目定义服务接口、命令 Handler 和 `Add*Plugin()`。
 4. 在 desktop 层实现 Windows、macOS、Linux 平台服务。
-5. 在 `Tarui.App` 显式注册插件和平台服务。
+5. 在演示组合根 `examples/demo/Demo.Desktop/Program.cs` 显式注册插件和平台服务。
 6. 定义默认权限、逐命令权限和 scope schema。
 7. 更新目标 Capability 文件，禁止自动授予全部权限。
 8. 在 `web/packages/api` 增加独立模块和 barrel export。

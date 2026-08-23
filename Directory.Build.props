@@ -14,7 +14,7 @@
     - GenerateDocumentationFile 生成 XML 文档；缺注释类 CS1591/CS1573 等被抑制，
       以免在 TreatWarningsAsErrors 纪律下引发 289+ 编译错误。全包强制注释留待后续。
     - 需要单独排除打包的项目在其 .csproj 内显式设 IsPackable=false
-      （应用 Tarui.App、测试、cefglue 第三方源码等）。
+      （演示应用 examples/demo、测试、cefglue 第三方源码等）。
   -->
   <PropertyGroup Condition="'$(IsPackable)' != 'false'">
     <TaruiVersion>0.1.0</TaruiVersion>

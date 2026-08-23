@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@lytree/api':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: workspace:*
+        version: link:../../../web/packages/api
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -37,10 +37,13 @@ importers:
         specifier: ^8.2.0
         version: 8.2.2(@types/node@24.13.3)
 
-packages:
+  ../../../web/packages/api:
+    devDependencies:
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.3
 
-  '@lytree/api@0.1.0':
-    resolution: {integrity: sha512-udT/T8SziyCOoFIgkYsYYo5YVyeywlJRsbxzb01OY2ZhIY9SkaCVU2VXiKzVsc0ibkxb+f5tZkNRbMZMhmHELQ==}
+packages:
 
   '@oxc-project/types@0.146.0':
     resolution: {integrity: sha512-XC0QsnnhVe7sLIWmYmdPw7x5P0h4W8vUU3Nv1ySgWXtvCz8NizoAEpGXA0sOYoJQV2Rl13LgURAHQ5cI5ILCSA==}
@@ -359,8 +362,6 @@ packages:
         optional: true
 
 snapshots:
-
-  '@lytree/api@0.1.0': {}
 
   '@oxc-project/types@0.146.0': {}
 

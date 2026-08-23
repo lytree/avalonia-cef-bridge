@@ -27,10 +27,22 @@
     <ProjectReference Include="..\..\..\src\webview\Tarui.WebView.CefGlueNext\Tarui.WebView.CefGlueNext.csproj" />
     <ProjectReference Include="..\..\..\src\webview\CefGlue.Next.Avalonia\CefGlue.Next.Avalonia.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Core\Tarui.Plugins.Core.csproj" />
-    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Window\Tarui.Plugins.Window.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Autostart\Tarui.Plugins.Autostart.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.DeepLink\Tarui.Plugins.DeepLink.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Dialog\Tarui.Plugins.Dialog.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Event\Tarui.Plugins.Event.csproj" />
-    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Store\Tarui.Plugins.Store.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.FileSystem\Tarui.Plugins.FileSystem.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.GlobalShortcut\Tarui.Plugins.GlobalShortcut.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Log\Tarui.Plugins.Log.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Menu\Tarui.Plugins.Menu.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Notification\Tarui.Plugins.Notification.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Store\Tarui.Plugins.Store.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.System\Tarui.Plugins.System.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Tray\Tarui.Plugins.Tray.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Updater\Tarui.Plugins.Updater.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Webview\Tarui.Plugins.Webview.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Window\Tarui.Plugins.Window.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.WindowState\Tarui.Plugins.WindowState.csproj" />
   </ItemGroup>
 
   <ItemGroup>

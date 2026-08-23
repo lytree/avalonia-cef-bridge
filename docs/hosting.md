@@ -2,7 +2,7 @@
 
 Tarui.Hosting 把 .NET 生态最成熟的托管模式（`HostApplicationBuilder`、DI、Configuration、Logging、`IHostedService` 生命周期）直接引入桌面壳层。Avalonia 定位为原生组件库 + 窗口外壳，`CefGlue.Next.Avalonia` 承载浏览器页面；Tarui WebView 适配层负责 IPC、策略和静态资源加载，不把 CEF 实现类型泄漏到 Shell。
 
-## 最终开发体验（Tarui.App/Program.cs）
+## 最终开发体验（examples/demo/Demo.Desktop/Program.cs）
 
 ```csharp
 using Tarui.Hosting;
@@ -54,7 +54,7 @@ builder.Build().Run();
 | `CefGlue.Next.Avalonia` | Avalonia 浏览器控件、CEF handler、runtime/subprocess 和关闭完成信号 | Avalonia 12.1.1；包内嵌托管 CefGlue DLL |
 | `Tarui.WebView.CefGlueNext` | `AddCefGlueWebView()`、`CefGlueNextWebAppOptions.FromConfiguration(IConfiguration)`、Tarui 事件/策略适配 | DI.Abstractions + Configuration.Abstractions 10.0.0 + CefGlue.Next.Avalonia |
 | `Tarui.Hosting`（新建） | `TaruiHost` / `TaruiApplicationBuilder` / `TaruiApplication` / `TaruiAvaloniaApp` / 生命周期桥 | `Microsoft.Extensions.Hosting` 10.0.0 + Avalonia 桌面包 |
-| `Tarui.App` | 组合根：builder UX + `appsettings.json` | 经由 Tarui.Hosting |
+| `examples/demo/Demo.Desktop` | 组合根：builder UX + `appsettings.json` | 经由 Tarui.Hosting |
 
 依赖方向为：`Hosting → Shell → (Ipc, Contracts, WebView.Abstractions, WebView.Avalonia, 插件接口)`；`Tarui.WebView.CefGlueNext → (WebView.Abstractions, WebView.Avalonia, CefGlue.Next.Avalonia)`；插件仍只依赖 `Ipc + Contracts`。架构门禁（禁反射/扫描/动态加载 + ProjectReference 边界 + 组件包内容）继续成立：插件经 `AddPlugin<T>()` 编译期显式注册，与 ASP.NET Core `AddSingleton<TService,TImpl>` 同类，不做任何程序集扫描。
 
@@ -216,5 +216,5 @@ RunSubProcess(args)
 2. **P2** Shell/插件/App 组合根 DI 重构：`AddTaruiShell` + 5×`Add*Plugin` + Composer/Factory/Launcher，删除 `ShellBootstrap` 与静态 `Register`，App 过渡为手工 `ServiceCollection` 组合；迁移/新增 Shell.Tests、Plugins.Tests。
 3. **P3** `CefGlueNextWebAppOptions.FromConfiguration` + `AddCefGlueWebView` + WebView.Tests。
 4. **P4** 新建 `Tarui.Hosting` + `tests/Tarui.Hosting.Tests`（builder/配置合并/生命周期/hosted service 顺序/桥）+ sln 注册。
-5. **P5** `Tarui.App` 切换 builder UX + `appsettings.json`；全量构建 + 六套测试全绿。
+5. **P5** `examples/demo/Demo.Desktop`（原根 `Tarui.App`）切换 builder UX + `appsettings.json`；全量构建 + 六套测试全绿。
 6. **P6** 文档：README.md、docs/architecture.md、AGENTS.md。

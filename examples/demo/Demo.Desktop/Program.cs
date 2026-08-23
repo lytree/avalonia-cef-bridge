@@ -1,9 +1,21 @@
 using Tarui.Hosting;
+using Tarui.Plugins.Autostart;
 using Tarui.Plugins.Core;
+using Tarui.Plugins.DeepLink;
+using Tarui.Plugins.Dialog;
 using Tarui.Plugins.Events;
 using Tarui.Plugins.FileSystem;
+using Tarui.Plugins.GlobalShortcut;
+using Tarui.Plugins.Log;
+using Tarui.Plugins.Menu;
+using Tarui.Plugins.Notification;
 using Tarui.Plugins.Store;
+using Tarui.Plugins.System;
+using Tarui.Plugins.Tray;
+using Tarui.Plugins.Updater;
+using Tarui.Plugins.Webview;
 using Tarui.Plugins.Window;
+using Tarui.Plugins.WindowState;
 using Tarui.Shell;
 using Tarui.SingleInstance;
 using Tarui.WebView.CefGlueNext;
@@ -43,13 +55,22 @@ internal static class Program
             .AddCefGlueWebView()
             .AddCorePlugin()
             .AddWindowPlugin()
+            .AddWebviewPlugin()
+            .AddWindowStatePlugin()
             .AddEventPlugin()
+            .AddDialogPlugin()
+            .AddSystemPlugin()
+            .AddFileSystemPlugin()
+            .AddMenuPlugin()
+            .AddTrayPlugin()
+            .AddNotificationPlugin()
+            .AddAutostartPlugin()
+            .AddGlobalShortcutPlugin()
             .AddStorePlugin()
-            .AddFileSystemPlugin();
+            .AddLogPlugin()
+            .AddDeepLinkPlugin()
+            .AddUpdaterPlugin();
 
-        // Optional: demonstrate a native push event once the window is live.
-        // Configuring an app:// event here would require wiring EventNames.ValidateWebEmit
-        // against a host-side producer; the frontend demo uses window events instead.
         builder.Window.Configure(window =>
         {
             window.Title = "Tarui Demo";

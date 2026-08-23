@@ -2,7 +2,7 @@
 
 ## 项目结构与模块组织
 
-主解决方案为 `tarui.net.sln`。生产代码位于 `src/`：`core/` 存放契约与无反射 IPC，`desktop/` 存放 Hosting、Shell 和应用组合根，`plugins/` 存放原生能力插件，`generators/` 存放 Roslyn 生成器，`webview/` 存放浏览器抽象及仓库内维护的 CefGlue 源码。可执行自测试位于 `tests/Tarui.*.Tests`。前端 pnpm 工作区位于 `web/`，React/Vite 应用在 `apps/Tarui.Web`，类型化桥接包在 `packages/api`。能力清单、工程脚本和设计文档分别位于 `capabilities/`、`eng/` 和 `docs/`。
+主解决方案为 `tarui.net.sln`。生产代码位于 `src/`：`core/` 存放契约与无反射 IPC，`desktop/` 存放 Hosting、Shell 和应用宿主，`plugins/` 存放原生能力插件，`generators/` 存放 Roslyn 生成器，`webview/` 存放浏览器抽象及仓库内维护的 CefGlue 源码。可执行自测试位于 `tests/Tarui.*.Tests`。仓库内的演示应用位于 `examples/demo/`（组合根 + 前端 + capabilities）。前端 pnpm 工作区位于 `web/`，React/Vite 应用在 `apps/Tarui.Web`，类型化桥接包在 `packages/api`，`examples/demo/web` 以 `workspace:*` 引用 `packages/api`。能力清单、工程脚本和设计文档分别位于 `capabilities/`、`eng/` 和 `docs/`。
 
 ## 构建、测试与本地开发
 
@@ -14,7 +14,7 @@ dotnet restore tarui.net.sln --configfile NuGet.Config
 dotnet build tarui.net.sln --no-restore
 dotnet run --project tests/Tarui.Ipc.Tests --no-build
 dotnet run --project tests/Tarui.Architecture.Tests --no-build
-dotnet run --project src/desktop/Tarui.App/Tarui.App.csproj
+dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj
 ```
 
 提交较大改动前，应运行全部 `tests/Tarui.*.Tests` 可执行项目。前端命令从 `web/` 运行：

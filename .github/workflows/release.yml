@@ -230,9 +230,9 @@ jobs:
       - name: Install CEF runtime (win-x64)
         run: ./eng/cef/install-runtime.ps1 -RuntimeIdentifier win-x64
 
-      - name: Install frontend deps (frozen)
+      - name: Install demo frontend deps (frozen)
         shell: bash
-        working-directory: web
+        working-directory: examples/demo/web
         run: pnpm install --frozen-lockfile
 
       - name: Configure optional Authenticode signing
@@ -245,7 +245,8 @@ jobs:
           }
           $certPath = Join-Path ($env:RUNNER_TEMP) 'tarui-sign.pfx'
           [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($b64))
-          $manifest = Get-Content tarui.app.json -Raw | ConvertFrom-Json
+          $manifestPath = 'examples/demo/tarui.app.json'
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
           if (-not $manifest.bundle.msix) { $manifest.bundle | Add-Member -NotePropertyName msix -NotePropertyValue @{} -Force }
           $manifest.bundle.msix.publisher = '${{ secrets.WINDOWS_CERT_PUBLISHER }}'
           $manifest.bundle.msix.certificate = @{
@@ -253,7 +254,7 @@ jobs:
             password       = '${{ secrets.WINDOWS_CERT_PASSWORD }}'
             timeStamperUrl = '${{ secrets.WINDOWS_CERT_TIMESTAMP }}'
           }
-          $manifest | ConvertTo-Json -Depth 10 | Set-Content tarui.app.json
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath
           Write-Host 'Signing configured.'
 
       - name: Restore & publish & bundle (zip;msix)
@@ -261,13 +262,13 @@ jobs:
         run: |
           dotnet restore tarui.net.sln --configfile NuGet.Config
           dotnet build src/tarui-cli/Tarui.Cli.csproj -c Release --no-restore
-          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- build --bundle zip,msix
+          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config examples/demo/tarui.app.json build --bundle zip,msix
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
           name: installers
-          path: dist/
+          path: examples/demo/dist/
           retention-days: 1
 
   release:
