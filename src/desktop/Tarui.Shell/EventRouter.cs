@@ -49,6 +49,19 @@ public sealed class EventRouter(IWindowSinkRegistry registry, EventHub hub)
             : EmitToWindowAsync(targetWindow, eventName, payload, cancellationToken);
 
     /// <summary>
+    /// Delivers a <c>webview://</c> reserved event to a specific web view by its own label. A web view
+    /// and its host window share one label while a window hosts a single surface, so the sink is resolved
+    /// through the same entry; this channel is kept distinct from <see cref="EmitToWindowAsync"/> so that
+    /// multi-webview layouts can address surfaces independently without changing the window channel.
+    /// </summary>
+    public ValueTask EmitToWebviewAsync(
+        string webviewLabel,
+        string eventName,
+        JsonElement payload,
+        CancellationToken cancellationToken = default) =>
+        EmitToWindowAsync(webviewLabel, eventName, payload, cancellationToken);
+
+    /// <summary>
     /// Reserved native events may carry sensitive system data (window geometry, theme, second-instance
     /// arguments, file paths, notification actions). They are delivered only to windows that declared
     /// receive authorization in their capability <c>events</c> list. Application-defined <c>user://</c>

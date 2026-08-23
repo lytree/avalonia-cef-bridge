@@ -1,3 +1,4 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -137,6 +138,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tarui.WebView.Avalonia", "src\webview\Tarui.WebView.Avalonia\Tarui.WebView.Avalonia.csproj", "{EEBA31B1-314A-499E-A552-08676BEAF9EE}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CefGlue.Next.Avalonia.Tests", "tests\CefGlue.Next.Avalonia.Tests\CefGlue.Next.Avalonia.Tests.csproj", "{8B1444B2-402B-4912-8E5C-831CFB46716B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tarui.Plugins.Webview", "src\plugins\Tarui.Plugins.Webview\Tarui.Plugins.Webview.csproj", "{CA72078A-C682-421B-94E7-6E4CC599AB3F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -820,6 +823,18 @@ Global
 		{8B1444B2-402B-4912-8E5C-831CFB46716B}.Release|x64.Build.0 = Release|Any CPU
 		{8B1444B2-402B-4912-8E5C-831CFB46716B}.Release|x86.ActiveCfg = Release|Any CPU
 		{8B1444B2-402B-4912-8E5C-831CFB46716B}.Release|x86.Build.0 = Release|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Debug|x64.Build.0 = Debug|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Debug|x86.Build.0 = Debug|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Release|x64.ActiveCfg = Release|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Release|x64.Build.0 = Release|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Release|x86.ActiveCfg = Release|Any CPU
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -888,5 +903,6 @@ Global
 		{05E89DCC-BA1A-4ED7-A5F6-BDC1B9E84073} = {F54332F1-7414-B317-14D6-87F4A58A2743}
 		{EEBA31B1-314A-499E-A552-08676BEAF9EE} = {F54332F1-7414-B317-14D6-87F4A58A2743}
 		{8B1444B2-402B-4912-8E5C-831CFB46716B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{CA72078A-C682-421B-94E7-6E4CC599AB3F} = {58D3A2C3-F96F-5E57-2C6B-ECE59D6A18FC}
 	EndGlobalSection
 EndGlobal

@@ -5,6 +5,7 @@
  * - ipc       : raw invoke/listen bridge (rarely needed directly)
  * - app       : shell handshake
  * - window    : window lifecycle, state, and events
+ * - webview   : webview navigation and state
  * - event     : cross-window event emit/subscribe
  * - dialog    : native file pickers
  * - os        : host operating system info
@@ -61,6 +62,9 @@ export type {
   DownloadRequestEvent,
   NavigationRequestEvent,
 } from './window'
+
+export { Webview, getCurrentWebview } from './webview'
+export type { WebviewState } from './webview'
 
 export { emit, on } from './event'
 

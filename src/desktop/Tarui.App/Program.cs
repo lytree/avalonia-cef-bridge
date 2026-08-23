@@ -14,6 +14,7 @@ using Tarui.Plugins.System;
 using Tarui.Plugins.Tray;
 using Tarui.Plugins.Updater;
 using Tarui.Plugins.Window;
+using Tarui.Plugins.Webview;
 using Tarui.Plugins.WindowState;
 using Tarui.Shell;
 using Tarui.SingleInstance;
@@ -54,6 +55,7 @@ internal static class Program
             .AddCefGlueWebView()
             .AddCorePlugin()
             .AddWindowPlugin()
+            .AddWebviewPlugin()
             .AddWindowStatePlugin()
             .AddEventPlugin()
             .AddDialogPlugin()

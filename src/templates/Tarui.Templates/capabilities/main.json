@@ -3,6 +3,10 @@
   "description": "Main window desktop permissions",
   "windows": ["main"],
   "platforms": ["windows", "macos", "linux"],
+  "events": [
+    "webview://download-requested",
+    "webview://navigation-requested"
+  ],
   "permissions": [
     "core:app|get-info",
     "core:event|emit",
@@ -27,6 +31,9 @@
     "core:window|set-decorations",
     "core:window|set-fullscreen",
     "core:window|get-state",
-    "core:window|list"
+    "core:window|list",
+    "plugin:webview|navigate",
+    "plugin:webview|get-state",
+    "plugin:webview|list"
   ]
 }

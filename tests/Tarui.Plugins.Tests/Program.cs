@@ -7,6 +7,7 @@ using Tarui.Plugins.Core;
 using Tarui.Plugins.Dialog;
 using Tarui.Plugins.Events;
 using Tarui.Plugins.System;
+using Tarui.Plugins.Webview;
 using Tarui.Plugins.Window;
 
 namespace Tarui.Plugins.Tests;
@@ -26,11 +27,17 @@ internal static class Program
         await OpensShellTargetsAndReportsOsInfo();
         await OpensDialogsForRequestingWindow();
         await DeniesCommandsOutsideCapability();
+        RegistersWebviewCommandsWithPermissions();
+        await NavigatesOwnWebviewWithoutOtherPermission();
+        await DeniesOtherWebviewWithoutPermission();
+        await AllowsOtherWebviewWithPermission();
+        await ReturnsWebviewStateAndLabels();
         ResolvesCorePluginThroughServiceCollection();
         ResolvesWindowPluginThroughServiceCollection();
         ResolvesEventPluginThroughServiceCollection();
         ResolvesDialogPluginThroughServiceCollection();
         ResolvesSystemPluginThroughServiceCollection();
+        ResolvesWebviewPluginThroughServiceCollection();
         Console.WriteLine("Tarui.Plugins self-tests passed.");
         return 0;
     }
@@ -281,6 +288,125 @@ internal static class Program
 
         Assert(!response.Success, "A command outside the capability must fail.");
         Assert(response.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
+    }
+
+    private static void RegistersWebviewCommandsWithPermissions()
+    {
+        var builder = new CommandRouterBuilder();
+        new WebviewPlugin(new FakeWebviewService()).ConfigureCommands(builder);
+
+        var expected = new[]
+        {
+            "plugin:webview|navigate",
+            "plugin:webview|get-state",
+            "plugin:webview|list",
+        };
+        var router = builder.Build();
+        Assert(
+            expected.All(router.Commands.Contains),
+            "Every webview command must be routed.");
+        Assert(
+            expected.All(builder.RegisteredPermissions.Contains),
+            "Every webview command must register its permission.");
+        Assert(
+            builder.RegisteredPermissions.Contains("plugin:webview|navigate-other-webview") &&
+            builder.RegisteredPermissions.Contains("plugin:webview|get-state-other-webview"),
+            "The other-webview permission variants must be registered.");
+    }
+
+    private static async Task NavigatesOwnWebviewWithoutOtherPermission()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+        var response = await router.InvokeAsync(
+            Request(
+                "plugin:webview|navigate",
+                new WebviewNavigateOptions("tarui://page"),
+                TaruiJsonContext.Default.WebviewNavigateOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|navigate"])));
+
+        Assert(response.Success, "Navigating the caller's own webview must succeed.");
+        Assert(
+            service.Calls.Contains("navigate|editor|tarui://page"),
+            "A missing label must fall back to the context webview label.");
+    }
+
+    private static async Task DeniesOtherWebviewWithoutPermission()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+        var response = await router.InvokeAsync(
+            Request(
+                "plugin:webview|navigate",
+                new WebviewNavigateOptions("tarui://page", "main"),
+                TaruiJsonContext.Default.WebviewNavigateOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|navigate"])));
+
+        Assert(!response.Success, "Addressing another webview without the -other-webview permission must fail.");
+        Assert(response.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
+    }
+
+    private static async Task AllowsOtherWebviewWithPermission()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+        var response = await router.InvokeAsync(
+            Request(
+                "plugin:webview|get-state",
+                new WebviewLabelOptions("main"),
+                TaruiJsonContext.Default.WebviewLabelOptions),
+            new CommandContext(
+                "editor",
+                "editor",
+                new CapabilitySet(["plugin:webview|get-state", "plugin:webview|get-state-other-webview"])));
+
+        Assert(response.Success, "Addressing another webview with the -other-webview permission must succeed.");
+        Assert(
+            service.Calls.Contains("get-state|main"),
+            "The target webview label must be passed to the service.");
+    }
+
+    private static async Task ReturnsWebviewStateAndLabels()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+        var stateResponse = await router.InvokeAsync(
+            Request(
+                "plugin:webview|get-state",
+                new WebviewLabelOptions("editor"),
+                TaruiJsonContext.Default.WebviewLabelOptions),
+            AllowAll());
+        var state = Result(stateResponse, TaruiJsonContext.Default.WebviewStateInfo);
+        Assert(state.Label == "editor", "The state must be scoped to the requested webview.");
+        Assert(state.Url == "editor://start", "The state must carry the webview URL.");
+        Assert(state.WindowLabel == "editor-window", "The state must expose the host window label.");
+
+        var listResponse = await router.InvokeAsync(
+            Request("plugin:webview|list", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
+            AllowAll());
+        var labels = Result(listResponse, TaruiJsonContext.Default.WebviewLabels);
+        Assert(
+            labels.Labels.SequenceEqual(["main", "editor"]),
+            "The label list must match the service response.");
+    }
+
+    private static void ResolvesWebviewPluginThroughServiceCollection()
+    {
+        using var provider = new ServiceCollection()
+            .AddWebviewPlugin()
+            .AddSingleton<IWebviewService>(new FakeWebviewService())
+            .BuildServiceProvider();
+
+        Assert(
+            provider.GetRequiredService<ITaruiPlugin>() is WebviewPlugin,
+            "AddWebviewPlugin must resolve the webview plugin.");
+    }
+
+    private static CommandRouter BuildRouter(FakeWebviewService service)
+    {
+        var builder = new CommandRouterBuilder();
+        new WebviewPlugin(service).ConfigureCommands(builder);
+        return builder.Build();
     }
 
     private static CommandRouter BuildRouter(FakeWindowService service)

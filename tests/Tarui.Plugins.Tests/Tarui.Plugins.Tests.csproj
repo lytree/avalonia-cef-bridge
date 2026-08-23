@@ -16,5 +16,6 @@
     <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.FileSystem\Tarui.Plugins.FileSystem.csproj" />
     <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.System\Tarui.Plugins.System.csproj" />
     <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Window\Tarui.Plugins.Window.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Webview\Tarui.Plugins.Webview.csproj" />
   </ItemGroup>
 </Project>

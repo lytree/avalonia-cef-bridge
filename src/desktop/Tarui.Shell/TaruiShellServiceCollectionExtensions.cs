@@ -13,6 +13,7 @@ using Tarui.Plugins.Notification;
 using Tarui.Plugins.System;
 using Tarui.Plugins.Tray;
 using Tarui.Plugins.Updater;
+using Tarui.Plugins.Webview;
 using Tarui.Plugins.Window;
 using Tarui.Plugins.WindowState;
 using Tarui.WebView.Abstractions;
@@ -46,6 +47,9 @@ public static class TaruiShellServiceCollectionExtensions
         .AddSingleton<IWindowService>(sp => new AvaloniaWindowService(
             sp.GetRequiredService<WindowRegistry>(),
             (options, caller) => sp.GetRequiredService<WebviewAttacher>().Attach(options, caller)))
+        .AddSingleton<IWebviewService>(sp => new AvaloniaWebviewService(
+            sp.GetRequiredService<WindowRegistry>(),
+            sp.GetRequiredService<TaruiAppOrigin>()))
         .AddSingleton<IMenuService>(sp => new AvaloniaMenuService(
             sp.GetRequiredService<WindowRegistry>(),
             sp.GetRequiredService<EventRouter>()))

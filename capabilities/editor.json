@@ -15,6 +15,8 @@
     "tray://menu-item-clicked",
     "notification://activated",
     "notification://dismissed",
+    "webview://download-requested",
+    "webview://navigation-requested",
     "updater://status"
   ],
   "permissions": [
@@ -27,6 +29,9 @@
     "core:window|focus",
     "core:window|set-title",
     "core:window|get-state",
+    "plugin:webview|navigate",
+    "plugin:webview|get-state",
+    "plugin:webview|list",
     "plugin:menu|set-window-menu",
     "plugin:menu|update-item",
     "plugin:menu|remove-window-menu",

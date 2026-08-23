@@ -4,6 +4,7 @@ using Tarui.Ipc;
 using Tarui.Plugins.Dialog;
 using Tarui.Plugins.Events;
 using Tarui.Plugins.System;
+using Tarui.Plugins.Webview;
 using Tarui.Plugins.Window;
 
 namespace Tarui.Plugins.Tests;
@@ -128,6 +129,32 @@ internal sealed class FakeWindowService : IWindowService
     {
         Calls.Add(call);
         return ValueTask.FromResult(new Unit());
+    }
+}
+
+internal sealed class FakeWebviewService : IWebviewService
+{
+    public List<string> Calls { get; } = [];
+
+    public string[] Labels { get; set; } = ["main", "editor"];
+
+    public ValueTask<Unit> NavigateAsync(string webviewLabel, string url, CancellationToken cancellationToken)
+    {
+        Calls.Add($"navigate|{webviewLabel}|{url}");
+        return ValueTask.FromResult(new Unit());
+    }
+
+    public ValueTask<WebviewStateInfo> GetStateAsync(string webviewLabel, CancellationToken cancellationToken)
+    {
+        Calls.Add($"get-state|{webviewLabel}");
+        return ValueTask.FromResult(
+            new WebviewStateInfo(webviewLabel, $"{webviewLabel}-window", $"{webviewLabel}://start", $"{webviewLabel}-title"));
+    }
+
+    public ValueTask<string[]> ListAsync(CancellationToken cancellationToken)
+    {
+        Calls.Add("list");
+        return ValueTask.FromResult(Labels);
     }
 }
 

@@ -147,7 +147,7 @@ public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
             return;
         }
 
-        FireAndForget(_eventRouter.EmitToWindowAsync(
+        FireAndForget(_eventRouter.EmitToWebviewAsync(
             Label,
             DownloadRequestedEvent,
             JsonSerializer.SerializeToElement(
@@ -164,7 +164,7 @@ public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
             return;
         }
 
-        FireAndForget(_eventRouter.EmitToWindowAsync(
+        FireAndForget(_eventRouter.EmitToWebviewAsync(
             Label,
             NavigationRequestedEvent,
             JsonSerializer.SerializeToElement(

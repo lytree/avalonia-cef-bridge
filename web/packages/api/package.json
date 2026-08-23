@@ -10,6 +10,7 @@
     "./ipc": { "types": "./dist/ipc.d.ts", "default": "./dist/ipc.js" },
     "./app": { "types": "./dist/app.d.ts", "default": "./dist/app.js" },
     "./window": { "types": "./dist/window.d.ts", "default": "./dist/window.js" },
+    "./webview": { "types": "./dist/webview.d.ts", "default": "./dist/webview.js" },
     "./event": { "types": "./dist/event.d.ts", "default": "./dist/event.js" },
     "./dialog": { "types": "./dist/dialog.d.ts", "default": "./dist/dialog.js" },
     "./os": { "types": "./dist/os.d.ts", "default": "./dist/os.js" },
