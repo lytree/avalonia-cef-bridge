@@ -13,12 +13,17 @@ public static class CefGlueWebViewServiceCollectionExtensions
             new CefGlueNextWebViewFactory(sp.GetRequiredService<CefGlueNextWebAppOptions>()))
         .AddSingleton<ITaruiAvaloniaWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
         .AddSingleton<ITaruiWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
-        .AddSingleton(sp => new TaruiAppOrigin(sp.GetRequiredService<CefGlueNextWebAppOptions>().StartUri));
+        .AddSingleton(sp => CreateAppOrigin(sp.GetRequiredService<CefGlueNextWebAppOptions>()));
 
     public static IServiceCollection AddCefGlueWebView(this IServiceCollection services, CefGlueNextWebAppOptions options) => services
         .AddSingleton(options)
         .AddSingleton<CefGlueNextWebViewFactory>(_ => new CefGlueNextWebViewFactory(options))
         .AddSingleton<ITaruiAvaloniaWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
         .AddSingleton<ITaruiWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
-        .AddSingleton(_ => new TaruiAppOrigin(options.StartUri));
+        .AddSingleton(_ => CreateAppOrigin(options));
+
+    private static TaruiAppOrigin CreateAppOrigin(CefGlueNextWebAppOptions options) => new(
+        options.StartUri,
+        options.AllowedSchemes,
+        options.SchemeOrigin);
 }

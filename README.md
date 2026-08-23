@@ -170,6 +170,8 @@ Scheme mode serves `tarui://localhost/index.html`. The build copies Web `dist` f
 
 When no mode is specified, a configured `TARUI_WEB_URL` selects HTTP; otherwise a packaged Web directory selects Scheme, falling back to the local development HTTP URL only when no packaged assets exist.
 
+HTTP and a custom app scheme can coexist: when a content root is configured (via `TARUI_WEB_ROOT` or packaged assets), HTTP mode also registers the portless custom scheme (e.g. `tarui://localhost/`), so windows and web views may load remote HTTP content and local assets side by side. The default navigation policy allows every application origin — the HTTP start origin, the custom scheme origin, and local dev servers — and `TaruiAppOrigin.AllowedSchemes`/`SchemeOrigin` expose the accepted schemes for validation.
+
 ## Tarui CLI
 
 `src/tarui-cli` (`Tarui.Cli`) is a zero-dependency orchestration tool that reads the `tarui.app.json` manifest at the repository root and drives the frontend/backend pipeline. It is published as a `dotnet tool` named `tarui`:

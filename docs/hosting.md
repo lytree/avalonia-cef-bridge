@@ -135,7 +135,8 @@ public static CefGlueNextWebAppOptions FromConfiguration(IConfiguration configur
 
 - 配置键：`Tarui:Web:Mode / Url / Root / Scheme / Host / SpaFallback / Csp / MaxAssetBytes`；未设置时回落到 `TARUI_WEB_*` 环境变量键（HostApplicationBuilder 默认已把环境变量并入 Configuration，扁平键同名可见），再回落到现有默认与内容根探测（`FindContentRoot`）。
 - 校验/错误消息沿用 `CreateHttp` / `CreateScheme`（两者保留，继续服务测试与显式构造）。
-- `AddCefGlueWebView(this IServiceCollection)`：注册 `CefGlueNextWebAppOptions`（工厂 `FromConfiguration`）+ `ITaruiWebViewFactory` + `TaruiAppOrigin(options.StartUri)`。工厂保持惰性单例——首次解析发生在 UI 线程创建主窗口时，CEF 初始化时序不变。另有 `AddCefGlueWebView(this IServiceCollection, CefGlueNextWebAppOptions)` 显式重载，供测试与显式构造使用。
+- 多 scheme 支持：`AllowedSchemes` 列出窗口创建与导航可用的全部 scheme。Scheme 模式接受 `自定义 scheme + http + https`（可导航到 dev server）；HTTP 模式默认仅 `http + https`，但配置 `Root`（config/env/显式参数）后同时注册无端口的自定义 scheme（如 `tarui://localhost/`），本地资产与 HTTP 来源并存。`SchemeOrigin` 暴露该无端口来源（无本地资产时为 null），CEF 在 `ContentRoot` 存在时即注册 scheme 处理器，不限于 Scheme 模式。
+- `AddCefGlueWebView(this IServiceCollection)`：注册 `CefGlueNextWebAppOptions`（工厂 `FromConfiguration`）+ `ITaruiWebViewFactory` + `TaruiAppOrigin(options.StartUri, options.AllowedSchemes, options.SchemeOrigin)`。工厂保持惰性单例——首次解析发生在 UI 线程创建主窗口时，CEF 初始化时序不变。另有 `AddCefGlueWebView(this IServiceCollection, CefGlueNextWebAppOptions)` 显式重载，供测试与显式构造使用。
 
 ### Tarui.Hosting
 

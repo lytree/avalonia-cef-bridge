@@ -43,7 +43,7 @@ public sealed class WebviewAttacher(
             eventRouter,
             requestPolicy,
             context,
-            ResolveSource(options.Url, appOrigin.StartUri));
+            ResolveSource(options.Url, appOrigin));
         var presenter = new WebviewPresenter(session);
 
         var window = ShellWindowFactory.Create(options);
@@ -137,25 +137,26 @@ public sealed class WebviewAttacher(
             window.Height);
     }
 
-    private static Uri ResolveSource(string? url, Uri mainSource)
+    private static Uri ResolveSource(string? url, TaruiAppOrigin origin)
     {
         if (string.IsNullOrWhiteSpace(url))
         {
-            return mainSource;
+            return origin.StartUri;
         }
 
         if (Uri.TryCreate(url, UriKind.Absolute, out var absolute))
         {
-            if (!string.Equals(absolute.Scheme, mainSource.Scheme, StringComparison.OrdinalIgnoreCase))
+            if (!origin.AllowsScheme(absolute.Scheme))
             {
                 throw new InvalidOperationException(
-                    $"The URL scheme '{absolute.Scheme}' does not match the application origin '{mainSource.Scheme}'.");
+                    $"The URL scheme '{absolute.Scheme}' is not one of the application schemes " +
+                    $"({string.Join(", ", origin.Schemes)}).");
             }
 
             return absolute;
         }
 
-        return new Uri(mainSource, url);
+        return new Uri(origin.StartUri, url);
     }
 
     private static async void FireAndForget(ValueTask task)

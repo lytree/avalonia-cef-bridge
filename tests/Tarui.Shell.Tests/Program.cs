@@ -36,6 +36,7 @@ internal static class Program
         ComposerRejectsUnregisteredPermissions();
         CapabilitySetProviderCachesDirectorySnapshot();
         AddTaruiShellRegistersShellServices();
+        ShellPolicyAcceptsAllApplicationSchemes();
         Console.WriteLine("Tarui.Shell self-tests passed.");
         return 0;
     }
@@ -347,6 +348,48 @@ internal static class Program
         Assert(
             provider.GetRequiredService<CommandRouter>() is not null,
             "AddTaruiShell must register the command router.");
+    }
+
+    private static void ShellPolicyAcceptsAllApplicationSchemes()
+    {
+        // The default policy must cover every application origin: the HTTP start origin, the portless
+        // custom app scheme served from local assets, and local dev servers. Everything else stays
+        // denied unless it is an https target, which is handed to the OS handler.
+        var services = new ServiceCollection();
+        services.AddTaruiShell();
+        services.AddSingleton(new TaruiAppOrigin(
+            new Uri("http://127.0.0.1:5173/"),
+            ["http", "https", "tarui"],
+            new Uri("tarui://localhost/")));
+        services.AddSingleton(new WindowOptions("main"));
+
+        using var provider = services.BuildServiceProvider();
+        var policy = provider.GetRequiredService<WebViewRequestPolicy>();
+
+        Assert(
+            policy.DecideNavigation(new Uri("http://127.0.0.1:5173/app")) == WebViewRequestDecision.Allow,
+            "The HTTP start origin must be allowed.");
+        Assert(
+            policy.DecideNavigation(new Uri("http://localhost:3000/page")) == WebViewRequestDecision.Allow,
+            "Local dev servers must stay allowed.");
+        Assert(
+            policy.DecideNavigation(new Uri("tarui://localhost/index.html")) == WebViewRequestDecision.Allow,
+            "The portless custom scheme origin must be allowed.");
+        Assert(
+            policy.DecideNavigation(new Uri("tarui://localhost/assets/app.js")) == WebViewRequestDecision.Allow,
+            "Assets under the custom scheme origin must be allowed.");
+        Assert(
+            policy.DecideNavigation(new Uri("tarui://localhost:8080/index.html")) == WebViewRequestDecision.Deny,
+            "A ported custom scheme URL must not slip through the portless origin pattern.");
+        Assert(
+            policy.DecideNavigation(new Uri("tarui://other/index.html")) == WebViewRequestDecision.Deny,
+            "Unlisted custom scheme hosts must be denied.");
+        Assert(
+            policy.DecideNavigation(new Uri("https://example.com/docs")) == WebViewRequestDecision.External,
+            "Unlisted https targets must be handed to the OS handler.");
+        Assert(
+            policy.DecideNavigation(new Uri("http://example.com/")) == WebViewRequestDecision.Deny,
+            "Unlisted http targets must be denied.");
     }
 
     private static void EntryCarriesWebviewSessionAsSink()

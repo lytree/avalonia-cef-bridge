@@ -14,6 +14,11 @@ public sealed record CefGlueNextWebAppOptions
     public const string DefaultSchemeName = "tarui";
     public const string DefaultDomainName = "localhost";
 
+    private const string DefaultContentSecurityPolicy =
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data:; font-src 'self' data:; connect-src 'self'; " +
+        "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+
     private CefGlueNextWebAppOptions(
         TaruiWebResourceMode mode,
         Uri startUri,
@@ -22,7 +27,9 @@ public sealed record CefGlueNextWebAppOptions
         string domainName,
         bool spaFallback,
         string contentSecurityPolicy,
-        long maxAssetBytes)
+        long maxAssetBytes,
+        IReadOnlyList<string> allowedSchemes,
+        Uri? schemeOrigin)
     {
         Mode = mode;
         StartUri = startUri;
@@ -32,6 +39,8 @@ public sealed record CefGlueNextWebAppOptions
         SpaFallback = spaFallback;
         ContentSecurityPolicy = contentSecurityPolicy;
         MaxAssetBytes = maxAssetBytes;
+        AllowedSchemes = allowedSchemes;
+        SchemeOrigin = schemeOrigin;
     }
 
     public TaruiWebResourceMode Mode { get; }
@@ -50,6 +59,19 @@ public sealed record CefGlueNextWebAppOptions
 
     public long MaxAssetBytes { get; }
 
+    /// <summary>
+    /// Every scheme the application accepts for window creation and web view navigation. HTTP(S)
+    /// origins can coexist with the custom, portless app scheme, so one application may load pages
+    /// from a dev server and from local assets at the same time.
+    /// </summary>
+    public IReadOnlyList<string> AllowedSchemes { get; }
+
+    /// <summary>
+    /// The portless custom-scheme origin (for example <c>tarui://localhost/</c>) served by the local
+    /// asset resolver, or null when no local assets are served and the app only loads over HTTP(S).
+    /// </summary>
+    public Uri? SchemeOrigin { get; }
+
     public static CefGlueNextWebAppOptions FromConfiguration(IConfiguration configuration)
     {
         var url = ReadConfigurationValue(configuration, "Url");
@@ -63,7 +85,11 @@ public sealed record CefGlueNextWebAppOptions
 
         return mode.Trim().ToLowerInvariant() switch
         {
-            "http" => CreateHttp(url is null ? null : new Uri(url, UriKind.Absolute)),
+            "http" => CreateHttp(
+                url is null ? null : new Uri(url, UriKind.Absolute),
+                ReadConfigurationValue(configuration, "Root"),
+                ReadConfigurationValue(configuration, "Scheme"),
+                ReadConfigurationValue(configuration, "Host")),
             "scheme" => CreateScheme(
                 ReadConfigurationValue(configuration, "Root"),
                 ReadConfigurationValue(configuration, "Scheme"),
@@ -80,7 +106,11 @@ public sealed record CefGlueNextWebAppOptions
         };
     }
 
-    public static CefGlueNextWebAppOptions CreateHttp(Uri? uri = null)
+    public static CefGlueNextWebAppOptions CreateHttp(
+        Uri? uri = null,
+        string? contentRoot = null,
+        string? schemeName = null,
+        string? domainName = null)
     {
         var startUri = uri ?? new Uri(
             Environment.GetEnvironmentVariable("TARUI_WEB_URL") ?? "http://127.0.0.1:5173",
@@ -90,15 +120,28 @@ public sealed record CefGlueNextWebAppOptions
             throw new InvalidOperationException("HTTP mode requires an http:// or https:// TARUI_WEB_URL.");
         }
 
+        // Multi-scheme origin: with a configured content root the custom, portless app scheme is
+        // served alongside the HTTP origin so windows and navigations may target either scheme.
+        // HTTP mode never probes for packaged assets: the auxiliary scheme is opt-in via Root.
+        var serving = TryResolveSchemeServing(
+            contentRoot,
+            schemeName,
+            domainName,
+            null,
+            null,
+            null,
+            probeForPackagedAssets: false);
         return new CefGlueNextWebAppOptions(
             TaruiWebResourceMode.Http,
             startUri,
-            null,
-            DefaultSchemeName,
-            DefaultDomainName,
-            false,
-            string.Empty,
-            0);
+            serving?.ContentRoot,
+            serving?.SchemeName ?? DefaultSchemeName,
+            serving?.DomainName ?? DefaultDomainName,
+            serving?.SpaFallback ?? false,
+            serving?.ContentSecurityPolicy ?? string.Empty,
+            serving?.MaxAssetBytes ?? 0,
+            serving is null ? ["http", "https"] : ["http", "https", serving.SchemeName],
+            serving?.Origin);
     }
 
     public static CefGlueNextWebAppOptions CreateScheme(
@@ -109,6 +152,58 @@ public sealed record CefGlueNextWebAppOptions
         string? contentSecurityPolicy = null,
         long? maxAssetBytes = null)
     {
+        var serving = TryResolveSchemeServing(
+            contentRoot,
+            schemeName,
+            domainName,
+            spaFallback,
+            contentSecurityPolicy,
+            maxAssetBytes,
+            probeForPackagedAssets: true)
+            ?? throw new DirectoryNotFoundException(
+                "Scheme mode requires TARUI_WEB_ROOT or a packaged web/index.html directory.");
+        return new CefGlueNextWebAppOptions(
+            TaruiWebResourceMode.Scheme,
+            new Uri(serving.Origin, "index.html"),
+            serving.ContentRoot,
+            serving.SchemeName,
+            serving.DomainName,
+            serving.SpaFallback,
+            serving.ContentSecurityPolicy,
+            serving.MaxAssetBytes,
+            [serving.SchemeName, "http", "https"],
+            serving.Origin);
+    }
+
+    /// <summary>
+    /// Resolves the optional custom-scheme asset serving shared by both modes. Returns null when no
+    /// content root is configured; throws when a configured root or scheme is invalid. Scheme mode
+    /// additionally probes for packaged assets, HTTP mode only serves when a root is explicit.
+    /// </summary>
+    private static SchemeServing? TryResolveSchemeServing(
+        string? contentRoot,
+        string? schemeName,
+        string? domainName,
+        bool? spaFallback,
+        string? contentSecurityPolicy,
+        long? maxAssetBytes,
+        bool probeForPackagedAssets)
+    {
+        var resolvedRoot = contentRoot ??
+            Environment.GetEnvironmentVariable("TARUI_WEB_ROOT") ??
+            (probeForPackagedAssets ? FindContentRoot() : null);
+        if (string.IsNullOrWhiteSpace(resolvedRoot))
+        {
+            return null;
+        }
+
+        resolvedRoot = Path.GetFullPath(resolvedRoot);
+        if (!File.Exists(Path.Combine(resolvedRoot, "index.html")))
+        {
+            throw new DirectoryNotFoundException(
+                $"Scheme content root does not contain index.html: {resolvedRoot}");
+        }
+
         var resolvedScheme = schemeName ??
             Environment.GetEnvironmentVariable("TARUI_WEB_SCHEME") ??
             DefaultSchemeName;
@@ -125,43 +220,32 @@ public sealed record CefGlueNextWebAppOptions
             throw new InvalidOperationException($"Invalid custom scheme host '{resolvedDomain}'.");
         }
 
-        var resolvedRoot = contentRoot ??
-            Environment.GetEnvironmentVariable("TARUI_WEB_ROOT") ??
-            FindContentRoot();
-        if (string.IsNullOrWhiteSpace(resolvedRoot))
-        {
-            throw new DirectoryNotFoundException(
-                "Scheme mode requires TARUI_WEB_ROOT or a packaged web/index.html directory.");
-        }
-
-        resolvedRoot = Path.GetFullPath(resolvedRoot);
-        if (!File.Exists(Path.Combine(resolvedRoot, "index.html")))
-        {
-            throw new DirectoryNotFoundException(
-                $"Scheme content root does not contain index.html: {resolvedRoot}");
-        }
-
         var fallback = spaFallback ?? !string.Equals(
             Environment.GetEnvironmentVariable("TARUI_WEB_SPA_FALLBACK"),
             "false",
             StringComparison.OrdinalIgnoreCase);
         var csp = contentSecurityPolicy ??
             Environment.GetEnvironmentVariable("TARUI_WEB_CSP") ??
-            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-            "img-src 'self' data:; font-src 'self' data:; connect-src 'self'; " +
-            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+            DefaultContentSecurityPolicy;
         var maximumBytes = maxAssetBytes ?? ParseMaximumAssetBytes();
-        var startUri = new Uri($"{resolvedScheme}://{resolvedDomain}/index.html", UriKind.Absolute);
-        return new CefGlueNextWebAppOptions(
-            TaruiWebResourceMode.Scheme,
-            startUri,
+        return new SchemeServing(
             resolvedRoot,
             resolvedScheme,
             resolvedDomain,
             fallback,
             csp,
-            maximumBytes);
+            maximumBytes,
+            new Uri($"{resolvedScheme}://{resolvedDomain}/", UriKind.Absolute));
     }
+
+    private sealed record SchemeServing(
+        string ContentRoot,
+        string SchemeName,
+        string DomainName,
+        bool SpaFallback,
+        string ContentSecurityPolicy,
+        long MaxAssetBytes,
+        Uri Origin);
 
     private static long ParseMaximumAssetBytes()
     {

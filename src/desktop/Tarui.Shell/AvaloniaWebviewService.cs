@@ -10,7 +10,7 @@ namespace Tarui.Shell;
 /// Shell-backed <see cref="IWebviewService"/>. A web view is resolved from the live web view session
 /// owned by the window with the matching label (web view and window share one label while windows host
 /// a single surface). Navigations run on the UI thread and are confined to the application origin's
-/// scheme, matching the behaviour the shell applies when a surface is first mounted.
+/// accepted schemes — HTTP(S) and, when local assets are served, the portless custom app scheme.
 /// </summary>
 public sealed class AvaloniaWebviewService(WindowRegistry registry, TaruiAppOrigin appOrigin) : IWebviewService
 {
@@ -62,10 +62,11 @@ public sealed class AvaloniaWebviewService(WindowRegistry registry, TaruiAppOrig
             throw new InvalidOperationException($"The URL '{url}' is not an absolute URI.");
         }
 
-        if (!string.Equals(absolute.Scheme, appOrigin.StartUri.Scheme, StringComparison.OrdinalIgnoreCase))
+        if (!appOrigin.AllowsScheme(absolute.Scheme))
         {
             throw new InvalidOperationException(
-                $"The URL scheme '{absolute.Scheme}' does not match the application origin '{appOrigin.StartUri.Scheme}'.");
+                $"The URL scheme '{absolute.Scheme}' is not one of the application schemes " +
+                $"({string.Join(", ", appOrigin.Schemes)}).");
         }
 
         return absolute;

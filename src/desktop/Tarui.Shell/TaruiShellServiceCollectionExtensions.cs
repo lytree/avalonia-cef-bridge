@@ -90,24 +90,40 @@ public static class TaruiShellServiceCollectionExtensions
 
     /// <summary>
     /// Builds the web view request policy from <c>Tarui:Web:Policy:*</c> configuration. The default
-    /// navigation allow list confines the web view to the application origin plus local dev servers;
-    /// unlisted targets default to deny. External (OS-handled) navigation defaults to <c>https:*</c>.
+    /// navigation allow list covers every application origin — the start URI's origin plus, when local
+    /// assets are served, the portless custom app scheme — and local dev servers; unlisted targets
+    /// default to deny. External (OS-handled) navigation defaults to every <c>https</c> URL.
     /// </summary>
     private static WebViewRequestPolicy BuildWebViewRequestPolicy(
         IConfiguration? configuration,
         TaruiAppOrigin appOrigin)
     {
-        var originAllow = $"{appOrigin.StartUri.Scheme}://{appOrigin.StartUri.Host}/**";
+        var originAllows = new List<string>();
+        foreach (var origin in new[] { appOrigin.StartUri, appOrigin.SchemeOrigin })
+        {
+            if (origin is null)
+            {
+                continue;
+            }
+
+            var pattern = origin.IsDefaultPort
+                ? $"{origin.Scheme}://{origin.Host}/**"
+                : $"{origin.Scheme}://{origin.Host}:{origin.Port}/**";
+            if (!originAllows.Contains(pattern))
+            {
+                originAllows.Add(pattern);
+            }
+        }
 
         var navAllow = configuration is null
             ? null
             : ReadList(configuration, "Tarui:Web:Policy:NavAllow");
-        navAllow ??= [originAllow, "http://localhost:*/*", "http://127.0.0.1:*/*"];
+        navAllow ??= [.. originAllows, "http://localhost:*/*", "http://127.0.0.1:*/*"];
 
         var navExternal = configuration is null
             ? null
             : ReadList(configuration, "Tarui:Web:Policy:NavExternal");
-        navExternal ??= ["https:*"];
+        navExternal ??= ["https://**"];
 
         var downloadHosts = configuration is null
             ? null

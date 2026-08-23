@@ -9,6 +9,7 @@ internal static class Program
         TestNavigationAllow();
         TestNavigationExternal();
         TestNavigationDenyFallback();
+        TestSchemeOriginNavigation();
         TestNavigationMaliciousUrls();
         TestDownloadAllow();
         TestDownloadDenyDefault();
@@ -107,11 +108,16 @@ internal static class Program
             policy.DecideNavigation(new Uri("tarui://otherhost/index.html")),
             "Scheme-mode origin that is not covered should be denied.");
 
-        AssertDenied(() => broad_Policy().DecideNavigation(new Uri("file:///C:/Windows/System32/calc.exe")),
+        AssertEqual(
+            WebViewRequestDecision.Deny,
+            policy.DecideNavigation(new Uri("tarui://localhost:123/index.html")),
+            "A portless scheme-origin pattern must not match a URL that carries a port.");
+
+        AssertDenied(() => BroadPolicy().DecideNavigation(new Uri("file:///C:/Windows/System32/calc.exe")),
             "file: scheme must still be denied even when a custom scheme is allowed.");
     }
 
-    private static WebViewRequestPolicy broad_Policy() => Policy(allowNavigation: ["tarui://localhost/**"]);
+    private static WebViewRequestPolicy BroadPolicy() => Policy(allowNavigation: ["tarui://localhost/**"]);
 
     private static void TestNavigationMaliciousUrls()
     {

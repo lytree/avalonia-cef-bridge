@@ -44,4 +44,6 @@ CefGlueNextAvaloniaRuntime.RunSubProcess(args)
 - `http`: loads `TARUI_WEB_URL`, suitable for Vite or a local HTTP service.
 - `scheme`: registers `tarui://localhost` and serves `TARUI_WEB_ROOT` or packaged `web` output directly, without an HTTP server.
 
+The two schemes can coexist: when a content root is configured (config key, `TARUI_WEB_ROOT`, or packaged assets), HTTP mode also registers the portless custom scheme, so a single application can load remote HTTP content and local assets side by side. `CefGlueNextWebAppOptions.AllowedSchemes` lists every accepted scheme and `SchemeOrigin` exposes the custom-scheme origin (`null` without local assets); CEF registers the scheme handler whenever `ContentRoot` exists, regardless of mode.
+
 Scheme mode uses exact origin validation, main-frame-only SPA fallback, MIME mapping, CSP, size limits and traversal/reparse-point checks. The renderer exposes only the fixed `window.invokeCSharpAction` bridge; upstream reflection-based JavaScript object binding is not included.

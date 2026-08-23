@@ -26,8 +26,11 @@ public static class CefGlueRuntimeBootstrap
                     "tarui.net",
                     "cef",
                     Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)),
-                Schemes = webAppOptions.Mode == TaruiWebResourceMode.Scheme
-                    ?
+                // The custom scheme is served whenever local assets exist — in scheme mode and in
+                // HTTP mode configured with a content root — so both schemes stay usable at once.
+                Schemes = webAppOptions.ContentRoot is null
+                    ? []
+                    :
                     [
                         new CefGlueNextAvaloniaSchemeOptions
                         {
@@ -40,7 +43,7 @@ public static class CefGlueRuntimeBootstrap
                             IsCspBypassing = false,
                             IsFetchEnabled = true,
                             ResourceProvider = new LocalWebAssetResolver(
-                                webAppOptions.ContentRoot!,
+                                webAppOptions.ContentRoot,
                                 webAppOptions.SchemeName,
                                 webAppOptions.DomainName,
                                 webAppOptions.SpaFallback,
@@ -48,7 +51,6 @@ public static class CefGlueRuntimeBootstrap
                                 webAppOptions.ContentSecurityPolicy)
                         }
                     ]
-                    : []
             });
     }
 
