@@ -30,8 +30,29 @@ public sealed class WindowRegistry : IWindowSinkRegistry
     private readonly Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
     private readonly object _gate = new();
 
-    public sealed record Entry(Window Window, IEventSink Sink, CommandContext Context)
+    /// <summary>
+    /// A registered window shell together with its event sink and command context. The optional
+    /// <see cref="Webview"/> references the live web view session (phase 1 keeps a single session per
+    /// window; the structure is a single slot here and can grow to a list when multi-webview lands).
+    /// </summary>
+    public sealed class Entry
     {
+        public Entry(Window window, IEventSink sink, CommandContext context)
+        {
+            Window = window;
+            Sink = sink;
+            Context = context;
+        }
+
+        public Window Window { get; }
+
+        public CommandContext Context { get; }
+
+        public IEventSink Sink { get; }
+
+        /// <summary>The live web view session owned by this window, when one is mounted.</summary>
+        public WebviewSession? Webview { get; internal set; }
+
         internal bool ClosePending { get; set; }
     }
 

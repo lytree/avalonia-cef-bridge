@@ -172,10 +172,16 @@ public sealed class TaruiApplication     // Services；StartAsync/StopAsync；Ru
 | 键 | 作用 | 默认 |
 | --- | --- | --- |
 | `Tarui:Window:Title` | 主窗口标题 | `tarui.net` |
+| `Tarui:Window:Url` | 主窗口相对/同源 URL | 空 → `TaruiAppOrigin.StartUri` |
 | `Tarui:Window:Width` / `Height` | 主窗口尺寸 | 1280 / 820 |
 | `Tarui:Window:MinWidth` / `MinHeight` | 最小尺寸 | 900 / 600 |
+| `Tarui:Window:MaxWidth` / `MaxHeight` | 最大尺寸 | 不限 |
+| `Tarui:Window:X` / `Y` | 启动屏幕位置（逻辑像素） | 居中 |
 | `Tarui:Window:Center` | 居中启动 | true |
-| `Tarui:Window:Url` | 主窗口相对/同源 URL | 空 → `TaruiAppOrigin.StartUri` |
+| `Tarui:Window:Resizable` | 允许缩放 | true |
+| `Tarui:Window:Decorations` | 系统标题栏/边框 | true |
+| `Tarui:Window:AlwaysOnTop` | 置顶 | false |
+| `Tarui:Window:Visible` | 启动即显示 | true |
 | `Tarui:Web:Mode` | `http` / `scheme` | 自动推断 |
 | `Tarui:Web:Url` / `Root` / `Scheme` / `Host` / `SpaFallback` / `Csp` / `MaxAssetBytes` | WebView 资源模式参数 | 对应 `TARUI_WEB_*` 环境变量默认 |
 | `Logging:LogLevel:*` | 标准 M.E.Logging | 框架默认 |

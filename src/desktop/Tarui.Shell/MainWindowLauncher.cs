@@ -13,7 +13,7 @@ public interface IMainWindowLauncher
 
 public sealed class MainWindowLauncher(
     WindowRegistry registry,
-    ShellWindowFactory factory,
+    WebviewAttacher attacher,
     EventRouter eventRouter,
     ICapabilityProvider capabilities,
     ISingleInstanceCoordinator singleInstance,
@@ -27,7 +27,7 @@ public sealed class MainWindowLauncher(
                 "No capability file grants permissions to the 'main' window. Add capabilities/main.json.");
         }
 
-        var entry = factory.CreateEntry(mainWindowOptions);
+        var entry = attacher.Attach(mainWindowOptions);
         registry.Add("main", entry);
 
         // Any second-instance activations that arrived before the main window was registered are now

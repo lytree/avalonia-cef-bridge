@@ -17,6 +17,7 @@ internal static class Program
     public static async Task<int> Main()
     {
         await RegistryTracksWindowEntries();
+        EntryCarriesWebviewSessionAsSink();
         await RouterDeliversEventsToTargetWindows();
         await RouterBroadcastsToAllWindows();
         await RouterNotifiesHubSubscribers();
@@ -348,6 +349,19 @@ internal static class Program
             "AddTaruiShell must register the command router.");
     }
 
+    private static void EntryCarriesWebviewSessionAsSink()
+    {
+        // The window entry is decoupled from any particular presentation: its event sink is the
+        // UI-neutral web view session it references, so window and webview stay addressable separately.
+        var context = new CommandContext("main", "main", new CapabilitySet([], [], []));
+        var (session, _, _) = CreateWebViewHost(new CapabilitySet([], [], []));
+
+        var entry = new WindowRegistry.Entry(null!, session, context);
+
+        Assert(ReferenceEquals(entry.Sink, session), "The entry sink must be its web view session.");
+        Assert(entry.Context == context, "The entry must retain its command context.");
+    }
+
     private static Task WebViewHostRejectsFileDropWithoutCapability()
     {
         var (host, sink, webView) = CreateWebViewHost(new CapabilitySet([], [], []));
@@ -580,7 +594,7 @@ internal static class Program
         return Task.CompletedTask;
     }
 
-    private static (WebViewHost Host, FakeSink Sink, FakeWebView WebView) CreateWebViewHost(
+    private static (WebviewSession Host, FakeSink Sink, FakeWebView WebView) CreateWebViewHost(
         CapabilitySet capabilities,
         WebViewRequestPolicy? policy = null)
     {
@@ -590,7 +604,7 @@ internal static class Program
         var dispatcher = new IpcDispatcher(new CommandRouterBuilder().Build());
         var webView = new FakeWebView();
 
-        var host = new WebViewHost(
+        var host = new WebviewSession(
             new FixedWebViewFactory(webView),
             dispatcher,
             router,

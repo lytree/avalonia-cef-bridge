@@ -42,9 +42,10 @@ public static class TaruiShellServiceCollectionExtensions
         .AddSingleton<IDialogService, AvaloniaDialogService>()
         .AddSingleton<IClipboardService, AvaloniaClipboardService>()
         .AddSingleton<ShellWindowFactory>()
+        .AddSingleton<WebviewAttacher>()
         .AddSingleton<IWindowService>(sp => new AvaloniaWindowService(
             sp.GetRequiredService<WindowRegistry>(),
-            (options, caller) => sp.GetRequiredService<ShellWindowFactory>().CreateEntry(options, caller)))
+            (options, caller) => sp.GetRequiredService<WebviewAttacher>().Attach(options, caller)))
         .AddSingleton<IMenuService>(sp => new AvaloniaMenuService(
             sp.GetRequiredService<WindowRegistry>(),
             sp.GetRequiredService<EventRouter>()))

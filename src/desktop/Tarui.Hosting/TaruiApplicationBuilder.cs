@@ -49,6 +49,10 @@ public sealed class TaruiApplicationBuilder(string[]? args)
         var minWidth = ReadDouble("Tarui:Window:MinWidth") ?? 900;
         var minHeight = ReadDouble("Tarui:Window:MinHeight") ?? 600;
         var center = ReadBool("Tarui:Window:Center") ?? true;
+        var resizable = ReadBool("Tarui:Window:Resizable") ?? true;
+        var decorations = ReadBool("Tarui:Window:Decorations") ?? true;
+        var alwaysOnTop = ReadBool("Tarui:Window:AlwaysOnTop") ?? false;
+        var visible = ReadBool("Tarui:Window:Visible") ?? true;
 
         return new WindowOptions("main")
         {
@@ -58,7 +62,15 @@ public sealed class TaruiApplicationBuilder(string[]? args)
             Height = Window.Height ?? height,
             MinWidth = Window.MinWidth ?? minWidth,
             MinHeight = Window.MinHeight ?? minHeight,
+            MaxWidth = Window.MaxWidth ?? ReadDouble("Tarui:Window:MaxWidth"),
+            MaxHeight = Window.MaxHeight ?? ReadDouble("Tarui:Window:MaxHeight"),
+            X = Window.X ?? ReadDouble("Tarui:Window:X"),
+            Y = Window.Y ?? ReadDouble("Tarui:Window:Y"),
             Center = Window.Center ?? center,
+            Resizable = Window.Resizable ?? resizable,
+            Decorations = Window.Decorations ?? decorations,
+            AlwaysOnTop = Window.AlwaysOnTop ?? alwaysOnTop,
+            Visible = Window.Visible ?? visible,
         };
     }
 

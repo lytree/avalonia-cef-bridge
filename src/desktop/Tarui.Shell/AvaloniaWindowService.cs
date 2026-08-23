@@ -158,7 +158,12 @@ public sealed class AvaloniaWindowService(
         cancellationToken.ThrowIfCancellationRequested();
         return await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var window = registry.Get("main").Window;
+            var window = FirstWindow();
+            if (window is null)
+            {
+                return null;
+            }
+
             var monitors = BuildMonitors(window, out _);
             return monitors.FirstOrDefault(static monitor => monitor.IsPrimary);
         });
@@ -188,6 +193,15 @@ public sealed class AvaloniaWindowService(
         cancellationToken.ThrowIfCancellationRequested();
         await Dispatcher.UIThread.InvokeAsync(() => action(registry.Get(label).Window));
         return new Unit();
+    }
+
+    private Window? FirstWindow()
+    {
+        // Prefer the main window, then fall back to whichever shell is registered, so monitor geometry
+        // queries do not hard-code a single window label.
+        var labels = registry.Labels;
+        var label = labels.Contains("main") ? "main" : labels.FirstOrDefault();
+        return label is null || !registry.TryGet(label, out var entry) ? null : entry.Window;
     }
 
     private static WindowStateInfo BuildState(string label, Window window)

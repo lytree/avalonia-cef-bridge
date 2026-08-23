@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using Avalonia.Controls;
 using Tarui.Contracts;
 using Tarui.Ipc;
 using Tarui.WebView.Abstractions;
@@ -9,14 +8,16 @@ using Tarui.WebView.Avalonia;
 namespace Tarui.Shell;
 
 /// <summary>
-/// Hosts an <see cref="ITaruiWebView"/> inside a window and translates its typed native events into
-/// reserved <c>window://</c> and <c>webview://</c> events scoped to the owning window. Navigation and
-/// download requests are first resolved by <see cref="WebViewRequestPolicy"/>; the window only receives
-/// file-path and webview payloads when its capability <c>events</c> authorize the reserved event. A drag
-/// is rejected up front when the window may not receive the drop, so un-authorized windows never carry
-/// the drop payload at the OS level.
+/// The UI-neutral session that drives a single web view surface: it owns the <see cref="ITaruiAvaloniaWebView"/>,
+/// dispatches incoming messages and reserved <c>window://</c>/<c>webview://</c> events for its owning window,
+/// and applies the navigation/download/capability policy to native web view requests.
+/// <para>
+/// This type deliberately references no Avalonia visual control: it is a pure logic node so a window can be
+/// shown, reused or host several sessions independently of how their surfaces are presented. The visual host
+/// (<see cref="WebviewPresenter"/>) only binds the session's <see cref="ITaruiWebView"/> control.
+/// </para>
 /// </summary>
-public sealed class WebViewHost : Border, IEventSink, IDisposable, IAsyncDisposable
+public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
 {
     private const string FileDropEnteredEvent = "window://file-drop-entered";
     private const string FileDropLeftEvent = "window://file-drop-left";
@@ -27,12 +28,19 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable, IAsyncDisposa
     private readonly IpcDispatcher _dispatcher;
     private readonly EventRouter _eventRouter;
     private readonly WebViewRequestPolicy _policy;
-    private readonly CommandContext _context;
-    private readonly string _label;
     private readonly ITaruiAvaloniaWebView _webView;
     private int _disposeState;
 
-    public WebViewHost(
+    /// <summary>The underlying web view and the Avalonia surface it carries.</summary>
+    public ITaruiAvaloniaWebView WebView => _webView;
+
+    /// <summary>The window the session belongs to.</summary>
+    public string Label => Context.WindowLabel;
+
+    /// <summary>The capability-scoped command context used to authorize IPC and reserved events.</summary>
+    public CommandContext Context { get; }
+
+    public WebviewSession(
         ITaruiAvaloniaWebViewFactory webViewFactory,
         IpcDispatcher dispatcher,
         EventRouter eventRouter,
@@ -43,8 +51,7 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable, IAsyncDisposa
         _dispatcher = dispatcher;
         _eventRouter = eventRouter;
         _policy = policy;
-        _context = context;
-        _label = context.WindowLabel;
+        Context = context;
         _webView = webViewFactory.Create(new TaruiWebViewOptions(source));
         _webView.MessageReceived += OnMessageReceived;
         _webView.FileDropEntered += OnFileDropEntered;
@@ -52,14 +59,13 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable, IAsyncDisposa
         _webView.FileDropped += OnFileDropped;
         _webView.DownloadRequested += OnDownloadRequested;
         _webView.NavigationRequested += OnNavigationRequested;
-        Child = _webView.Control;
     }
 
     public async ValueTask<string> DispatchMessageAsync(
         string json,
         CancellationToken cancellationToken = default)
     {
-        var response = await _dispatcher.DispatchJsonAsync(json, _context, cancellationToken);
+        var response = await _dispatcher.DispatchJsonAsync(json, Context, cancellationToken);
         var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(response));
         await _webView.ExecuteScriptAsync($"window.__tarui_dispatchBase64?.('{encoded}')", cancellationToken);
         return response;
@@ -87,7 +93,7 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable, IAsyncDisposa
         }
 
         FireAndForget(_eventRouter.EmitToWindowAsync(
-            _label,
+            Label,
             FileDropEnteredEvent,
             JsonSerializer.SerializeToElement(
                 new WebViewFileDropEvent(args.Paths, args.Text, args.X, args.Y),
@@ -102,7 +108,7 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable, IAsyncDisposa
         }
 
         FireAndForget(_eventRouter.EmitToWindowAsync(
-            _label,
+            Label,
             FileDropLeftEvent,
             JsonSerializer.SerializeToElement(new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs)));
     }
@@ -115,7 +121,7 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable, IAsyncDisposa
         }
 
         FireAndForget(_eventRouter.EmitToWindowAsync(
-            _label,
+            Label,
             FileDroppedEvent,
             JsonSerializer.SerializeToElement(
                 new WebViewFileDropEvent(args.Paths, args.Text, args.X, args.Y),
@@ -142,7 +148,7 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable, IAsyncDisposa
         }
 
         FireAndForget(_eventRouter.EmitToWindowAsync(
-            _label,
+            Label,
             DownloadRequestedEvent,
             JsonSerializer.SerializeToElement(
                 new WebViewDownloadRequestEvent(args.Url, args.SuggestedFilename),
@@ -159,14 +165,14 @@ public sealed class WebViewHost : Border, IEventSink, IDisposable, IAsyncDisposa
         }
 
         FireAndForget(_eventRouter.EmitToWindowAsync(
-            _label,
+            Label,
             NavigationRequestedEvent,
             JsonSerializer.SerializeToElement(
                 new WebViewNavigationRequestEvent(args.Url.AbsoluteUri, args.IsMainFrame),
                 TaruiJsonContext.Default.WebViewNavigationRequestEvent)));
     }
 
-    private bool MayReceive(string eventName) => _context.Capabilities.AllowsEvent(eventName);
+    private bool MayReceive(string eventName) => Context.Capabilities.AllowsEvent(eventName);
 
     private WebViewRequestDecision DecideNavigation(Uri url)
     {
