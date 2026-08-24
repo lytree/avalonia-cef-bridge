@@ -42,7 +42,7 @@ public sealed class SingleInstanceHandle : IDisposable
 /// </summary>
 public static class SingleInstanceGuard
 {
-    private const int ForwardAttempts = 5;
+    private const int ForwardAttempts = 3;
     private const int ForwardTimeoutMillis = 2000;
 
     public static SingleInstanceHandle Acquire(
@@ -53,6 +53,10 @@ public static class SingleInstanceGuard
         var acquired = AcquireProcessLock(identity);
         if (acquired is not null)
         {
+            // If we were spawned by a parent that is waiting for a handshake (the parent-child
+            // relaunch protocol), signal the named event so the parent can release its lock and
+            // exit gracefully instead of racing its shutdown against our startup.
+            SignalRelaunchHandshake(arguments);
             return new SingleInstanceHandle(InstanceRole.Primary, acquired);
         }
 
@@ -62,6 +66,42 @@ public static class SingleInstanceGuard
             DateTime.UtcNow.ToString("O", System.Globalization.CultureInfo.InvariantCulture));
         ForwardToPrimary(identity, payload);
         return new SingleInstanceHandle(InstanceRole.Secondary, null);
+    }
+
+    private static void SignalRelaunchHandshake(string[] arguments)
+    {
+        var handshakeName = TryReadRelaunchHandshakeName(arguments);
+        if (handshakeName is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var handle = new EventWaitHandle(initialState: false, EventResetMode.ManualReset, handshakeName, out _);
+            handle.Set();
+        }
+        catch
+        {
+            // Best-effort signal: the parent has a bounded timeout and will shut down regardless.
+        }
+    }
+
+    /// <summary>
+    /// Inspects the supplied arguments for the parent-child relaunch handshake flag. Returns the
+    /// event name when the launch was initiated by a relaunch parent, otherwise <see langword="null"/>.
+    /// </summary>
+    public static string? TryReadRelaunchHandshakeName(string[] arguments)
+    {
+        for (var i = 0; i + 1 < arguments.Length; i++)
+        {
+            if (string.Equals(arguments[i], "--tarui-relaunch-handshake", StringComparison.Ordinal))
+            {
+                return arguments[i + 1];
+            }
+        }
+
+        return null;
     }
 
     private static IDisposable? AcquireProcessLock(SingleInstanceIdentity identity)

@@ -62,6 +62,14 @@ public interface IFileAccessPolicy
     /// </summary>
     string Authorize(FileAccessKind kind, string baseDirectory, string requestPath);
 
+    /// <summary>
+    /// Resolves the same symbolic base name as <see cref="TryGetBaseDirectory"/> to a physical
+    /// absolute path without requiring the directory to exist. Returns <see langword="null"/>
+    /// when the base is unknown. Useful for callers that must compare scopes against the real
+    /// physical location before the base directory has been created.
+    /// </summary>
+    string? ResolveBase(string baseName);
+
     /// <summary>Whether <paramref name="byteCount"/> is within the per-operation limit for the kind.</summary>
     bool IsWithinOperationLimit(FileAccessKind kind, long byteCount);
 
@@ -116,6 +124,9 @@ public sealed class FileAccessPolicy : IFileAccessPolicy
         directoryPath = string.Empty;
         return false;
     }
+
+    /// <inheritdoc />
+    public string? ResolveBase(string baseName) => ResolveBaseInternal(baseName);
 
     public string Authorize(FileAccessKind kind, string baseDirectory, string requestPath)
     {
@@ -332,7 +343,7 @@ public sealed class FileAccessPolicy : IFileAccessPolicy
             || path.StartsWith("\\.\\", StringComparison.Ordinal);
     }
 
-    private static string? ResolveBase(string kind) => kind switch
+    private static string? ResolveBaseInternal(string? kind) => kind switch
     {
         "appData" => UnderApp(Environment.SpecialFolder.ApplicationData),
         "appLocalData" => UnderApp(Environment.SpecialFolder.LocalApplicationData),

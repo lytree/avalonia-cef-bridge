@@ -63,4 +63,7 @@ internal sealed record CliOptions
 
     /// <summary>plugin: name of the plugin (positional after the sub-command).</summary>
     public string? PluginName { get; init; }
+
+    /// <summary>build --sign-key: base64 DER private key (PKCS#8) used to sign latest.json. Omit to emit an unsigned placeholder manifest.</summary>
+    public string? SignKey { get; init; }
 }

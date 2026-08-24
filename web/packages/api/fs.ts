@@ -1,31 +1,25 @@
 import { invoke } from './ipc'
 
+// File-system base identifiers exposed to the web layer. These are the exact strings the desktop
+// IFileAccessPolicy resolves via TryGetBaseDirectory; any value listed here MUST have a matching
+// resolver branch in src/core/Tarui.Ipc/FileAccessPolicy.cs and the legacy PascalCase aliases have
+// been removed so the API does not drift from the host.
 export const fsBaseIdentifiers = {
   AppData: 'appData',
   AppConfig: 'appConfig',
   AppCache: 'appCache',
   AppLocalData: 'appLocalData',
   AppLog: 'appLog',
-  Audio: 'audio',
-  Cache: 'cache',
-  Config: 'config',
-  Data: 'data',
   Desktop: 'desktop',
   Document: 'document',
   Download: 'download',
-  Executable: 'executable',
-  Font: 'font',
+  Font: 'fonts',
   Home: 'home',
-  LocalData: 'localData',
-  Log: 'log',
+  Picture: 'pictures',
   Music: 'music',
-  Picture: 'picture',
-  Public: 'public',
-  Resource: 'resource',
-  Runtime: 'runtime',
-  Temp: 'temp',
-  Template: 'template',
   Video: 'video',
+  Resource: 'resources',
+  Temp: 'temp',
 } as const
 
 export type FsBaseId = (typeof fsBaseIdentifiers)[keyof typeof fsBaseIdentifiers]

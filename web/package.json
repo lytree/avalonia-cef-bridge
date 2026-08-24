@@ -8,5 +8,11 @@
     "lint": "pnpm --filter @lytree/web lint",
     "preview": "pnpm --filter @lytree/web preview"
   },
-  "packageManager": "pnpm@11.15.1"
+  "packageManager": "pnpm@11.15.1",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "@vitest/coverage-v8"
+    ]
+  }
 }

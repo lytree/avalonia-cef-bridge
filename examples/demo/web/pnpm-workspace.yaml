@@ -1,3 +1,5 @@
 packages:
   - "."
   - "../../../web/packages/api"
+allowBuilds:
+  esbuild: false

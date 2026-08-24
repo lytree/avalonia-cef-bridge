@@ -334,31 +334,106 @@ internal static class Program
 
     private static void LatestManifest()
     {
-        SerializesCamelCase();
+        SerializesRuntimeSchema();
         SignatureRoundTrips();
+        CanonicalizationMatchesRuntimeFormat();
+        CliProducedManifestIsVerifiedByRuntimeAlgorithm();
+        ParserAcceptsSignKey();
     }
 
-    private static void SerializesCamelCase()
+    private static void SerializesRuntimeSchema()
     {
         var latest = new LatestManifestDto
         {
+            SchemaVersion = 1,
             Version = "0.1.0",
-            Url = "app-0.1.0-win-x64.zip",
-            Sha256 = "abc",
+            Files = ["app-0.1.0-win-x64.zip"],
+            Sha256 = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["app-0.1.0-win-x64.zip"] = "abc",
+            },
             Signature = ""
         };
         var json = System.Text.Json.JsonSerializer.Serialize(latest, TaruiCliJsonContext.Default.LatestManifestDto);
-        Assert(json.Contains("\"version\"") && json.Contains("\"url\"") && json.Contains("\"sha256\"") && json.Contains("\"signature\""),
-            "latest.json must serialize with camelCase property names.");
+        Assert(json.Contains("\"schemaVersion\""), "latest.json must emit schemaVersion.");
+        Assert(json.Contains("\"version\""), "latest.json must emit version.");
+        Assert(json.Contains("\"files\""), "latest.json must emit files array.");
+        Assert(json.Contains("\"sha256\""), "latest.json must emit sha256 table.");
+        Assert(json.Contains("\"signature\""), "latest.json must emit signature field.");
+        Assert(!json.Contains("\"url\""), "latest.json must no longer emit the legacy url field.");
     }
 
     private static void SignatureRoundTrips()
     {
-        var json = """{"version":"0.1.0","url":"app.zip","sha256":"abc","signature":"sig"}""";
+        var json = """{"schemaVersion":1,"version":"0.1.0","files":["app.zip"],"sha256":{"app.zip":"abc"},"signature":"sig"}""";
         var latest = System.Text.Json.JsonSerializer.Deserialize(json, TaruiCliJsonContext.Default.LatestManifestDto);
-        Assert(latest?.Signature == "sig", "The signature placeholder must survive a round trip.");
+        Assert(latest is not null, "latest.json must deserialize back into a DTO.");
+        Assert(latest!.Signature == "sig", "The signature field must survive a round trip.");
+        Assert(latest.Version == "0.1.0", "The version field must survive a round trip.");
+        Assert(latest.SchemaVersion == 1, "The schemaVersion field must survive a round trip.");
     }
 
+    private static void CanonicalizationMatchesRuntimeFormat()
+    {
+        var manifest = new LatestManifestDto
+        {
+            SchemaVersion = 1,
+            Version = "1.2.3",
+            Files = ["b.zip", "a.zip"],
+            Sha256 = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["a.zip"] = "h2",
+                ["b.zip"] = "h1",
+            },
+        };
+        var canonical = BuildCommand.CanonicalizeForSigning(manifest);
+        var expected = string.Concat(
+            "1\n",
+            "1.2.3\n",
+            "b.zip\n",
+            "a.zip\n",
+            "a.zip=h2\n",
+            "b.zip=h1\n");
+        var actual = System.Text.Encoding.UTF8.GetString(canonical);
+        Assert(actual == expected,
+            $"CLI canonicalization must match the runtime verifier byte-for-byte. Expected:\n'{expected}'\nActual:\n'{actual}'");
+    }
+
+    private static void CliProducedManifestIsVerifiedByRuntimeAlgorithm()
+    {
+        using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP384);
+        var files = new[] { "my-app-0.1.0-win-x64.zip" };
+        var sha = new Dictionary<string, string>(StringComparer.Ordinal) { [files[0]] = "deadbeef" };
+        var unsigned = new LatestManifestDto
+        {
+            SchemaVersion = 1,
+            Version = "0.1.0",
+            Files = files,
+            Sha256 = sha,
+            Signature = string.Empty,
+        };
+        var canonical = BuildCommand.CanonicalizeForSigning(unsigned);
+        var signature = key.SignData(canonical, System.Security.Cryptography.HashAlgorithmName.SHA384);
+        var signed = unsigned with { Signature = Convert.ToBase64String(signature) };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(signed, TaruiCliJsonContext.Default.LatestManifestDto);
+        var roundTripped = System.Text.Json.JsonSerializer.Deserialize(json, TaruiCliJsonContext.Default.LatestManifestDto)!;
+        var roundTrippedCanonical = BuildCommand.CanonicalizeForSigning(roundTripped);
+        var verified = key.VerifyData(
+            roundTrippedCanonical,
+            Convert.FromBase64String(roundTripped.Signature),
+            System.Security.Cryptography.HashAlgorithmName.SHA384);
+        Assert(verified,
+            "A CLI-signed manifest must be verifiable with the same ECDSA-P384/SHA-384 algorithm the runtime uses.");
+    }
+
+    private static void ParserAcceptsSignKey()
+    {
+        var inline = CommandLineParser.Parse(["build", "--sign-key=Zm9v"]);
+        Assert(inline.SignKey == "Zm9v", "--sign-key=value must be captured.");
+        var spaced = CommandLineParser.Parse(["build", "--sign-key", "YmFy"]);
+        Assert(spaced.SignKey == "YmFy", "--sign-key value must be captured.");
+    }
     private static void Init()
     {
         ParsesInitCommand();
@@ -887,3 +962,4 @@ internal static class Program
         }
     }
 }
+

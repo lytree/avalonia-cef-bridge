@@ -7,7 +7,7 @@ namespace Tarui.Plugins.FileSystem;
 /// <summary>
 /// Default file system service. Every operation routes through <see cref="IFileAccessPolicy"/> so
 /// rooted paths, device paths, link escapes, size limits, and read-only bases are rejected before any
-/// disk call. Writes use the atomic temporary-file replacement exposed by the policy.
+/// disk call. Writes are durable via the atomic temporary-file replacement exposed by the policy.
 /// </summary>
 public sealed class FileSystemService(IFileAccessPolicy policy) : IFileSystemService
 {
@@ -166,18 +166,67 @@ public sealed class FileSystemService(IFileAccessPolicy policy) : IFileSystemSer
         if (!policy.TryGetBaseDirectory(baseName, out var baseDir, out var isReadOnly))
         {
             throw new InvalidOperationException(
-                $"Base directory '{baseName}' is not available on this system.");
+                "Base directory '" + baseName + "' is not available on this system.");
         }
 
         if (kind == FileAccessKind.Write && isReadOnly)
         {
             throw new PathAccessDeniedException(PathDenialReason.OutsideBase,
-                $"Base directory '{baseName}' is read-only.");
+                "Base directory '" + baseName + "' is read-only.");
         }
 
         // Ensure the base directory exists before authorizing under it.
         Directory.CreateDirectory(baseDir);
-        return policy.Authorize(kind, baseDir, requestPath ?? string.Empty);
+        var resolved = policy.Authorize(kind, baseDir, requestPath ?? string.Empty);
+
+        // P0-03 path B: the lexical path is now safe; resolve any symlinks in that final path and
+        // re-confirm the real target still sits inside the real base root.
+        var baseReal = ResolveRealDirectory(baseDir);
+        var resolvedReal = ResolveRealPath(resolved);
+        if (!IsWithinBase(resolvedReal, baseReal))
+        {
+            throw new PathAccessDeniedException(PathDenialReason.LinkEscape,
+                "A symbolic link or reparse point escapes the authorized base directory.");
+        }
+
+        return resolved;
+    }
+
+    private static string ResolveRealDirectory(string directory)
+    {
+        var trimmed = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar);
+        return ResolveRealPath(trimmed);
+    }
+
+    private static string ResolveRealPath(string path)
+    {
+        if (File.Exists(path))
+        {
+            return new FileInfo(path).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? path;
+        }
+
+        if (Directory.Exists(path))
+        {
+            return new DirectoryInfo(path).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? path;
+        }
+
+        return path;
+    }
+
+    private static bool IsWithinBase(string fullPath, string baseFull)
+    {
+        var baseTrim = baseFull.TrimEnd(Path.DirectorySeparatorChar);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+        var relative = Path.GetRelativePath(baseTrim, fullPath);
+        if (relative == "." || relative.Length == 0)
+        {
+            return true;
+        }
+
+        return !Path.IsPathRooted(relative)
+            && !relative.Equals("..", comparison)
+            && !relative.StartsWith(".." + Path.DirectorySeparatorChar, comparison);
     }
 
     private static void AddEntries(string directory, List<FsDirEntry> entries, bool recursive, string baseDir)

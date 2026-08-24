@@ -19,6 +19,9 @@ internal static class Program
             CopyAndRenameMoveBytesWithinPolicy();
             ScopeAuthorizerRespectsAllowDenyAndWildcards();
             PluginRegistersAllNineCommands();
+            ScopeMatcherRejectsCaseDifferingDenyEntriesOnWindows();
+            ScopeMatcherMatchesCaseDifferingCandidateOnWindows();
+            FileSystemServiceRejectsSymlinkEscapeOnSupportedOs();
         }
         catch (Exception exception)
         {
@@ -200,6 +203,126 @@ internal static class Program
 
         Assert(router.RegisteredPermissions.Count == expected.Length,
             "Every file system permission must be registered exactly once with no extras.");
+    }
+
+
+    private static void ScopeMatcherRejectsCaseDifferingDenyEntriesOnWindows()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var allow = new PathScope[] { new(Base: "appData", Path: "**") };
+        var deny = new PathScope[] { new(Base: "appData", Path: "documents/secrets/*") };
+
+        var denied = !FileScopeMatcher.MatchesScope(allow, deny, "appData", "DOCUMENTS/SECRETS/KEY.TXT");
+        Assert(denied, "Windows deny entries must match a differently-cased request path case-insensitively.");
+    }
+
+    private static void ScopeMatcherMatchesCaseDifferingCandidateOnWindows()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var allow = new PathScope[] { new(Base: "appData", Path: "*.TXT") };
+        var deny = Array.Empty<PathScope>();
+
+        var allowed = FileScopeMatcher.MatchesScope(allow, deny, "appData", "notes.txt");
+        Assert(allowed, "Windows allow entries must match a differently-cased candidate path.");
+    }
+
+    private static void FileSystemServiceRejectsSymlinkEscapeOnSupportedOs()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return;
+        }
+
+        using var root = CreateTempRoot();
+        var outsideDir = Path.Combine(Path.GetTempPath(), "tarui-fs-outside-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(outsideDir);
+        var outsideFile = Path.Combine(outsideDir, "leaked.txt");
+        File.WriteAllText(outsideFile, "secret");
+
+        try
+        {
+            var allowedDir = Path.Combine(root.Dir, "inside");
+            Directory.CreateDirectory(allowedDir);
+            var linkPath = Path.Combine(allowedDir, "escape");
+            Directory.CreateSymbolicLink(linkPath, outsideFile);
+
+            var service = new FileSystemService(new SymlinkTestPolicy(root));
+            var options = new FsWriteTextOptions(BaseName(root), Path: "inside/escape", Contents: "payload");
+
+            PathDenialReason? captured = null;
+            try
+            {
+                service.WriteTextAsync(options, default).AsTask().GetAwaiter().GetResult();
+            }
+            catch (PathAccessDeniedException exception)
+            {
+                captured = exception.Reason;
+            }
+
+            Assert(
+                captured == PathDenialReason.LinkEscape,
+                "A symlink escaping the authorized base must surface as LinkEscape, but was " + captured + ".");
+        }
+        finally
+        {
+            try { Directory.Delete(outsideDir, recursive: true); } catch { /* best effort */ }
+        }
+    }
+
+    private sealed class SymlinkTestPolicy : IFileAccessPolicy
+    {
+        private readonly TestRoot _root;
+
+        public SymlinkTestPolicy(TestRoot root)
+        {
+            _root = root;
+        }
+
+        public bool TryGetBaseDirectory(string baseName, out string directoryPath, out bool isReadOnly)
+        {
+            if (string.Equals(baseName, _root.BaseName, StringComparison.Ordinal))
+            {
+                directoryPath = _root.Dir;
+                isReadOnly = false;
+                return true;
+            }
+
+            directoryPath = string.Empty;
+            isReadOnly = false;
+            return false;
+        }
+
+        public string Authorize(FileAccessKind kind, string baseDirectory, string requestPath)
+        {
+            if (string.IsNullOrEmpty(requestPath))
+            {
+                return Path.GetFullPath(baseDirectory);
+            }
+
+            return Path.GetFullPath(Path.Combine(baseDirectory, requestPath));
+        }
+
+        public string? ResolveBase(string baseName)
+        {
+            if (string.Equals(baseName, _root.BaseName, StringComparison.Ordinal))
+            {
+                return _root.Dir;
+            }
+            return null;
+        }
+
+        public bool IsWithinOperationLimit(FileAccessKind kind, long byteCount) => byteCount >= 0 && byteCount < 4096;
+        public bool TryReserveTotalBytes(long byteCount) => byteCount >= 0 && byteCount < 4096;
+        public void ReleaseTotalBytes(long byteCount) { }
+        public Task WriteAllBytesAtomicAsync(string targetPath, ReadOnlyMemory<byte> content, CancellationToken cancellationToken = default) => File.WriteAllTextAsync(targetPath, System.Text.Encoding.UTF8.GetString(content.ToArray()), cancellationToken);
     }
 
     private static bool AllowsRead(string baseName, string path, PathScope[] allow, PathScope[] deny)
@@ -396,6 +519,21 @@ internal static class Program
             }
 
             return _inner.TryGetBaseDirectory(baseName, out directoryPath, out isReadOnly);
+        }
+
+        public string? ResolveBase(string baseName)
+        {
+            if (string.Equals(baseName, _root.BaseName, StringComparison.Ordinal))
+            {
+                return _root.Dir;
+            }
+
+            if (string.Equals(baseName, "resources", StringComparison.Ordinal) && _resourcesDir is not null)
+            {
+                return _resourcesDir;
+            }
+
+            return _inner.ResolveBase(baseName);
         }
 
         public string Authorize(FileAccessKind kind, string baseDirectory, string requestPath) => _inner.Authorize(kind, baseDirectory, requestPath);

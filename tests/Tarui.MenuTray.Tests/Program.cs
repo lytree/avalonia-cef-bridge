@@ -23,6 +23,9 @@ internal static class Program
             TrayIconPathResolvesRootedAndKnownBaseSpecs();
             TrayIconPathRejectsUnknownOrRelativeSpecs();
             ClickEventDtosRoundTripThroughJsonContext();
+            TrayPathGuardRejectsUncShare();
+            TrayPathGuardRejectsPathsOutsideAllow();
+            TrayPathGuardAcceptsKnownBaseInAllow();
         }
         catch (Exception exception)
         {
@@ -236,6 +239,53 @@ internal static class Program
             "An unknown base prefix must be rejected.");
         Assert(Throws(() => TrayIconPath.Resolve("icon.ico")),
             "A relative spec without a base prefix must be rejected.");
+    }
+
+    private static void TrayPathGuardRejectsUncShare()
+    {
+        PathDenialReason? captured = null;
+        try
+        {
+            TrayPathGuard.EnsureTrayIconAuthorized(@"\\server\\share\\icon.ico", [], []);
+        }
+        catch (PathAccessDeniedException exception)
+        {
+            captured = exception.Reason;
+        }
+
+        Assert(captured == PathDenialReason.DeviceOrUnc,
+            "UNC-style paths must surface as DeviceOrUnc, but was " + captured + ".");
+    }
+
+    private static void TrayPathGuardRejectsPathsOutsideAllow()
+    {
+        var allow = new PathScope[] { new(Base: "appConfig", Path: "icons/*.ico") };
+
+        var denied = false;
+        try
+        {
+            TrayPathGuard.EnsureTrayIconAuthorized(@"C:\Users\someone\Desktop\icon.ico", allow, []);
+        }
+        catch (PathAccessDeniedException exception)
+        {
+            denied = exception.Reason == PathDenialReason.OutsideBase;
+        }
+
+        Assert(denied, "A rooted icon path that is not covered by the allow list must be denied.");
+    }
+
+    private static void TrayPathGuardAcceptsKnownBaseInAllow()
+    {
+        var tempBase = Path.GetTempPath().TrimEnd('\\', '/');
+        var allow = new PathScope[] { new(Base: null, Path: tempBase + "*") };
+
+        var resolved = TrayPathGuard.EnsureTrayIconAuthorized(
+            "temp:icon.ico",
+            allow,
+            []);
+
+        Assert(resolved.StartsWith(tempBase, StringComparison.OrdinalIgnoreCase),
+            "A known-base icon path matched by the allow list must return its absolute location.");
     }
 
     private static void ClickEventDtosRoundTripThroughJsonContext()

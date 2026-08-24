@@ -215,7 +215,11 @@ public sealed class AvaloniaTrayService(WindowRegistry registry, EventRouter eve
             return null;
         }
 
-        var path = TrayIconPath.Resolve(spec);
+        // P0-03 path C: enforce tray icon containment through the shared guard so UNC shares
+        // and symlink escapes are rejected before any bitmap allocation. The default allow
+        // preserves the legacy behaviour for callers that do not declare explicit scopes while
+        // still rejecting obvious escape paths.
+        var path = TrayPathGuard.EnsureTrayIconAuthorized(spec, TrayPathGuard.DefaultAllow(), []);
         try
         {
             return new WindowIcon(new Bitmap(path));

@@ -26,6 +26,22 @@ public sealed class TaruiApplicationBuilder(string[]? args)
 
     public TaruiWindowBuilder Window { get; } = new();
 
+
+    /// <summary>
+    /// Registers the application's identity (used by single-instance endpoints, OS-scoped file
+    /// paths and any other place that derives an OS identifier from the host). Replaces any
+    /// previously-registered identity so an app can override the defaults during bootstrap.
+    /// </summary>
+    public TaruiApplicationBuilder UseApplicationIdentity(TaruiApplicationIdentity identity)
+    {
+        ArgumentNullException.ThrowIfNull(identity);
+        ApplicationIdentity = identity;
+        return this;
+    }
+
+    /// <summary>The application identity that the host should use for endpoints, paths and IPC.</summary>
+    public TaruiApplicationIdentity ApplicationIdentity { get; private set; } = TaruiApplicationIdentity.Default;
+
     public TaruiApplication Build()
     {
         _inner.Services.AddSingleton<TaruiLifetimeBridge>();
@@ -35,6 +51,7 @@ public sealed class TaruiApplicationBuilder(string[]? args)
         _inner.Services.AddSingleton<IAppShutdownCoordinator>(sp => new AppShutdownCoordinator(
             sp.GetRequiredService<IAppShutdown>(),
             shutdownMode));
+        _inner.Services.AddSingleton(_ => ApplicationIdentity);
         var mainWindowOptions = MaterializeMainWindowOptions();
         _inner.Services.AddSingleton(mainWindowOptions);
         return new TaruiApplication(_inner.Build(), _args);
@@ -132,3 +149,4 @@ public sealed class TaruiApplicationBuilder(string[]? args)
             + $"{string.Join(", ", Enum.GetNames<AppShutdownMode>())}, but '{value}' was found.");
     }
 }
+

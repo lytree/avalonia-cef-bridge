@@ -27,6 +27,12 @@ internal static class Program
             await RealSecondProcessForwardsArgumentsToPrimaryAsync();
             CoordinatorStartsListenerAndAcceptsPayloadAsync();
             CoordinatorNotifiesSecondActivationSinksAsync();
+            await EndpointContainsApplicationIdAsync();
+            await DifferentApplicationIdsProduceDifferentEndpointsAsync();
+            await SanitizedIdentifierIsStableAcrossCasing();
+            await EndpointNamesAreStableForSpecialCharacters();
+            await DisposalClosesListenerAndRemovesUnixSocketFileAsync();
+            RelaunchHandshakeEventIsResolvedFromArguments();
         }
         catch (Exception exception)
         {
@@ -200,6 +206,104 @@ internal static class Program
         {
             coordinator.Dispose();
         }
+    }
+
+    private static Task EndpointContainsApplicationIdAsync()
+    {
+        var identity = new SingleInstanceIdentity("com.example.foo", "main");
+        var socketPath = identity.SocketPath;
+        var lockName = identity.LockName;
+        Assert(socketPath.Contains("com.example.foo", StringComparison.OrdinalIgnoreCase),
+            $"The socket path must carry the application id. Got: {socketPath}");
+        Assert(lockName.Contains("com.example.foo", StringComparison.OrdinalIgnoreCase),
+            $"The lock name must carry the application id. Got: {lockName}");
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert(socketPath.Contains(identity.SanitizedChannelName, StringComparison.Ordinal),
+                "The Unix socket path must also carry the channel name.");
+        }
+        return Task.CompletedTask;
+    }
+
+    private static Task DifferentApplicationIdsProduceDifferentEndpointsAsync()
+    {
+        var a = new SingleInstanceIdentity("com.example.foo", "main").SocketPath;
+        var b = new SingleInstanceIdentity("com.example.bar", "main").SocketPath;
+        Assert(!string.Equals(a, b, StringComparison.Ordinal),
+            "Different ApplicationIds must yield different socket paths so two apps do not collide.");
+        return Task.CompletedTask;
+    }
+
+    private static Task SanitizedIdentifierIsStableAcrossCasing()
+    {
+        var lower = SingleInstanceIdentity.SanitizeIdentifier("Demo.App");
+        var upper = SingleInstanceIdentity.SanitizeIdentifier("DEMO.APP");
+        var mixed = SingleInstanceIdentity.SanitizeIdentifier("demo.app");
+        Assert(lower == upper && upper == mixed,
+            $"Sanitized identifiers must be case-folded; got {lower} / {upper} / {mixed}.");
+        return Task.CompletedTask;
+    }
+
+    private static Task EndpointNamesAreStableForSpecialCharacters()
+    {
+        var identity = new SingleInstanceIdentity("Demo App!@#", "Channel?");
+        // The path or pipe name must be deterministic across two instances with the same input.
+        Assert(identity.SocketPath.Length > 0, "The endpoint name must not be empty.");
+        var again = new SingleInstanceIdentity("Demo App!@#", "Channel?");
+        Assert(identity.SocketPath == again.SocketPath,
+            "The endpoint name must be reproducible for the same logical identity.");
+        // No raw space or punctuation must leak through the sanitization.
+        Assert(identity.SocketPath.IndexOf(' ') < 0 || OperatingSystem.IsWindows(),
+            "The Unix socket path must not contain raw spaces.");
+        return Task.CompletedTask;
+    }
+
+    private static async Task DisposalClosesListenerAndRemovesUnixSocketFileAsync()
+    {
+        // The Unix listener must (a) unblock accept promptly when disposed and (b) remove its
+        // socket file from the per-user runtime directory so a restart on the same identity
+        // does not stumble over a stale endpoint.
+        var (router, registry, _, _) = BuildShell();
+        var coordinator = new SingleInstanceCoordinator(Identity(), router, registry, []);
+
+        coordinator.Start();
+        // Give the listener a moment to bind the socket file.
+        await Task.Delay(50);
+        var identity = ExtractIdentity(coordinator);
+        if (OperatingSystem.IsWindows())
+        {
+            // The Windows path uses NamedPipeServerStream and has no socket file to clean up.
+            Assert(coordinator.IsReady, "Coordinator must advertise itself as ready after Start on Windows.");
+            coordinator.Dispose();
+            return;
+        }
+
+        Assert(identity is not null, "The Unix identity must be readable for the socket-path check.");
+        var socketPath = identity!.SocketPath;
+        Assert(File.Exists(socketPath), "A running Unix listener must keep its socket file on disk.");
+        coordinator.Dispose();
+        Assert(!File.Exists(socketPath), "Dispose must remove the Unix socket file so a restart does not collide.");
+    }
+
+    private static void RelaunchHandshakeEventIsResolvedFromArguments()
+    {
+        var args = new[] { "open", "--tarui-relaunch-handshake", "my-event-name", "ignored" };
+        var resolved = SingleInstanceGuard.TryReadRelaunchHandshakeName(args);
+        Assert(resolved == "my-event-name",
+            $"The relaunch handshake name must be returned when the flag is present. Got: {resolved ?? "null"}");
+
+        var noneArgs = new[] { "open", "--something-else", "value" };
+        Assert(SingleInstanceGuard.TryReadRelaunchHandshakeName(noneArgs) is null,
+            "No handshake flag must yield a null name so the primary startup is unchanged.");
+    }
+
+    private static SingleInstanceIdentity? ExtractIdentity(SingleInstanceCoordinator coordinator)
+    {
+        var identityField = typeof(SingleInstanceCoordinator).GetFields(
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+            .FirstOrDefault(f => f.FieldType == typeof(SingleInstanceIdentity));
+
+        return identityField?.GetValue(coordinator) as SingleInstanceIdentity;
     }
 
     private static (EventRouter Router, FakeWindowSinkRegistry Registry, RecordingSink Sink, RecordingActivationSink ActivationProbe) BuildShell()

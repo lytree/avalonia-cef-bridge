@@ -27,8 +27,8 @@ public sealed record UpdateManifest(
 
 /// <summary>
 /// Outcome of <c>plugin:updater|check</c>. <see cref="UpdateAvailable"/> is only reported after the
-/// manifest signature and schema verifications pass AND the target version is strictly newer than
-/// the current one. Any verification failure sets <see cref="Error"/> instead, so a tampered or
+/// manifest signature and schema verifications pass AND the target version is strictly newer than the
+/// current one. Any verification failure sets <see cref="Error"/> instead, so a tampered or
 /// misconfigured update is never presented as "no update". <see cref="Version"/> carries the target
 /// version when an update is available.
 /// </summary>
@@ -37,9 +37,13 @@ public sealed record UpdateCheckResult(bool UpdateAvailable, string? Version, st
 /// <summary>
 /// Outcome of <c>plugin:updater|download</c>. <see cref="Succeeded"/> is true only when the manifest
 /// signature verifies and every advertised file downloads and matches its declared SHA-256. Downloaded
-/// blobs are staged under the app data directory; the running installation directory is never touched.
+/// blobs are staged under <see cref="StagingPath"/>; the running installation directory is never
+/// touched. <see cref="StagingPath"/> is <see langword="null"/> on failure.
 /// </summary>
-public sealed record UpdateDownloadResult(bool Succeeded, string? Error);
+public sealed record UpdateDownloadResult(
+    bool Succeeded,
+    string? Error,
+    string? StagingPath = null);
 
 /// <summary>
 /// Payload of the reserved <c>updater://status</c> event. <see cref="Phase"/> is a machine-readable

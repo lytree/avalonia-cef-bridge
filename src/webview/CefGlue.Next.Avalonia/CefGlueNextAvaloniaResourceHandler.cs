@@ -14,7 +14,8 @@ internal sealed class CefGlueNextAvaloniaSchemeHandlerFactory(
         string schemeName,
         CefRequest request)
     {
-        var response = options.ResourceProvider.Resolve(
+        var response = CefGlueNextAvaloniaProviderBoundary.SafeResolve(
+            options.ResourceProvider,
             new CefGlueNextAvaloniaResourceRequest(
                 request.Url,
                 request.Method,
@@ -44,6 +45,39 @@ internal sealed class CefGlueNextAvaloniaSchemeHandlerFactory(
             ResponseLength = response.ResponseLength,
             Headers = headers
         };
+    }
+}
+
+/// <summary>
+/// Invokes a user-supplied <see cref="ICefGlueNextAvaloniaResourceProvider"/> under a hard
+/// exception boundary. A provider exception must never propagate across the native callback
+/// (CEF would tear down the request pipeline and, in some configurations, the process); we
+/// convert it into a deterministic 500 response with an explanatory body so the front-end can
+/// surface the failure and the host process stays alive.
+/// </summary>
+internal static class CefGlueNextAvaloniaProviderBoundary
+{
+    public static CefGlueNextAvaloniaResourceResponse SafeResolve(
+        ICefGlueNextAvaloniaResourceProvider provider,
+        CefGlueNextAvaloniaResourceRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        try
+        {
+            return provider.Resolve(request);
+        }
+        catch (Exception exception)
+        {
+            var body = System.Text.Encoding.UTF8.GetBytes(
+                $"Resource provider threw {exception.GetType().Name}: {exception.Message}");
+            return new CefGlueNextAvaloniaResourceResponse(
+                Status: 500,
+                StatusText: "Internal Resource Provider Error",
+                MimeType: "text/plain; charset=utf-8",
+                CacheControl: "no-store",
+                ResponseLength: body.LongLength,
+                Content: body);
+        }
     }
 }
 

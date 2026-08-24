@@ -23,6 +23,7 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
     private IReadOnlyList<CefGlueNextAvaloniaDraggableRegion> _dragRegions = [];
     private Point _lastDragPosition;
     private int _disposeState;
+    private bool _addressChangeHooked;
 
     public CefGlueNextAvaloniaWebView(
         Uri? initialSource = null,
@@ -46,6 +47,8 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
         _browser.WebMessageReceived += OnWebMessageReceived;
         _browser.BrowserInitialized += OnBrowserInitialized;
         _browser.BrowserClosed += OnBrowserClosed;
+        _browser.AddressChanged += OnAddressChanged;
+        _addressChangeHooked = true;
         _browser.Address = Source.AbsoluteUri;
 
         Content = _browser;
@@ -145,6 +148,11 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
             }
 
             await WaitForBrowserCloseAsync().ConfigureAwait(false);
+            if (_addressChangeHooked)
+            {
+                _browser.AddressChanged -= OnAddressChanged;
+                _addressChangeHooked = false;
+            }
             _browser.BrowserClosed -= OnBrowserClosed;
         }
         finally
@@ -209,11 +217,25 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
         BrowserClosed?.Invoke(this, EventArgs.Empty);
     }
 
+    private void OnAddressChanged(object? sender, string address)
+    {
+        if (!Uri.TryCreate(address, UriKind.Absolute, out var uri))
+        {
+            return;
+        }
+
+        // Only the main frame's address represents the user-visible Source; sub-frame and
+        // resource-load notifications are intentionally ignored.
+        Source = uri;
+    }
+
     private void CloseBrowserCore()
     {
-        RemoveHandler(DragDrop.DragEnterEvent, OnDragEnter);
-        RemoveHandler(DragDrop.DragLeaveEvent, OnDragLeave);
-        RemoveHandler(DragDrop.DropEvent, OnDrop);
+        if (_addressChangeHooked)
+        {
+            _browser.AddressChanged -= OnAddressChanged;
+            _addressChangeHooked = false;
+        }
         _browser.WebMessageReceived -= OnWebMessageReceived;
         _browser.BrowserInitialized -= OnBrowserInitialized;
         _browser.RequestHandler = null;
@@ -372,19 +394,26 @@ internal sealed class CefGlueNextAvaloniaDownloadHandler : DownloadHandler
         string suggestedName,
         CefBeforeDownloadCallback callback)
     {
-        if (!Uri.TryCreate(downloadItem.Url, UriKind.Absolute, out var uri))
+        // The callback is IDisposable; if we fail to decide before disposing, CEF retains the
+        // native wrapper until the browser is destroyed. Take ownership with a using block so the
+        // native ref is released deterministically on every return path, including the early-out
+        // when the URL cannot be parsed.
+        using (callback)
         {
-            return false;
-        }
+            if (!Uri.TryCreate(downloadItem.Url, UriKind.Absolute, out var uri))
+            {
+                return false;
+            }
 
-        var args = _owner.RaiseDownload(uri, suggestedName);
-        if (args?.Decision != CefGlueNextAvaloniaDownloadDecision.Allow)
-        {
-            return false;
-        }
+            var args = _owner.RaiseDownload(uri, suggestedName);
+            if (args?.Decision != CefGlueNextAvaloniaDownloadDecision.Allow)
+            {
+                return false;
+            }
 
-        callback.Continue(args.FilePath, args.ShowDialog);
-        return true;
+            callback.Continue(args.FilePath, args.ShowDialog);
+            return true;
+        }
     }
 }
 

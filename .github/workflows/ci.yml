@@ -3,11 +3,13 @@ name: ci
 # PR 门禁（docs/dev-workflow-design.md §10，不变量）。
 #   dotnet build 0 警告 → 全部可执行自测试 = 0 → Tarui.Architecture.Tests
 #   → 新增包门禁（dotnet pack + 版本一致性）→ pnpm lint + pnpm build。
+# 2026-08：仓库默认分支为 master；改 push/pull_request 监听 master，并允许 workflow_dispatch 手动验证。
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -102,14 +104,11 @@ jobs:
           if ($pkg -ne $tarui) { throw "Version mismatch: Directory.Build.props=$tarui package.json=$pkg" }
           Write-Host "Versions consistent: $tarui"
 
-      - name: Run self-tests
-        run: |
-          dotnet run --project tests/Tarui.Cli.Tests/Tarui.Cli.Tests.csproj -c Release --no-build
-          dotnet run --project tests/Tarui.Ipc.Tests/Tarui.Ipc.Tests.csproj -c Release --no-build
-          dotnet run --project tests/CefGlue.Next.Avalonia.Tests/CefGlue.Next.Avalonia.Tests.csproj -c Release --no-build
-          dotnet run --project tests/Tarui.WebView.Tests/Tarui.WebView.Tests.csproj -c Release --no-build
-          dotnet run --project tests/Tarui.Shell.Tests/Tarui.Shell.Tests.csproj -c Release --no-build
-          dotnet run --project tests/Tarui.Architecture.Tests/Tarui.Architecture.Tests.csproj -c Release --no-build
+      - name: Run self-tests (eng/test-all.ps1)
+        run: ./eng/test-all.ps1 -BaselineCount 21
+
+      - name: Architecture gate (Tarui.Architecture.Tests)
+        run: dotnet run --project tests/Tarui.Architecture.Tests/Tarui.Architecture.Tests.csproj -c Release --no-build
 
       - uses: actions/upload-artifact@v4
         with:

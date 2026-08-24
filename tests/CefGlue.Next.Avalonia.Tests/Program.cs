@@ -18,6 +18,11 @@ internal static class Program
         ResourceProviderContractCarriesRequestAndResponse();
         EventArgumentsDefaultToSafeDecisions();
         EventArgumentsPreserveMappingFields();
+        ProviderBoundaryReturnsResponseOnSuccess();
+        ProviderBoundaryConvertsExceptionToInternalServerError();
+        RuntimeOptionsFingerprintStableForEquivalentOptions();
+        RuntimeOptionsFingerprintDistinguishesSchemes();
+        RuntimeOptionsFingerprintDistinguishesSubprocessAndCache();
         Console.WriteLine("CefGlue.Next.Avalonia self-tests passed.");
         return 0;
     }
@@ -293,6 +298,94 @@ internal static class Program
         }
     }
 
+    private static void ProviderBoundaryReturnsResponseOnSuccess()
+    {
+        var provider = new RecordingResourceProvider();
+        var request = new CefGlueNextAvaloniaResourceRequest("app://main/", "GET", IsMainFrame: true, IsMainFrameResource: true);
+        var response = CefGlueNextAvaloniaProviderBoundary.SafeResolve(provider, request);
+        AssertEqual(200, response.Status, "A successful provider must surface the original 200.");
+        Assert(provider.LastRequest is not null, "The boundary must hand the request to the provider unchanged.");
+    }
+
+    private static void ProviderBoundaryConvertsExceptionToInternalServerError()
+    {
+        var provider = new ThrowingResourceProvider();
+        var request = new CefGlueNextAvaloniaResourceRequest("app://broken/", "GET", IsMainFrame: false, IsMainFrameResource: false);
+        var response = CefGlueNextAvaloniaProviderBoundary.SafeResolve(provider, request);
+        AssertEqual(500, response.Status, "A throwing provider must yield a fixed 500 response.");
+        AssertEqual("Internal Resource Provider Error", response.StatusText, "The 500 response must carry a stable status text.");
+        var body = System.Text.Encoding.UTF8.GetString(response.Content);
+        Assert(body.Contains("boom", StringComparison.Ordinal), "The diagnostic body must include the underlying exception message.");
+        AssertEqual("no-store", response.CacheControl, "Error responses must opt out of caching to avoid replaying stale 500s.");
+    }
+
+    private static void RuntimeOptionsFingerprintStableForEquivalentOptions()
+    {
+        var a = BuildDeterministicOptions();
+        var b = BuildDeterministicOptions();
+        AssertEqual(
+            CefGlueNextAvaloniaRuntime.ComputeFingerprint(a),
+            CefGlueNextAvaloniaRuntime.ComputeFingerprint(b),
+            "Equivalent options must yield the same fingerprint for reinit comparison.");
+    }
+
+    private static void RuntimeOptionsFingerprintDistinguishesSchemes()
+    {
+        var a = BuildDeterministicOptions();
+        var b = new CefGlueNextAvaloniaRuntimeOptions
+        {
+            RuntimeDirectory = a.RuntimeDirectory,
+            ResourcesDirectory = a.ResourcesDirectory,
+            LocalesDirectory = a.LocalesDirectory,
+            CacheDirectory = a.CacheDirectory,
+            BrowserSubprocessPath = a.BrowserSubprocessPath,
+            LogFile = a.LogFile,
+            Schemes = new[]
+            {
+                new CefGlueNextAvaloniaSchemeOptions
+                {
+                    SchemeName = "app",
+                    DomainName = "local",
+                    ResourceProvider = new RecordingResourceProvider()
+                }
+            },
+        };
+        Assert(
+            CefGlueNextAvaloniaRuntime.ComputeFingerprint(a) != CefGlueNextAvaloniaRuntime.ComputeFingerprint(b),
+            "Adding a scheme must change the fingerprint so silent reinit drops are rejected.");
+    }
+
+    private static void RuntimeOptionsFingerprintDistinguishesSubprocessAndCache()
+    {
+        var a = BuildDeterministicOptions();
+        var b = new CefGlueNextAvaloniaRuntimeOptions
+        {
+            RuntimeDirectory = a.RuntimeDirectory,
+            ResourcesDirectory = a.ResourcesDirectory,
+            LocalesDirectory = a.LocalesDirectory,
+            CacheDirectory = "different",
+            BrowserSubprocessPath = "different-subprocess.exe",
+            LogFile = a.LogFile,
+            Schemes = a.Schemes,
+        };
+        Assert(
+            CefGlueNextAvaloniaRuntime.ComputeFingerprint(a) != CefGlueNextAvaloniaRuntime.ComputeFingerprint(b),
+            "Cache and subprocess paths must be part of the fingerprint.");
+    }
+    private static CefGlueNextAvaloniaRuntimeOptions BuildDeterministicOptions()
+    {
+        return new CefGlueNextAvaloniaRuntimeOptions
+        {
+            RuntimeDirectory = "runtime",
+            ResourcesDirectory = "resources",
+            LocalesDirectory = "locales",
+            CacheDirectory = "cache",
+            BrowserSubprocessPath = "subprocess.exe",
+            LogFile = "cef.log",
+            Schemes = Array.Empty<CefGlueNextAvaloniaSchemeOptions>(),
+        };
+    }
+
     private static void AssertThrows<TException>(Action action, string message)
         where TException : Exception
     {
@@ -323,6 +416,14 @@ internal static class Program
                 "no-cache",
                 content.LongLength,
                 content);
+        }
+    }
+
+    private sealed class ThrowingResourceProvider : ICefGlueNextAvaloniaResourceProvider
+    {
+        public CefGlueNextAvaloniaResourceResponse Resolve(CefGlueNextAvaloniaResourceRequest request)
+        {
+            throw new InvalidOperationException("boom");
         }
     }
 

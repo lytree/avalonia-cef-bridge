@@ -24,7 +24,7 @@
     "webview://navigation-requested",
     "log://entry",
     "deeplink://tarui",
-    "updater://status"
+    "updater://status",`n    "demo://echo"
   ],
   "permissions": [
     "core:app|get-info",

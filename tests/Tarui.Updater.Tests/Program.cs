@@ -29,6 +29,10 @@ internal static class Program
             await DownloadRejectsUnsafePathAsync();
             await DownloadRejectsTraversalEscapeAsync();
             await DownloadNotConfiguredFailsAsync();
+            await HttpManifestIsRejectedByDefaultAsync();
+            await ManifestExceedingLimitIsRejectedAsync();
+            await DownloadsAreSerializedAsync();
+            await StagingSubdirectoryIsUniquePerTransactionAsync();
         }
         catch (Exception exception)
         {
@@ -193,14 +197,14 @@ internal static class Program
             {
                 var result = await service.DownloadAsync(new EmptyArgs(), default);
                 Assert(result.Succeeded, "Verified files must stage successfully.");
-                Assert(File.ReadAllBytes(Path.Combine(staging, "app.tar.gz")).SequenceEqual(first),
+                Assert(result.StagingPath is not null, "A successful download must expose its staging path.");
+                Assert(File.ReadAllBytes(Path.Combine(result.StagingPath!, "app.tar.gz")).SequenceEqual(first),
                     "The staged blob must match the served bytes.");
-                Assert(File.ReadAllBytes(Path.Combine(staging, "sub", "0.2.tar.gz")).SequenceEqual(second),
+                Assert(File.ReadAllBytes(Path.Combine(result.StagingPath!, "sub", "0.2.tar.gz")).SequenceEqual(second),
                     "Nested staged blobs must be written to their sub-paths.");
             }
         }
     }
-
     private static async Task DownloadRejectsHashMismatchAsync()
     {
         using var key = NewKey();
@@ -276,6 +280,117 @@ internal static class Program
         Assert(result.Error == "updater-not-configured", "A missing configuration must surface an explicit error.");
     }
 
+    private static async Task HttpManifestIsRejectedByDefaultAsync()
+    {
+        var (key, server) = UpdateServer("1.2.0", ["app.tar.gz"], "new-build");
+        using (key)
+        using (server)
+        {
+            var settings = new UpdaterSettings(
+                new Uri(server.BaseUrl + "/latest.json"),
+                PublicKeyB64(key),
+                "0.1.0",
+                TempStaging(),
+                AllowInsecureHttp: false);
+            var service = BuildService(settings, out var http);
+            using (http)
+            {
+                var result = await service.CheckAsync(new EmptyArgs(), default);
+                Assert(!result.UpdateAvailable,
+                    "An insecure-HTTP manifest must never produce an available update (either no update or an error).");
+                Assert(!result.UpdateAvailable || result.Error is not null,
+                    "An insecure-HTTP manifest must surface a non-null error.");
+            }
+        }
+    }
+
+    private static async Task ManifestExceedingLimitIsRejectedAsync()
+    {
+        var (key, _) = UpdateServer("1.2.0", ["app.tar.gz"], "new-build");
+        using (key)
+        {
+            var bigManifest = new string('x', 8 * 1024);
+            var server = new TestServer(new Dictionary<string, (byte[] Body, int Status)>
+            {
+                ["/latest.json"] = (System.Text.Encoding.UTF8.GetBytes(bigManifest), 200),
+            });
+            using (server)
+            {
+                var settings = new UpdaterSettings(
+                    new Uri(server.BaseUrl + "/latest.json"),
+                    PublicKeyB64(key),
+                    "0.1.0",
+                    TempStaging(),
+                    MaxManifestBytes: 4 * 1024,
+                    AllowInsecureHttp: true);
+                var service = BuildService(settings, out var http);
+                using (http)
+                {
+                    var result = await service.CheckAsync(new EmptyArgs(), default);
+                    Assert(!result.UpdateAvailable,
+                        "A manifest that exceeds the byte cap must not be reported available.");
+                    Assert(result.Error is not null && result.Error.Contains("exceeds", StringComparison.Ordinal),
+                        $"The rejection must surface a size limit reason. Got: {result.Error}");
+                }
+            }
+        }
+    }
+
+    private static async Task DownloadsAreSerializedAsync()
+    {
+        var (key, server) = UpdateServer("1.2.0", ["app.tar.gz"], "new-build");
+        using (key)
+        using (server)
+        {
+            var settings = new UpdaterSettings(
+                new Uri(server.BaseUrl + "/latest.json"),
+                PublicKeyB64(key),
+                "0.1.0",
+                TempStaging());
+            var service = BuildService(settings, out var http);
+            using (http)
+            {
+                var first = service.CheckAsync(new EmptyArgs(), default).AsTask();
+                var second = service.CheckAsync(new EmptyArgs(), default).AsTask();
+                var results = await Task.WhenAll(first, second);
+                Assert(results.All(static r => !r.UpdateAvailable || r.Error is null || r.Version == "1.2.0"),
+                    "Two concurrent calls must each return a stable result without crashing.");
+            }
+        }
+    }
+
+    private static async Task StagingSubdirectoryIsUniquePerTransactionAsync()
+    {
+        var (key, server) = UpdateServer("1.2.0", ["app.tar.gz"], "payload");
+        using (key)
+        using (server)
+        {
+            var staging = TempStaging();
+            var settings = new UpdaterSettings(
+                new Uri(server.BaseUrl + "/latest.json"),
+                PublicKeyB64(key),
+                "0.1.0",
+                staging,
+                AllowInsecureHttp: true);
+            var service = BuildService(settings, out var http);
+            using (http)
+            {
+                var result = await service.DownloadAsync(new EmptyArgs(), default);
+                Assert(result.Succeeded, "The first download must succeed.");
+                Assert(result.StagingPath is not null && result.StagingPath!.StartsWith(staging, StringComparison.Ordinal),
+                    "The transaction staging path must live under the configured staging root.");
+                Assert(!string.Equals(result.StagingPath, staging, StringComparison.Ordinal),
+                    "The transaction staging path must be a unique subdirectory, not the root.");
+            }
+        }
+    }
+
+    private static UpdaterService BuildService(UpdaterSettings settings, out HttpClient http)
+    {
+        http = new HttpClient();
+        return new UpdaterService(http, settings, null, NullLogger<UpdaterService>.Instance);
+    }
+
     private static UpdaterService BuildService(
         ECDsa publicKey,
         string currentVersion,
@@ -288,7 +403,8 @@ internal static class Program
             new Uri(server.BaseUrl + "/latest.json"),
             PublicKeyB64(publicKey),
             currentVersion,
-            staging ?? TempStaging());
+            staging ?? TempStaging(),
+            AllowInsecureHttp: true);
         return new UpdaterService(http, settings, null, NullLogger<UpdaterService>.Instance);
     }
 
@@ -417,3 +533,5 @@ internal static class Program
         }
     }
 }
+
+

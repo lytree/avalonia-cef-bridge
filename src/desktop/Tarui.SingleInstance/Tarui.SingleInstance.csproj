@@ -11,4 +11,7 @@
     <ProjectReference Include="..\..\core\Tarui.Ipc\Tarui.Ipc.csproj" />
     <ProjectReference Include="..\Tarui.Shell\Tarui.Shell.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tarui.SingleInstance.Tests" />
+  </ItemGroup>
 </Project>

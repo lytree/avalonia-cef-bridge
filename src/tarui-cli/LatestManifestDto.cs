@@ -1,19 +1,27 @@
 using System.Text.Json.Serialization;
+using Tarui.Contracts;
 
 namespace Tarui.Cli;
 
 /// <summary>
-/// Updater blueprint manifest (<c>latest.json</c>). Field names and the signature
-/// algorithm are placeholders frozen when the Updater plugin is scoped
-/// (docs/dev-workflow-design.md §5.5).
+/// The updater manifest written by <c>tarui build</c> as <c>latest.json</c>. The schema and
+/// signature algorithm are intentionally identical to <see cref="UpdateManifest"/> so the runtime
+/// <c>UpdaterService</c> can verify the CLI's output without a translation layer.
 /// </summary>
-internal sealed class LatestManifestDto
+internal sealed record LatestManifestDto
 {
-    [JsonPropertyName("version")] public string? Version { get; set; }
+    [JsonPropertyName("schemaVersion")] public int SchemaVersion { get; init; }
 
-    [JsonPropertyName("url")] public string? Url { get; set; }
+    [JsonPropertyName("version")] public string Version { get; init; } = string.Empty;
 
-    [JsonPropertyName("sha256")] public string? Sha256 { get; set; }
+    [JsonPropertyName("files")] public IReadOnlyList<string> Files { get; init; } = [];
 
-    [JsonPropertyName("signature")] public string? Signature { get; set; }
+    [JsonPropertyName("sha256")] public IReadOnlyDictionary<string, string> Sha256 { get; init; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    [JsonPropertyName("signature")] public string Signature { get; init; } = string.Empty;
+
+    /// <summary>Maps this DTO onto the runtime <see cref="UpdateManifest"/> record.</summary>
+    public UpdateManifest ToContract() =>
+        new(SchemaVersion, Version, Files.ToArray(), new Dictionary<string, string>(Sha256, StringComparer.Ordinal), Signature);
 }

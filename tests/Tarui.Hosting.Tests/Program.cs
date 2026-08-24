@@ -28,6 +28,9 @@ internal static class Program
             InvalidShutdownModeFailsFast();
             ShutdownCoordinatorEnforcesEachMode();
             HostAppShutdownStopsGracefully();
+            ApplicationIdentityHasStableSanitizedIdentifier();
+            ApplicationIdentityRegisteredInContainer();
+            ApplicationIdentityOverridesDefault();
         }
         catch (Exception exception)
         {
@@ -37,6 +40,40 @@ internal static class Program
 
         Console.WriteLine("Tarui.Hosting self-tests passed.");
         return 0;
+    }
+
+    private static void ApplicationIdentityHasStableSanitizedIdentifier()
+    {
+        var identity = new TaruiApplicationIdentity("Demo", "Com.Example.Demo", "1.2.3");
+        Assert(identity.SanitizedIdentifier == "com.example.demo",
+            $"Sanitized identifier must be lower-cased and stable; got {identity.SanitizedIdentifier}.");
+        Assert(identity.SanitizedIdentifier == TaruiApplicationIdentity.SanitizeIdentifier("Com.Example.Demo"),
+            "The sanitization must be a pure function of its input.");
+        var empty = new TaruiApplicationIdentity("Demo", "", "1.0.0");
+        Assert(empty.SanitizedIdentifier == TaruiApplicationIdentity.Default.SanitizedIdentifier,
+            "An empty identifier must fall back to the safe default.");
+    }
+
+    private static void ApplicationIdentityRegisteredInContainer()
+    {
+        var builder = TaruiHost.CreateApplicationBuilder();
+        using var host = builder.Build();
+        var sp = host.Services;
+        var resolved = sp.GetRequiredService<TaruiApplicationIdentity>();
+        Assert(resolved.SanitizedIdentifier == TaruiApplicationIdentity.Default.SanitizedIdentifier,
+            "The default identity must be registered when no override is supplied.");
+    }
+
+    private static void ApplicationIdentityOverridesDefault()
+    {
+        var builder = TaruiHost.CreateApplicationBuilder()
+            .UseApplicationIdentity(new TaruiApplicationIdentity("Demo", "com.demo.app", "2.0.0"));
+        using var host = builder.Build();
+        var resolved = host.Services.GetRequiredService<TaruiApplicationIdentity>();
+        Assert(resolved.Identifier == "com.demo.app",
+            "An explicitly-supplied identity must replace the default in the host.");
+        Assert(resolved.Version == "2.0.0",
+            "The version field must propagate from the supplied identity.");
     }
 
     private static void BuilderExposesHostSurfaces()

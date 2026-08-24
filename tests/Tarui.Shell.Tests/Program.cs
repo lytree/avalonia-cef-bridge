@@ -37,6 +37,11 @@ internal static class Program
         CapabilitySetProviderCachesDirectorySnapshot();
         AddTaruiShellRegistersShellServices();
         ShellPolicyAcceptsAllApplicationSchemes();
+        WindowCapabilityResolverRejectsTargetThatExpandsAllow();
+        WindowCapabilityResolverRejectsTargetThatShrinksDeny();
+        WindowCapabilityResolverRejectsTargetThatAddsReservedEvent();
+        WindowCapabilityResolverAllowsTargetWithinCallersScope();
+        WindowCapabilityResolverAllowsCallerWithWildcard();
         Console.WriteLine("Tarui.Shell self-tests passed.");
         return 0;
     }
@@ -760,6 +765,157 @@ internal static class Program
                 static (_, _, _) => ValueTask.FromResult(new Unit()),
                 "test:shell|two");
         }
+    }
+
+    private static void WindowCapabilityResolverRejectsTargetThatExpandsAllow()
+    {
+        // Caller restricts the scope to 'appData/public/**'; the target attempts to broaden it to
+        // 'home/**'. Same permission id, different allow list => escalation attempt.
+        var callerScopes = new Dictionary<string, PermissionScope>(StringComparer.Ordinal)
+        {
+            ["plugin:fs|read-text-file"] = new PermissionScope(
+                [new PathScope("appData", "public/**")],
+                []),
+        };
+        var targetScopes = new Dictionary<string, PermissionScope>(StringComparer.Ordinal)
+        {
+            ["plugin:fs|read-text-file"] = new PermissionScope(
+                [new PathScope("home", "**")],
+                []),
+        };
+
+        var provider = new StaticCapabilityProvider(new Dictionary<string, CapabilitySet>(StringComparer.Ordinal)
+        {
+            ["main"] = new CapabilitySet(["plugin:fs|read-text-file"], [], callerScopes),
+            ["target"] = new CapabilitySet(["plugin:fs|read-text-file"], [], targetScopes),
+        });
+        var resolver = new WindowCapabilityResolver(provider);
+        var caller = new CommandContext("main", "main", new CapabilitySet(["plugin:fs|read-text-file"], [], callerScopes));
+
+        var denied = false;
+        try
+        {
+            resolver.ResolveForCreate("target", caller);
+        }
+        catch (PermissionDeniedException exception)
+        {
+            denied = exception.Message.Contains("widen allow");
+        }
+
+        Assert(denied, "Creating a window whose allow scope is broader than the caller's must be denied.");
+    }
+
+    private static void WindowCapabilityResolverRejectsTargetThatShrinksDeny()
+    {
+        // Caller denies 'appData/secret/**'; the target drops the deny. A window that can suddenly
+        // read the secret tree gains privileges over the caller.
+        var callerScopes = new Dictionary<string, PermissionScope>(StringComparer.Ordinal)
+        {
+            ["plugin:fs|read-text-file"] = new PermissionScope(
+                [new PathScope("appData", "**")],
+                [new PathScope("appData", "secret/**")]),
+        };
+        var targetScopes = new Dictionary<string, PermissionScope>(StringComparer.Ordinal)
+        {
+            ["plugin:fs|read-text-file"] = new PermissionScope(
+                [new PathScope("appData", "**")],
+                []),
+        };
+
+        var provider = new StaticCapabilityProvider(new Dictionary<string, CapabilitySet>(StringComparer.Ordinal)
+        {
+            ["main"] = new CapabilitySet(["plugin:fs|read-text-file"], [], callerScopes),
+            ["target"] = new CapabilitySet(["plugin:fs|read-text-file"], [], targetScopes),
+        });
+        var resolver = new WindowCapabilityResolver(provider);
+        var caller = new CommandContext("main", "main", new CapabilitySet(["plugin:fs|read-text-file"], [], callerScopes));
+
+        var denied = false;
+        try
+        {
+            resolver.ResolveForCreate("target", caller);
+        }
+        catch (PermissionDeniedException exception)
+        {
+            denied = exception.Message.Contains("narrow deny");
+        }
+
+        Assert(denied, "Creating a window whose deny scope is narrower than the caller's must be denied.");
+    }
+
+    private static void WindowCapabilityResolverRejectsTargetThatAddsReservedEvent()
+    {
+        // The target reserves a new 'app://secret' event the caller does not receive. Receiving a
+        // reserved event the creator cannot see is a privilege gain.
+        var provider = new StaticCapabilityProvider(new Dictionary<string, CapabilitySet>(StringComparer.Ordinal)
+        {
+            ["main"] = new CapabilitySet([], ["window://moved"], []),
+            ["target"] = new CapabilitySet([], ["window://moved", "app://secret"], []),
+        });
+        var resolver = new WindowCapabilityResolver(provider);
+        var caller = new CommandContext("main", "main", new CapabilitySet([], ["window://moved"], []));
+
+        var denied = false;
+        try
+        {
+            resolver.ResolveForCreate("target", caller);
+        }
+        catch (PermissionDeniedException exception)
+        {
+            denied = exception.Message.Contains("reserved event");
+        }
+
+        Assert(denied, "Creating a window that reserves an event the caller cannot receive must be denied.");
+    }
+
+    private static void WindowCapabilityResolverAllowsTargetWithinCallersScope()
+    {
+        // Target is a strict subset of the caller; same permission id, target.allow fully covers
+        // caller.allow, target.deny fully covers caller.deny, target.events subset of caller.events.
+        var callerScopes = new Dictionary<string, PermissionScope>(StringComparer.Ordinal)
+        {
+            ["plugin:fs|read-text-file"] = new PermissionScope(
+                [new PathScope("appData", "public/**"), new PathScope("appData", "private/a.json")],
+                [new PathScope("appData", "public/secret/**")]),
+        };
+        var targetScopes = new Dictionary<string, PermissionScope>(StringComparer.Ordinal)
+        {
+            ["plugin:fs|read-text-file"] = new PermissionScope(
+                [new PathScope("appData", "public/**"), new PathScope("appData", "private/a.json"), new PathScope("appData", "private/notes.json")],
+                [new PathScope("appData", "public/secret/**"), new PathScope("appData", "public/admin/**")]),
+        };
+
+        var provider = new StaticCapabilityProvider(new Dictionary<string, CapabilitySet>(StringComparer.Ordinal)
+        {
+            ["main"] = new CapabilitySet(["plugin:fs|read-text-file"], ["window://moved"], callerScopes),
+            ["target"] = new CapabilitySet(["plugin:fs|read-text-file"], ["window://moved"], targetScopes),
+        });
+        var resolver = new WindowCapabilityResolver(provider);
+        var caller = new CommandContext("main", "main", new CapabilitySet(["plugin:fs|read-text-file"], ["window://moved"], callerScopes));
+
+        var capability = resolver.ResolveForCreate("target", caller);
+        Assert(capability.Allows("plugin:fs|read-text-file"), "A target within the caller's scope must still be allowed.");
+        Assert(capability.AllowsEvent("window://moved"), "The reserved event subset must be allowed.");
+    }
+
+    private static void WindowCapabilityResolverAllowsCallerWithWildcard()
+    {
+        // A caller that holds '*' is treated as root; any target must pass.
+        var provider = new StaticCapabilityProvider(new Dictionary<string, CapabilitySet>(StringComparer.Ordinal)
+        {
+            ["main"] = new CapabilitySet(["*"], ["*"], []),
+            ["target"] = new CapabilitySet(["plugin:fs|read-text-file"], ["app://secret"], []),
+        });
+        var resolver = new WindowCapabilityResolver(provider);
+        var caller = new CommandContext("main", "main", new CapabilitySet(["*"], ["*"], []));
+
+        var capability = resolver.ResolveForCreate("target", caller);
+        Assert(capability.Allows("plugin:fs|read-text-file"), "A root caller must reach any target window.");
+    }
+
+    private sealed class StaticCapabilityProvider(IReadOnlyDictionary<string, CapabilitySet> capabilities) : ICapabilityProvider
+    {
+        public IReadOnlyDictionary<string, CapabilitySet> Capabilities { get; } = capabilities;
     }
 
     private static WindowRegistry.Entry CreateEntry(FakeSink sink, CommandContext context) =>

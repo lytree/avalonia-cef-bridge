@@ -14,6 +14,7 @@ internal static class Program
         ResolvesPluginSingletonThroughServiceProvider();
         DeduplicatesRegisteredPermissions();
         ExposesRouterRegisteredPermissions();
+        await HandlerExceptionsDoNotCorruptDispatcherAsync();
         Console.WriteLine("Tarui.Ipc self-tests passed.");
         return 0;
     }
@@ -98,6 +99,49 @@ internal static class Program
 
         Assert(expected.Length == 2, "The builder must expose the deduplicated permissions.");
         Assert(expected.SequenceEqual(actual), "The router must expose the builder's registered permissions.");
+    }
+
+    private static async Task HandlerExceptionsDoNotCorruptDispatcherAsync()
+    {
+        // A handler that throws must surface as a Web-facing failure on the response and leave
+        // the dispatcher usable for subsequent invocations. Without this guard the bridge would
+        // leak an unhandled rejection to the web layer and pin the dispatcher.
+        var builder = new CommandRouterBuilder();
+        builder.Add(
+            "test:explode",
+            TaruiJsonContext.Default.EmptyArgs,
+            TaruiJsonContext.Default.Unit,
+            static (_, _, _) => throw new InvalidOperationException("simulated-handler-failure"),
+            "test:explode");
+        builder.Add(
+            "test:echo",
+            TaruiJsonContext.Default.EmptyArgs,
+            TaruiJsonContext.Default.Unit,
+            static (_, _, _) => ValueTask.FromResult(new Unit()),
+            "test:echo");
+
+        var dispatcher = new IpcDispatcher(builder.Build());
+        var explodingJson = JsonSerializer.Serialize(Request("explode-1"), TaruiJsonContext.Default.InvokeRequest);
+        var exploding = JsonSerializer.Deserialize(
+            await dispatcher.DispatchJsonAsync(
+                explodingJson,
+                new CommandContext("main", "main", new CapabilitySet(["test:explode"]))),
+            TaruiJsonContext.Default.InvokeResponse);
+
+        Assert(exploding is not null, "The dispatcher must produce a response envelope after a handler throws.");
+        Assert(!exploding!.Success, "A handler exception must surface as a non-success response.");
+        Assert(exploding.Error is not null, "The error envelope must be populated.");
+        Assert(!exploding.Error!.Code.Contains("internal", StringComparison.OrdinalIgnoreCase),
+            "Handler exceptions must not leak implementation details to the web layer.");
+
+        // The dispatcher must remain usable for the next call after a handler throws.
+        var echoJson = JsonSerializer.Serialize(Request("echo-1"), TaruiJsonContext.Default.InvokeRequest);
+        var echo = JsonSerializer.Deserialize(
+            await dispatcher.DispatchJsonAsync(
+                echoJson,
+                new CommandContext("main", "main", new CapabilitySet(["test:echo"]))),
+            TaruiJsonContext.Default.InvokeResponse);
+        Assert(echo is not null && echo.Success, "The dispatcher must continue to serve subsequent calls after a handler throws.");
     }
 
     private static InvokeRequest Request(string id) => new(

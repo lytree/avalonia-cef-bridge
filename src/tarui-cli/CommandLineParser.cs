@@ -20,6 +20,7 @@ internal static class CommandLineParser
         string? manager = null;
         string? output = null;
         string? local = null;
+        string? signKey = null;
 
         var index = 0;
         while (index < args.Count)
@@ -86,6 +87,9 @@ internal static class CommandLineParser
                         break;
                     case "--local":
                         local = ReadOptionValue(name, inlineValue, args, ref index);
+                        break;
+                    case "--sign-key":
+                        signKey = ReadOptionValue(name, inlineValue, args, ref index);
                         break;
                     default:
                         throw new CliUsageException($"Unknown option '{name}'.");
@@ -205,7 +209,8 @@ internal static class CommandLineParser
             Verbose = verbose,
             Rid = rid,
             Bundles = bundles,
-            OutDir = outDir
+            OutDir = outDir,
+            SignKey = signKey
         };
     }
 

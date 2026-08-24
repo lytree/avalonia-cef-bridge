@@ -10,13 +10,26 @@ using Tarui.Plugins.Updater;
 namespace Tarui.Shell;
 
 /// <summary>
+/// Raised when the updater fetches a manifest or file that exceeds the configured byte caps, or
+/// when the advertised Content-Length disagrees with the signed file size. Surfaced as a
+/// non-sensitive <see cref="UpdateDownloadResult.Error"/> or <see cref="UpdateCheckResult.Error"/>
+/// so the web layer can distinguish it from a network failure.
+/// </summary>
+public sealed class UpdaterSizeLimitException(string message) : Exception(message);
+
+/// <summary>
 /// Drives the read-only updater flow. <c>check</c> fetches the signed manifest, verifies its ECDSA
 /// signature and schema, and reports whether a strictly newer version exists. <c>download</c> repeats
-/// that verification, then fetches each advertised file to the isolated staging directory after
-/// revalidating its SHA-256. The running installation is never touched; staged paths are confined to
-/// the staging root and file entries are validated so a tampered manifest cannot escape it.
+/// that verification, then fetches each advertised file to an isolated staging directory after
+/// revalidating its SHA-256. The running installation is never touched; staged paths are confined
+/// to the staging root and file entries are validated so a tampered manifest cannot escape it.
 /// Verification or hash failures surface as a Web-facing error, never as "no update".
 /// Progress/completion is reported through the reserved <c>updater://status</c> event.
+///
+/// Downloads are serialized through an internal <see cref="SemaphoreSlim"/> so two concurrent
+/// calls cannot stomp each other's staging directories; per-file and cumulative byte caps are
+/// enforced while streaming so a hostile manifest cannot exhaust memory or disk before its
+/// signature is rejected.
 /// </summary>
 public sealed partial class UpdaterService : IUpdaterService, IDisposable
 {
@@ -26,6 +39,7 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
     private readonly UpdaterSettings? _settings;
     private readonly EventRouter? _events;
     private readonly ILogger<UpdaterService> _logger;
+    private readonly SemaphoreSlim _downloadGate = new(1, 1);
 
     public UpdaterService(
         HttpClient http,
@@ -48,6 +62,7 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
 
         try
         {
+            EnsureHttpsAllowed();
             var manifest = await FetchVerifiedManifestAsync(cancellationToken);
             await EmitStatusAsync("check-success", manifest.Version, cancellationToken: cancellationToken);
             return CompareVersion(manifest);
@@ -57,6 +72,13 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
             LogVerificationFailure(exception);
 
             await EmitStatusAsync("verification-failed", error: exception.Message, cancellationToken: cancellationToken);
+            return new UpdateCheckResult(false, null, exception.Message);
+        }
+        catch (UpdaterSizeLimitException exception)
+        {
+            LogSizeLimit("check", exception);
+
+            await EmitStatusAsync("check-failed", error: "manifest-too-large", cancellationToken: cancellationToken);
             return new UpdateCheckResult(false, null, exception.Message);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
@@ -77,51 +99,93 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
             return new UpdateDownloadResult(false, "updater-not-configured");
         }
 
+        // Serialize download calls so two concurrent invocations do not share staging state.
+        // The semaphore is released in the outer finally so cancellation still frees the slot.
+        await _downloadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            EnsureHttpsAllowed();
             var manifest = await FetchVerifiedManifestAsync(cancellationToken);
             await EmitStatusAsync("download-start", manifest.Version, cancellationToken: cancellationToken);
 
-            var stagingRoot = Path.GetFullPath(_settings.StagingDir);
+            // Each transaction gets its own staging directory so an interrupted (and therefore
+            // half-verified) download can never overwrite the previously staged active set.
+            var stagingRoot = Path.Combine(
+                Path.GetFullPath(_settings.StagingDir),
+                Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(stagingRoot);
-            ClearStaging(stagingRoot);
 
-            foreach (var file in manifest.Files)
+            long cumulativeBytes = 0;
+            try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var target = ResolveStagingPath(stagingRoot, file);
-                var expected = manifest.Sha256[file];
-                await EmitStatusAsync("download-progress", manifest.Version, file, cancellationToken: cancellationToken);
-
-                var temporary = target + ".tmp";
-                try
+                foreach (var file in manifest.Files)
                 {
-                    var actual = await DownloadAndHashAsync(
-                        ResolveFileUri(file),
-                        temporary,
-                        cancellationToken);
-                    if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var target = ResolveStagingPath(stagingRoot, file);
+                    var expected = manifest.Sha256[file];
+                    await EmitStatusAsync("download-progress", manifest.Version, file, cancellationToken: cancellationToken);
+
+                    var temporary = target + ".tmp";
+                    try
                     {
-                        throw new UpdateVerificationException($"hash-mismatch:{file}");
+                        var actual = await DownloadAndHashAsync(
+                            ResolveFileUri(file),
+                            temporary,
+                            _settings.MaxFileBytes,
+                            cumulativeBytes,
+                            _settings.MaxTotalBytes,
+                            cancellationToken);
+                        if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+                        {
+                            throw new UpdateVerificationException($"hash-mismatch:{file}");
+                        }
+
+                        File.Move(temporary, target);
                     }
+                    finally
+                    {
+                        TryDelete(temporary);
+                    }
+                }
 
-                    File.Move(temporary, target);
-                }
-                finally
-                {
-                    TryDelete(temporary);
-                }
+                await EmitStatusAsync("download-success", manifest.Version, cancellationToken: cancellationToken);
+                return new UpdateDownloadResult(true, null, stagingRoot);
             }
-
-            await EmitStatusAsync("download-success", manifest.Version, cancellationToken: cancellationToken);
-            return new UpdateDownloadResult(true, null);
+            catch
+            {
+                // Best-effort cleanup of the transaction's staging directory on any error path.
+                // Important: this is in a catch, not a finally, because the success branch
+                // exposes stagingRoot to the caller and a finally cleanup would delete it before
+                // the caller could use it.
+                if (Directory.Exists(stagingRoot))
+                {
+                    try
+                    {
+                        Directory.Delete(stagingRoot, recursive: true);
+                    }
+                    catch (IOException)
+                    {
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                    }
+                }
+                throw;
+            }
         }
         catch (UpdateVerificationException exception)
         {
             LogVerificationFailure(exception);
 
             await EmitStatusAsync("download-failed", error: exception.Message, cancellationToken: cancellationToken);
+            return new UpdateDownloadResult(false, exception.Message);
+        }
+        catch (UpdaterSizeLimitException exception)
+        {
+            LogSizeLimit("download", exception);
+
+            await EmitStatusAsync("download-failed", error: "download-too-large", cancellationToken: cancellationToken);
             return new UpdateDownloadResult(false, exception.Message);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or IOException)
@@ -131,17 +195,75 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
             await EmitStatusAsync("download-failed", error: "download-fetch-failed", cancellationToken: cancellationToken);
             return new UpdateDownloadResult(false, "download-fetch-failed");
         }
+        finally
+        {
+            _downloadGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Rejects insecure HTTP at runtime as well as configuration time. The configuration layer
+    /// already drops HTTP upstreams unless <c>AllowInsecureHttp</c> is set, but a caller might
+    /// construct <see cref="UpdaterSettings"/> directly. Defense in depth.
+    /// </summary>
+    private void EnsureHttpsAllowed()
+    {
+        if (_settings is null)
+        {
+            return;
+        }
+
+        if (_settings.AllowInsecureHttp)
+        {
+            return;
+        }
+
+        if (!string.Equals(_settings.ManifestUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UpdateVerificationException("insecure-http-not-allowed");
+        }
     }
 
     /// <summary>Fetches the manifest and throws <see cref="UpdateVerificationException"/> if schema or signature fail.</summary>
     private async Task<UpdateManifest> FetchVerifiedManifestAsync(CancellationToken cancellationToken)
     {
         using var verifier = new UpdateVerifier(_settings!.PublicKeyB64);
-        var raw = await _http.GetByteArrayAsync(_settings.ManifestUri, cancellationToken);
+        var raw = await DownloadManifestBytesAsync(cancellationToken).ConfigureAwait(false);
         var manifest = JsonSerializer.Deserialize(raw, ManifestTypeInfo)
             ?? throw new UpdateVerificationException("malformed-manifest");
         verifier.Verify(manifest);
         return manifest;
+    }
+
+    /// <summary>
+    /// Streams the manifest response into memory while enforcing the configured byte cap so a
+    /// runaway server cannot exhaust memory before signature verification rejects the payload.
+    /// </summary>
+    private async Task<byte[]> DownloadManifestBytesAsync(CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync(
+            _settings!.ManifestUri,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        var buffer = new byte[8192];
+        using var memory = new MemoryStream();
+        long total = 0;
+        int read;
+        while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            total += read;
+            if (total > _settings.MaxManifestBytes)
+            {
+                throw new UpdaterSizeLimitException(
+                    $"manifest-exceeds-{_settings.MaxManifestBytes}-bytes");
+            }
+            await memory.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+        }
+
+        return memory.ToArray();
     }
 
     private UpdateCheckResult CompareVersion(UpdateManifest manifest)
@@ -192,19 +314,48 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
         return new Uri(_settings!.ManifestUri, file);
     }
 
-    private async Task<string> DownloadAndHashAsync(Uri url, string temporary, CancellationToken cancellationToken)
+    /// <summary>
+    /// Streams a single file into <paramref name="temporary"/>, enforcing per-file and cumulative
+    /// byte caps while computing the SHA-256 incrementally. Both caps are checked before any
+    /// additional write so a runaway stream cannot exhaust memory or disk before its hash is
+    /// revalidated by the caller.
+    /// </summary>
+    private async Task<string> DownloadAndHashAsync(
+        Uri url,
+        string temporary,
+        long maxFileBytes,
+        long priorCumulativeBytes,
+        long maxTotalBytes,
+        CancellationToken cancellationToken)
     {
-        using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         await using var output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+
+        long fileBytes = 0;
         var buffer = new byte[81920];
         int read;
-        while ((read = await input.ReadAsync(buffer, cancellationToken)) > 0)
+        while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
         {
+            fileBytes += read;
+            var newCumulative = priorCumulativeBytes + fileBytes;
+
+            if (fileBytes > maxFileBytes)
+            {
+                throw new UpdaterSizeLimitException(
+                    $"file-exceeds-{maxFileBytes}-bytes:{url}");
+            }
+
+            if (newCumulative > maxTotalBytes)
+            {
+                throw new UpdaterSizeLimitException(
+                    $"total-exceeds-{maxTotalBytes}-bytes");
+            }
+
             hash.AppendData(buffer, 0, read);
-            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
         }
 
         var digest = hash.GetHashAndReset();
@@ -241,31 +392,6 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
         }
     }
 
-    private static void ClearStaging(string stagingRoot)
-    {
-        foreach (var entry in Directory.EnumerateFileSystemEntries(stagingRoot))
-        {
-            try
-            {
-                if (Directory.Exists(entry))
-                {
-                    Directory.Delete(entry, recursive: true);
-                }
-                else
-                {
-                    File.Delete(entry);
-                }
-            }
-            catch (IOException)
-            {
-                // Best-effort clean of a previous run; a lingering entry is harmless.
-            }
-            catch (UnauthorizedAccessException)
-            {
-            }
-        }
-    }
-
     private static void TryDelete(string path)
     {
         try
@@ -283,11 +409,18 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
         }
     }
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose()
+    {
+        _downloadGate.Dispose();
+        _http.Dispose();
+    }
 
     [LoggerMessage(LogLevel.Warning, EventId = 100, Message = "Update manifest verification failed.")]
     private partial void LogVerificationFailure(Exception exception);
 
     [LoggerMessage(LogLevel.Warning, EventId = 101, Message = "Update '{Phase}' fetch failed.")]
     private partial void LogFetchFailure(string phase, Exception exception);
+
+    [LoggerMessage(LogLevel.Warning, EventId = 102, Message = "Update '{Phase}' rejected for size limit.")]
+    private partial void LogSizeLimit(string phase, Exception exception);
 }

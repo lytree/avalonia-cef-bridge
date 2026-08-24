@@ -8,115 +8,176 @@ namespace Tarui.Plugins.Store;
 /// <summary>
 /// Default store service. Each distinct (Base, Path) resolves to a canonical file via
 /// <c>IFileAccessPolicy</c> (rejecting rooted paths, link escapes, and read-only bases) and is loaded
-/// once into an in-memory dictionary. Mutations apply in memory then persist durably through the
-/// policy's atomic temporary-file replacement. Empty files and missing stores read as an empty
-/// dictionary, so <c>get</c> is safe on first run.
+/// once into an in-memory dictionary.
+///
+/// Read-family commands return the latest in-memory state under a short read lock. Write-family
+/// commands run end-to-end under a per-path <see cref="SemaphoreSlim"/> so mutation, snapshot, and
+/// atomic persist are serialized for the same backing file: two concurrent Set calls on the
+/// same store cannot interleave a snapshot with the next mutation, eliminating the race where a
+/// stale snapshot completes after a newer one and silently rewrites the file with old data. The
+/// in-memory dict is rolled back on persist failure, so callers see the next Get reflect the
+/// last successful persist.
 /// </summary>
-public sealed class JsonStoreService(IFileAccessPolicy policy) : IStoreService
+public sealed class JsonStoreService : IStoreService, IDisposable
 {
     private static readonly JsonTypeInfo<Dictionary<string, string?>> DirectoryTypeInfo =
         (JsonTypeInfo<Dictionary<string, string?>>)StoreFileJsonContext.Default.GetTypeInfo(typeof(Dictionary<string, string?>))!;
 
-    private readonly object _gate = new();
-    private readonly Dictionary<string, Dictionary<string, string?>> _cache = new(StringComparer.Ordinal);
+    private readonly IFileAccessPolicy _policy;
+    private readonly object _cacheGate = new();
+    private readonly Dictionary<string, StoreEntry> _stores = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SemaphoreSlim> _writeLocks = new(StringComparer.Ordinal);
+    private bool _disposed;
+
+    public JsonStoreService(IFileAccessPolicy policy)
+    {
+        _policy = policy;
+    }
 
     public ValueTask<StoreGetResult> GetAsync(StoreKeyOptions options, CancellationToken cancellationToken)
     {
-        var store = GetStore(options.Base, options.Path, write: false);
-        lock (_gate)
-        {
-            var value = store.TryGetValue(options.Key, out var current) ? current : null;
-            return ValueTask.FromResult(new StoreGetResult(value));
-        }
+        var path = ResolveReadPath(options.Base, options.Path);
+        var snapshot = Snapshot(path);
+        var value = snapshot.TryGetValue(options.Key, out var current) ? current : null;
+        return ValueTask.FromResult(new StoreGetResult(value));
     }
 
     public async ValueTask<Unit> SetAsync(StoreSetOptions options, CancellationToken cancellationToken)
     {
         var path = ResolveWritePath(options.Base, options.Path);
-        lock (_gate)
+        var gate = AcquireWriteLock(path);
+        try
         {
-            var store = GetStoreLocked(path);
+            var before = Snapshot(path);
+            var after = new Dictionary<string, string?>(before, StringComparer.Ordinal);
             if (options.Value is null)
             {
-                store.Remove(options.Key);
+                after.Remove(options.Key);
             }
             else
             {
-                store[options.Key] = options.Value;
+                after[options.Key] = options.Value;
             }
-        }
 
-        await PersistAsync(path, cancellationToken);
-        return new Unit();
+            await CommitAsync(path, after, cancellationToken);
+            return new Unit();
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     public ValueTask<StoreHasResult> HasAsync(StoreKeyOptions options, CancellationToken cancellationToken)
     {
-        var store = GetStore(options.Base, options.Path, write: false);
-        lock (_gate)
-        {
-            return ValueTask.FromResult(new StoreHasResult(store.ContainsKey(options.Key)));
-        }
+        var path = ResolveReadPath(options.Base, options.Path);
+        var snapshot = Snapshot(path);
+        return ValueTask.FromResult(new StoreHasResult(snapshot.ContainsKey(options.Key)));
     }
 
     public async ValueTask<Unit> DeleteAsync(StoreKeyOptions options, CancellationToken cancellationToken)
     {
         var path = ResolveWritePath(options.Base, options.Path);
-        lock (_gate)
+        var gate = AcquireWriteLock(path);
+        try
         {
-            GetStoreLocked(path).Remove(options.Key);
-        }
+            var before = Snapshot(path);
+            if (!before.ContainsKey(options.Key))
+            {
+                return new Unit();
+            }
 
-        await PersistAsync(path, cancellationToken);
-        return new Unit();
+            var after = new Dictionary<string, string?>(before, StringComparer.Ordinal);
+            after.Remove(options.Key);
+            await CommitAsync(path, after, cancellationToken);
+            return new Unit();
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     public async ValueTask<Unit> ClearAsync(StoreFileOptions options, CancellationToken cancellationToken)
     {
         var path = ResolveWritePath(options.Base, options.Path);
-        lock (_gate)
+        var gate = AcquireWriteLock(path);
+        try
         {
-            GetStoreLocked(path).Clear();
-        }
+            var before = Snapshot(path);
+            if (before.Count == 0)
+            {
+                return new Unit();
+            }
 
-        await PersistAsync(path, cancellationToken);
-        return new Unit();
+            var after = new Dictionary<string, string?>(StringComparer.Ordinal);
+            await CommitAsync(path, after, cancellationToken);
+            return new Unit();
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
 
     public ValueTask<StoreKeysResult> KeysAsync(StoreFileOptions options, CancellationToken cancellationToken)
     {
-        var store = GetStore(options.Base, options.Path, write: false);
-        string[] keys;
-        lock (_gate)
-        {
-            keys = [.. store.Keys];
-        }
-
-        return ValueTask.FromResult(new StoreKeysResult(keys));
+        var path = ResolveReadPath(options.Base, options.Path);
+        var snapshot = Snapshot(path);
+        return ValueTask.FromResult(new StoreKeysResult([.. snapshot.Keys]));
     }
 
-    private Dictionary<string, string?> GetStore(string baseName, string? requestPath, bool write)
+    private Dictionary<string, string?> Snapshot(string path)
     {
-        var path = write
-            ? ResolveWritePath(baseName, requestPath)
-            : ResolveReadPath(baseName, requestPath);
-
-        lock (_gate)
+        lock (_cacheGate)
         {
-            return GetStoreLocked(path);
+            if (!_stores.TryGetValue(path, out var entry))
+            {
+                entry = new StoreEntry(Load(path));
+                _stores[path] = entry;
+            }
+
+            return entry.Snapshot;
         }
     }
 
-    private Dictionary<string, string?> GetStoreLocked(string path)
+    private async Task CommitAsync(
+        string path,
+        Dictionary<string, string?> after,
+        CancellationToken cancellationToken)
     {
-        if (_cache.TryGetValue(path, out var cached))
+        // Persist first; only swap the cache once the file is durable. A persist failure leaves
+        // the cache on the previous snapshot and the exception is surfaced to the caller.
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(after, DirectoryTypeInfo);
+        await _policy.WriteAllBytesAtomicAsync(path, bytes, cancellationToken).ConfigureAwait(false);
+
+        lock (_cacheGate)
         {
-            return cached;
+            if (!_stores.TryGetValue(path, out var entry))
+            {
+                _stores[path] = new StoreEntry(after);
+            }
+            else
+            {
+                entry.Replace(after);
+            }
+        }
+    }
+
+    private SemaphoreSlim AcquireWriteLock(string path)
+    {
+        SemaphoreSlim gate;
+        lock (_cacheGate)
+        {
+            if (!_writeLocks.TryGetValue(path, out gate!))
+            {
+                gate = new SemaphoreSlim(1, 1);
+                _writeLocks[path] = gate;
+            }
         }
 
-        var store = Load(path);
-        _cache[path] = store;
-        return store;
+        gate.Wait();
+        return gate;
     }
 
     private static Dictionary<string, string?> Load(string path)
@@ -136,31 +197,19 @@ public sealed class JsonStoreService(IFileAccessPolicy policy) : IStoreService
             ?? new Dictionary<string, string?>(StringComparer.Ordinal);
     }
 
-    private async Task PersistAsync(string path, CancellationToken cancellationToken)
-    {
-        Dictionary<string, string?> snapshot;
-        lock (_gate)
-        {
-            snapshot = new Dictionary<string, string?>(_cache.TryGetValue(path, out var store) ? store : [], StringComparer.Ordinal);
-        }
-
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(snapshot, DirectoryTypeInfo);
-        await policy.WriteAllBytesAtomicAsync(path, bytes, cancellationToken);
-    }
-
     private string ResolveReadPath(string baseName, string? requestPath)
     {
-        if (!policy.TryGetBaseDirectory(baseName, out var baseDir, out var isReadOnly))
+        if (!_policy.TryGetBaseDirectory(baseName, out var baseDir, out _))
         {
             throw new InvalidOperationException($"Base directory '{baseName}' is not available on this system.");
         }
 
-        return policy.Authorize(FileAccessKind.Read, baseDir, requestPath ?? string.Empty);
+        return _policy.Authorize(FileAccessKind.Read, baseDir, requestPath ?? string.Empty);
     }
 
     private string ResolveWritePath(string baseName, string? requestPath)
     {
-        if (!policy.TryGetBaseDirectory(baseName, out var baseDir, out var isReadOnly))
+        if (!_policy.TryGetBaseDirectory(baseName, out var baseDir, out var isReadOnly))
         {
             throw new InvalidOperationException($"Base directory '{baseName}' is not available on this system.");
         }
@@ -172,6 +221,44 @@ public sealed class JsonStoreService(IFileAccessPolicy policy) : IStoreService
         }
 
         Directory.CreateDirectory(baseDir);
-        return policy.Authorize(FileAccessKind.Write, baseDir, requestPath ?? string.Empty);
+        return _policy.Authorize(FileAccessKind.Write, baseDir, requestPath ?? string.Empty);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        lock (_cacheGate)
+        {
+            foreach (var gate in _writeLocks.Values)
+            {
+                gate.Dispose();
+            }
+            _writeLocks.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Mutable wrapper holding the latest committed snapshot. Writers replace the snapshot once the
+    /// persist succeeds; readers capture it under the cache lock so concurrent replaces do not
+    /// corrupt in-flight iterations.
+    /// </summary>
+    private sealed class StoreEntry
+    {
+        public StoreEntry(Dictionary<string, string?> snapshot)
+        {
+            Snapshot = snapshot;
+        }
+
+        public Dictionary<string, string?> Snapshot { get; private set; }
+
+        public void Replace(Dictionary<string, string?> snapshot)
+        {
+            Snapshot = snapshot;
+        }
     }
 }

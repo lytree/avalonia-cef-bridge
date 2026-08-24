@@ -15,6 +15,7 @@
     <RootNamespace>Tarui.Cli</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\core\Tarui.Contracts\Tarui.Contracts.csproj" />
     <InternalsVisibleTo Include="Tarui.Cli.Tests" />
   </ItemGroup>
 </Project>

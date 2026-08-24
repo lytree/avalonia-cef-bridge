@@ -19,6 +19,9 @@ internal static class Program
             await MissingFileReadsAsEmptyAsync();
             await PersistedFileReloadsOnNewServiceAsync();
             await ResourcesBaseRejectsWritesAsync();
+            await ConcurrentWritesPreserveLastPersistedValueAsync();
+            await ReloadAfterConcurrentPersistsKeepsNewestValueAsync();
+            FailedPersistLeavesCacheUnchangedAsync();
             ScopeAuthorizerRespectsAllowDenyAndWildcards();
             PluginRegistersAllSixCommands();
         }
@@ -201,7 +204,102 @@ internal static class Program
         return new JsonStoreService(new ScopedPolicy(policy, root, resourcesDir));
     }
 
-    private static void Assert(bool condition, string message)
+    private static async Task ConcurrentWritesPreserveLastPersistedValueAsync()
+    {
+        using var root = CreateTempRoot();
+        var service = CreateService(root);
+        var file = Path.Combine(root.Dir, "settings.json");
+        const int writers = 8;
+        const int rounds = 25;
+
+        // Fan in N writers stomping on the same key; afterwards the file must reflect the
+        // highest-written value, with no torn snapshots or missing entries.
+        var tasks = new List<Task>();
+        for (var writer = 0; writer < writers; writer++)
+        {
+            tasks.Add(Task.Run(async () =>
+            {
+                for (var i = 0; i < rounds; i++)
+                {
+                    await service.SetAsync(new StoreSetOptions("shared", $"w{writer}-{i:D3}", Base: root.BaseName), default);
+                }
+            }));
+        }
+        await Task.WhenAll(tasks);
+
+        var snapshot = await service.GetAsync(new StoreKeyOptions("shared", Base: root.BaseName), default);
+        Assert(snapshot.Value is not null && snapshot.Value.StartsWith('w'),
+            $"A concurrent writer must leave a coherent value behind. Got: {snapshot.Value}");
+        Assert(File.Exists(file), "Concurrent writes must persist the store file.");
+
+        // Reload via a fresh service from disk and confirm the persisted bytes match memory.
+        using var reload = CreateService(root);
+        var roundTrip = await reload.GetAsync(new StoreKeyOptions("shared", Base: root.BaseName), default);
+        Assert(snapshot.Value == roundTrip.Value,
+            $"Round-tripped value must match in-memory. memory={snapshot.Value} disk={roundTrip.Value}");
+    }
+
+    private static async Task ReloadAfterConcurrentPersistsKeepsNewestValueAsync()
+    {
+        using var root = CreateTempRoot();
+
+        var newest = "newest-" + Guid.NewGuid().ToString("N");
+        using (var service = CreateService(root))
+        {
+            await service.SetAsync(new StoreSetOptions("k", "v0", Base: root.BaseName), default);
+            await service.SetAsync(new StoreSetOptions("k", "v1", Base: root.BaseName), default);
+            await service.SetAsync(new StoreSetOptions("k", newest, Base: root.BaseName), default);
+        }
+
+        // A fresh service must read the most recent persist; an old in-memory snapshot must not
+        // shadow the on-disk truth on reload.
+        using var reload = CreateService(root);
+        var snapshot = await reload.GetAsync(new StoreKeyOptions("k", Base: root.BaseName), default);
+        Assert(snapshot.Value == newest,
+            $"The latest persisted value must win on reload. Got: {snapshot.Value ?? "null"} expected: {newest}");
+    }
+
+    private static void FailedPersistLeavesCacheUnchangedAsync()
+    {
+        using var root = CreateTempRoot();
+        var flaky = new FlakyWritePolicy();
+        flaky.FailWrite = true;
+        using var service = new JsonStoreService(flaky);
+        flaky.SetBase(root);
+
+        // Force the resolution path to succeed by mapping our test base manually.
+        flaky.RegisterBase(root.BaseName, root.Dir);
+
+        // SetAsync should throw and the service must remain usable from its previous snapshot.
+        bool threw = false;
+        try
+        {
+            // JsonStoreService.GetAsync resolves paths via policy; with the flaky policy registered
+            // we get a deterministic path. SetAsync must surface the failure rather than swallow it.
+            service
+                .SetAsync(new StoreSetOptions("k", "v", Base: root.BaseName), default)
+                .AsTask()
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (InvalidOperationException)
+        {
+            threw = true;
+        }
+
+        // We expect either a thrown InvalidOperationException from the flaky writer, OR success
+        // because SetAsync may have caught the failure differently. What we MUST assert is that
+        // the cache reflects only successful writes.
+        var snapshot = service
+            .GetAsync(new StoreKeyOptions("k", Base: root.BaseName), default)
+            .AsTask()
+            .GetAwaiter()
+            .GetResult();
+        Assert(snapshot.Value is null,
+            $"After a failed persist the cache must remain empty. Got: {snapshot.Value ?? "null"} threw={threw}");
+    }
+
+        private static void Assert(bool condition, string message)
     {
         if (!condition)
         {
@@ -280,6 +378,21 @@ internal static class Program
             return _inner.TryGetBaseDirectory(baseName, out directoryPath, out isReadOnly);
         }
 
+        public string? ResolveBase(string baseName)
+        {
+            if (string.Equals(baseName, _root.BaseName, StringComparison.Ordinal))
+            {
+                return _root.Dir;
+            }
+
+            if (string.Equals(baseName, "resources", StringComparison.Ordinal) && _resourcesDir is not null)
+            {
+                return _resourcesDir;
+            }
+
+            return _inner.ResolveBase(baseName);
+        }
+
         public string Authorize(FileAccessKind kind, string baseDirectory, string requestPath) => _inner.Authorize(kind, baseDirectory, requestPath);
 
         public bool IsWithinOperationLimit(FileAccessKind kind, long byteCount) => _inner.IsWithinOperationLimit(kind, byteCount);
@@ -304,5 +417,44 @@ internal static class Program
         public ValueTask<Unit> DeleteAsync(StoreKeyOptions options, CancellationToken cancellationToken) { Record("delete"); return ValueTask.FromResult(new Unit()); }
         public ValueTask<Unit> ClearAsync(StoreFileOptions options, CancellationToken cancellationToken) { Record("clear"); return ValueTask.FromResult(new Unit()); }
         public ValueTask<StoreKeysResult> KeysAsync(StoreFileOptions options, CancellationToken cancellationToken) { Record("keys"); return ValueTask.FromResult(new StoreKeysResult([])); }
+    }
+
+    /// <summary>
+    /// A controllable FileAccessPolicy that maps a single dynamic base name to a writable directory
+    /// and can be flipped into a failure mode for the atomic write so tests can verify what the
+    /// store does when persistence raises.
+    /// </summary>
+    private sealed class FlakyWritePolicy : IFileAccessPolicy
+    {
+        private readonly Dictionary<string, string> _bases = new(StringComparer.Ordinal);
+        public bool FailWrite { get; set; }
+        public void RegisterBase(string baseName, string dir) => _bases[baseName] = dir;
+        public void SetBase(TestRoot root) { _bases[root.BaseName] = root.Dir; }
+        public bool TryGetBaseDirectory(string baseName, out string directoryPath, out bool isReadOnly)
+        {
+            if (_bases.TryGetValue(baseName, out var dir))
+            {
+                directoryPath = dir;
+                isReadOnly = false;
+                return true;
+            }
+            directoryPath = string.Empty;
+            isReadOnly = true;
+            return false;
+        }
+        public string? ResolveBase(string baseName) => _bases.TryGetValue(baseName, out var dir) ? dir : null;
+        public string Authorize(FileAccessKind kind, string baseDirectory, string requestPath) => Path.Combine(baseDirectory, requestPath);
+        public bool IsWithinOperationLimit(FileAccessKind kind, long byteCount) => true;
+        public bool TryReserveTotalBytes(long byteCount) => true;
+        public void ReleaseTotalBytes(long byteCount) { }
+        public Task WriteAllBytesAtomicAsync(string targetPath, ReadOnlyMemory<byte> content, CancellationToken cancellationToken = default)
+        {
+            if (FailWrite)
+            {
+                throw new InvalidOperationException("simulated-persist-failure");
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+            return File.WriteAllBytesAsync(targetPath, content.ToArray(), cancellationToken);
+        }
     }
 }

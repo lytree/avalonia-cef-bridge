@@ -15,4 +15,7 @@
     <ProjectReference Include="..\..\webview\Tarui.WebView.Abstractions\Tarui.WebView.Abstractions.csproj" />
     <ProjectReference Include="..\Tarui.Shell\Tarui.Shell.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tarui.Hosting.Tests" />
+  </ItemGroup>
 </Project>

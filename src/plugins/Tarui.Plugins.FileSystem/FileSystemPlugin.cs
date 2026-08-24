@@ -135,10 +135,10 @@ public sealed class FileSystemPlugin(IFileSystemService service) : ITaruiPlugin
             CancellationToken cancellationToken) => service.StatAsync(options, cancellationToken);
 
         [TaruiCommand("plugin:fs|exists")]
-        public async ValueTask<bool> ExistsAsync(
+        public ValueTask<bool> ExistsAsync(
             FsPathOptions options,
             CommandContext context,
-            CancellationToken cancellationToken) => await service.ExistsAsync(options, cancellationToken);
+            CancellationToken cancellationToken) => service.ExistsAsync(options, cancellationToken);
 
         [TaruiCommand("plugin:fs|mkdir")]
         public ValueTask<Unit> MkdirAsync(
@@ -167,146 +167,38 @@ public sealed class FileSystemPlugin(IFileSystemService service) : ITaruiPlugin
 }
 
 /// <summary>
-/// Scopes authorize file commands by matching (Base, relative Path) against the caller's capability
-/// allow/deny lists. deny wins over allow; empty allow means "allow all scopes not explicitly denied".
-/// Write-family commands reject the <c>resources</c> base because it is read-only.
+/// File system commands authorize the (Base, Path) pair against the caller capability's
+/// allow/deny <c>PathScope</c> lists, with the shared <see cref="FileScopeMatcher"/> so deny
+/// patterns cannot be bypassed via a different casing on Windows. Deny wins over allow; an
+/// empty allow means "any (base, path) not explicitly denied". Write-family commands
+/// additionally reject the <c>resources</c> base.
 /// </summary>
 public static class FsScopeAuthorizer
 {
     public static bool AllowsPath(FsPathOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
-        Matches(allow, deny, options.Base, options.Path);
+        FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
 
     public static bool AllowsPath(FsReadDirOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
-        Matches(allow, deny, options.Base, options.Path);
+        FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
 
     public static bool AllowsPathWrite(FsWriteTextOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
-        !IsReadOnlyBase(options.Base) && Matches(allow, deny, options.Base, options.Path);
+        !IsReadOnlyBase(options.Base) && FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
 
     public static bool AllowsPathWrite(FsMkdirOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
-        !IsReadOnlyBase(options.Base) && Matches(allow, deny, options.Base, options.Path);
+        !IsReadOnlyBase(options.Base) && FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
 
     public static bool AllowsPathWrite(FsRemoveOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
-        !IsReadOnlyBase(options.Base) && Matches(allow, deny, options.Base, options.Path);
+        !IsReadOnlyBase(options.Base) && FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
 
     public static bool AllowsFromToWrite(FsCopyOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
         !IsReadOnlyBase(options.ToBase) &&
-        Matches(allow, deny, options.FromBase, options.FromPath) &&
-        Matches(allow, deny, options.ToBase, options.ToPath);
+        FileScopeMatcher.MatchesScope(allow, deny, options.FromBase, options.FromPath) &&
+        FileScopeMatcher.MatchesScope(allow, deny, options.ToBase, options.ToPath);
 
     public static bool AllowsFromToWrite(FsRenameOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
         !IsReadOnlyBase(options.ToBase) &&
-        Matches(allow, deny, options.FromBase, options.FromPath) &&
-        Matches(allow, deny, options.ToBase, options.ToPath);
-
-    private static bool Matches(IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny, string? baseName, string? requestPath)
-    {
-        foreach (var scope in deny)
-        {
-            if (MatchesOne(scope, baseName, requestPath))
-            {
-                return false;
-            }
-        }
-
-        if (allow.Count == 0)
-        {
-            return true;
-        }
-
-        foreach (var scope in allow)
-        {
-            if (MatchesOne(scope, baseName, requestPath))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool MatchesOne(PathScope scope, string? baseName, string? requestPath)
-    {
-        var relative = requestPath ?? string.Empty;
-        if (!string.IsNullOrEmpty(scope.Base) &&
-            !string.Equals(scope.Base, baseName, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        if (string.IsNullOrEmpty(scope.Path))
-        {
-            return true;
-        }
-
-        return MatchGlob(scope.Path, relative);
-    }
-
-    private static bool MatchGlob(string pattern, string candidate)
-    {
-        var patternSegments = pattern.Replace('\\', '/').Split('/', StringSplitOptions.None);
-        var candidateSegments = candidate.Replace('\\', '/').Split('/', StringSplitOptions.None);
-        return MatchSegments(patternSegments.AsSpan(), candidateSegments.AsSpan());
-    }
-
-    private static bool MatchSegments(ReadOnlySpan<string> pattern, ReadOnlySpan<string> candidate)
-    {
-        while (pattern.Length > 0)
-        {
-            if (pattern[0] == "**")
-            {
-                var remainingPattern = pattern[1..];
-                for (var start = 0; start <= candidate.Length; start++)
-                {
-                    if (MatchSegments(remainingPattern, candidate[start..]))
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-            if (candidate.Length == 0)
-            {
-                return false;
-            }
-
-            if (!MatchSegment(pattern[0], candidate[0]))
-            {
-                return false;
-            }
-
-            pattern = pattern[1..];
-            candidate = candidate[1..];
-        }
-
-        return candidate.Length == 0;
-    }
-
-    private static bool MatchSegment(string patternSegment, string candidateSegment)
-    {
-        if (patternSegment == "*")
-        {
-            return candidateSegment.Length > 0;
-        }
-
-        var starIndex = patternSegment.IndexOf('*');
-        if (starIndex < 0)
-        {
-            return string.Equals(patternSegment, candidateSegment, StringComparison.Ordinal);
-        }
-
-        var prefix = patternSegment[..starIndex];
-        var suffix = patternSegment[(starIndex + 1)..];
-        if (suffix.Contains('*'))
-        {
-            return string.Equals(patternSegment, candidateSegment, StringComparison.Ordinal);
-        }
-
-        return candidateSegment.StartsWith(prefix, StringComparison.Ordinal) &&
-               candidateSegment.EndsWith(suffix, StringComparison.Ordinal) &&
-               candidateSegment.Length >= prefix.Length + suffix.Length;
-    }
+        FileScopeMatcher.MatchesScope(allow, deny, options.FromBase, options.FromPath) &&
+        FileScopeMatcher.MatchesScope(allow, deny, options.ToBase, options.ToPath);
 
     private static bool IsReadOnlyBase(string? baseName) =>
         string.Equals(baseName, "resources", StringComparison.OrdinalIgnoreCase);
