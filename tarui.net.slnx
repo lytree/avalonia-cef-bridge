@@ -1,0 +1,84 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/examples/" />
+  <Folder Name="/examples/demo/">
+    <Project Path="examples/demo/Demo.Desktop/Demo.Desktop.csproj" />
+  </Folder>
+  <Folder Name="/plugins/">
+    <Project Path="src/plugins/Tarui.Plugins.Menu/Tarui.Plugins.Menu.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Tray/Tarui.Plugins.Tray.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/templates/Tarui.Templates/Tarui.Templates.csproj" />
+  </Folder>
+  <Folder Name="/src/core/" />
+  <Folder Name="/src/desktop/">
+    <Project Path="src/core/Tarui.Contracts/Tarui.Contracts.csproj" />
+    <Project Path="src/core/Tarui.Ipc/Tarui.Ipc.csproj" />
+    <Project Path="src/desktop/Tarui.Hosting/Tarui.Hosting.csproj" />
+    <Project Path="src/desktop/Tarui.Shell/Tarui.Shell.csproj" />
+    <Project Path="src/desktop/Tarui.SingleInstance/Tarui.SingleInstance.csproj" />
+    <Project Path="src/generators/Tarui.Ipc.Generators/Tarui.Ipc.Generators.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Core/Tarui.Plugins.Core.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Dialog/Tarui.Plugins.Dialog.csproj" />
+    <Project Path="src/webview/Tarui.WebView.Abstractions/Tarui.WebView.Abstractions.csproj" />
+    <Project Path="src/webview/Tarui.WebView.CefGlueNext/Tarui.WebView.CefGlueNext.csproj" />
+  </Folder>
+  <Folder Name="/src/generators/" />
+  <Folder Name="/src/plugins/">
+    <Project Path="src/plugins/Tarui.Plugins.Autostart/Tarui.Plugins.Autostart.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.DeepLink/Tarui.Plugins.DeepLink.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Event/Tarui.Plugins.Event.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.GlobalShortcut/Tarui.Plugins.GlobalShortcut.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Log/Tarui.Plugins.Log.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Notification/Tarui.Plugins.Notification.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Store/Tarui.Plugins.Store.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.System/Tarui.Plugins.System.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Updater/Tarui.Plugins.Updater.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Webview/Tarui.Plugins.Webview.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Window/Tarui.Plugins.Window.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.WindowState/Tarui.Plugins.WindowState.csproj" />
+  </Folder>
+  <Folder Name="/src/tarui-cli/">
+    <Project Path="src/tarui-cli/Tarui.Cli.csproj" />
+  </Folder>
+  <Folder Name="/src/webview/">
+    <Project Path="src/webview/CefGlue.Next.Avalonia/CefGlue.Next.Avalonia.csproj" />
+    <Project Path="src/webview/Tarui.WebView.Avalonia/Tarui.WebView.Avalonia.csproj" />
+  </Folder>
+  <Folder Name="/src/webview/cefglue/">
+    <Project Path="src/webview/cefglue/CefGlue.Avalonia/CefGlue.Avalonia.csproj" />
+    <Project Path="src/webview/cefglue/CefGlue.BrowserProcess.Core/CefGlue.BrowserProcess.Core.csproj" />
+    <Project Path="src/webview/cefglue/CefGlue.Common.Shared/CefGlue.Common.Shared.csproj" />
+    <Project Path="src/webview/cefglue/CefGlue.Common/CefGlue.Common.csproj" />
+    <Project Path="src/webview/cefglue/CefGlue.Core/CefGlue.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CefGlue.Next.Avalonia.Tests/CefGlue.Next.Avalonia.Tests.csproj" />
+    <Project Path="tests/Tarui.Architecture.Tests/Tarui.Architecture.Tests.csproj" />
+    <Project Path="tests/Tarui.Autostart.Tests/Tarui.Autostart.Tests.csproj" />
+    <Project Path="tests/Tarui.Capabilities.Tests/Tarui.Capabilities.Tests.csproj" />
+    <Project Path="tests/Tarui.Cli.Tests/Tarui.Cli.Tests.csproj" />
+    <Project Path="tests/Tarui.DeepLink.Tests/Tarui.DeepLink.Tests.csproj" />
+    <Project Path="tests/Tarui.FileSystem.Tests/Tarui.FileSystem.Tests.csproj" />
+    <Project Path="tests/Tarui.GlobalShortcut.Tests/Tarui.GlobalShortcut.Tests.csproj" />
+    <Project Path="tests/Tarui.Hosting.Tests/Tarui.Hosting.Tests.csproj" />
+    <Project Path="tests/Tarui.Ipc.Tests/Tarui.Ipc.Tests.csproj" />
+    <Project Path="tests/Tarui.Log.Tests/Tarui.Log.Tests.csproj" />
+    <Project Path="tests/Tarui.MenuTray.Tests/Tarui.MenuTray.Tests.csproj" />
+    <Project Path="tests/Tarui.Notification.Tests/Tarui.Notification.Tests.csproj" />
+    <Project Path="tests/Tarui.Plugins.Tests/Tarui.Plugins.Tests.csproj" />
+    <Project Path="tests/Tarui.Shell.Tests/Tarui.Shell.Tests.csproj" />
+    <Project Path="tests/Tarui.SingleInstance.Tests/Tarui.SingleInstance.Tests.csproj" />
+    <Project Path="tests/Tarui.Store.Tests/Tarui.Store.Tests.csproj" />
+    <Project Path="tests/Tarui.Updater.Tests/Tarui.Updater.Tests.csproj" />
+    <Project Path="tests/Tarui.WebView.Tests/Tarui.WebView.Tests.csproj" />
+    <Project Path="tests/Tarui.WebViewEvents.Tests/Tarui.WebViewEvents.Tests.csproj" />
+    <Project Path="tests/Tarui.WindowState.Tests/Tarui.WindowState.Tests.csproj" />
+  </Folder>
+  <Project Path="src/plugins/Tarui.Plugins.FileSystem/Tarui.Plugins.FileSystem.csproj" />
+</Solution>
