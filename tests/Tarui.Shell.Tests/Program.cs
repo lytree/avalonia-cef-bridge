@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
@@ -37,6 +38,13 @@ internal static class Program
         CapabilitySetProviderCachesDirectorySnapshot();
         AddTaruiShellRegistersShellServices();
         ShellPolicyAcceptsAllApplicationSchemes();
+        AddWindowExtensionRegistersAndScopesByLabel();
+        AddWindowExtensionRegistrarMergesIntoRegistry();
+        ExtensionRegistryScopesAndConstructsByLabel();
+        CompositionExposesLayeredRegions();
+        WindowExtensionContextExposesNativeWindow();
+        await WindowExtensionContextEmitsToItsWindow();
+        await ExtensionClosesNotifyAndDispose();
         WindowCapabilityResolverRejectsTargetThatExpandsAllow();
         WindowCapabilityResolverRejectsTargetThatShrinksDeny();
         WindowCapabilityResolverRejectsTargetThatAddsReservedEvent();
@@ -395,6 +403,280 @@ internal static class Program
         Assert(
             policy.DecideNavigation(new Uri("http://example.com/")) == WebViewRequestDecision.Deny,
             "Unlisted http targets must be denied.");
+    }
+
+    private static void AddWindowExtensionRegistersAndScopesByLabel()
+    {
+        // Registering extensions through AddTaruiShell must feed the WindowExtensionRegistry, with
+        // a label-less extension applying to every window and a scoped one only to matching windows.
+        var services = new ServiceCollection();
+        services.AddTaruiShell();
+        services.AddWindowExtension<TestChromeExtension>();
+        services.AddWindowExtension(["editor"], _ => new TestSidebarExtension());
+        using var provider = services.BuildServiceProvider();
+
+        var registry = provider.GetRequiredService<WindowExtensionRegistry>();
+        var main = registry.CreateFor("main", provider).ToArray();
+        var editor = registry.CreateFor("editor", provider).ToArray();
+        var other = registry.CreateFor("other", provider).ToArray();
+
+        Assert(
+            main.SingleOrDefault(e => e is TestChromeExtension) is not null &&
+            !main.Any(e => e is TestSidebarExtension),
+            "A label-less extension must apply to windows it is not filtered away from.");
+        Assert(
+            editor.Single(e => e is TestChromeExtension) is not null &&
+            editor.Single(e => e is TestSidebarExtension) is not null,
+            "A scoped extension must join a label-less one for the matching window.");
+        Assert(
+            other.Single(e => e is TestChromeExtension) is not null &&
+            !other.Any(e => e is TestSidebarExtension),
+            "A scoped extension must not apply to non-matching windows.");
+    }
+
+    private static void AddWindowExtensionRegistrarMergesIntoRegistry()
+    {
+        // A plugin-style registrar contributes window extensions that are merged into the shell's
+        // registry exactly like direct AddWindowExtension calls, with the same per-label scoping.
+        var services = new ServiceCollection();
+        services.AddTaruiShell();
+        services.AddWindowExtensionRegistrar<TestWindowExtensionRegistrar>();
+        using var provider = services.BuildServiceProvider();
+
+        var registry = provider.GetRequiredService<WindowExtensionRegistry>();
+        var main = registry.CreateFor("main", provider).ToArray();
+        var editor = registry.CreateFor("editor", provider).ToArray();
+
+        Assert(
+            main.SingleOrDefault(e => e is TestChromeExtension) is not null &&
+            !main.Any(e => e is TestSidebarExtension),
+            "A registrar's global extension must apply to every window.");
+        Assert(
+            editor.Single(e => e is TestChromeExtension) is not null &&
+            editor.Single(e => e is TestSidebarExtension) is not null,
+            "A registrar's scoped extension must join for the matching window.");
+    }
+
+    private sealed class TestWindowExtensionRegistrar : IWindowExtensionRegistrar
+    {
+        public void Configure(WindowExtensionBuilder extensions)
+        {
+            extensions.Add<TestChromeExtension>();
+            extensions.Add(["editor"], _ => new TestSidebarExtension());
+        }
+    }
+
+    private static void ExtensionRegistryScopesAndConstructsByLabel()
+    {
+        // The registry is purely set-membership driven: each matching registration yields a fresh
+        // per-window instance built through the supplied factory.
+        var createdMain = 0;
+        var registry = new WindowExtensionRegistry(
+        [
+            new WindowExtensionRegistration(_ => { createdMain++; return new TestChromeExtension(); }, null),
+            new WindowExtensionRegistration(_ => new TestSidebarExtension(), ["editor"]),
+        ]);
+
+        var main = registry.CreateFor("main", null!).ToArray();
+        Assert(
+            main.Length == 1 && main[0] is TestChromeExtension && createdMain == 1,
+            "The registry must create the global extension once per window resolution.");
+
+        var editor = registry.CreateFor("editor", null!).ToArray();
+        Assert(
+            editor.Length == 2 && createdMain == 2,
+            "A label-scoped registration must add a second instance for a matching window.");
+    }
+
+    private static void CompositionExposesLayeredRegions()
+    {
+        // The four regions of the facade are distinct; the web view content slot fills the dock area
+        // and the overlay is hit-test transparent by default so it cannot steal pointer input.
+        var composition = new ShellWindowComposition();
+
+        Assert(ReferenceEquals(composition.Window, null), "The owning window is unassigned until a window is built.");
+        Assert(composition.Chrome is not null, "The composition must expose a chrome region.");
+        Assert(composition.Overlay is not null, "The composition must expose an overlay region.");
+        Assert(composition.Content.Children.Count == 0, "The web view content slot must start empty.");
+        Assert(
+            composition.Docks.Children.Contains(composition.Content),
+            "The web view content slot must fill the dock region.");
+        Assert(
+            !ReferenceEquals(composition.Chrome, composition.Docks) &&
+            !ReferenceEquals(composition.Chrome, composition.Content),
+            "Chrome, docks and content must be distinct regions.");
+        var overlay = composition.Overlay;
+        Assert(
+            overlay is not null && !overlay.IsHitTestVisible,
+            "The overlay must be hit-test transparent by default.");
+
+        var strip = new Border { };
+        composition.Dock(strip, Dock.Bottom);
+        Assert(
+            composition.Docks.Children.IndexOf(strip) < composition.Docks.Children.IndexOf(composition.Content),
+            "Docked native controls must be placed ahead of the web view content slot.");
+    }
+
+    private static void WindowExtensionContextExposesNativeWindow()
+    {
+        // The context surfaces the live native window so an extension can manipulate it directly.
+        // The composition is assigned its owning window only once a window is built. We rely on a real
+        // ShellWindow here: initializing the Avalonia platform lets us construct one without a display loop.
+        EnsureAvaloniaInitialized();
+        var window = new ShellWindow(new WindowOptions("main"));
+        var context = new WindowExtensionContext(
+            "main",
+            new CommandContext("main", "main", new CapabilitySet([])),
+            window.Composition,
+            EmptyProvider.Instance,
+            BuildRouter(out _));
+
+        Assert(
+            ReferenceEquals(context.Window, window),
+            "The window extension context must surface the live native window.");
+        Assert(
+            ReferenceEquals(context.Window, window.Composition.Window),
+            "The surfaced window must be the one attached to the composition.");
+    }
+
+    private static async Task WindowExtensionContextEmitsToItsWindow()
+    {
+        // A native control surfaces its state by emitting an event; it must reach the target window's
+        // web view sink and nowhere else.
+        var router = BuildRouter(out var editor);
+        var composition = new ShellWindowComposition();
+        var context = new WindowExtensionContext(
+            "editor",
+            new CommandContext("editor", "editor", new CapabilitySet([])),
+            composition,
+            EmptyProvider.Instance,
+            router);
+        var payload = JsonSerializer.SerializeToElement(new Unit(), TaruiJsonContext.Default.Unit);
+
+        await context.EmitAsync("app://sidebar-selected", payload);
+
+        Assert(
+            editor.Events.SingleOrDefault(e => e.Event == "app://sidebar-selected").Event is not null,
+            "An extension emit must reach its own window's web view sink.");
+    }
+
+    private static async Task ExtensionClosesNotifyAndDispose()
+    {
+        // Closing a window tears down its extensions in order: each is notified with OnWindowClosed and
+        // then released when it participates in cleanup (IDisposable / IAsyncDisposable).
+        var sync = new DisposableExtension();
+        var async = new AsyncDisposableExtension();
+        var plain = new PlainExtension();
+        var context = new WindowExtensionContext(
+            "main",
+            new CommandContext("main", "main", new CapabilitySet([])),
+            new ShellWindowComposition(),
+            EmptyProvider.Instance,
+            BuildRouter(out _));
+
+        await WebviewAttacher.CloseExtensionsAsync(
+        [
+            (sync, context),
+            (plain, context),
+            (async, context),
+        ]);
+
+        Assert(sync.ClosedCount == 1 && sync.Disposed, "A synchronous extension must be notified and disposed.");
+        Assert(async.ClosedCount == 1 && async.Disposed, "An async extension must be notified and disposed.");
+        Assert(plain.ClosedCount == 1 && !plain.Disposed, "A plain extension must be notified but is inert on disposal.");
+    }
+
+    private static EventRouter BuildRouter(out FakeSink editor)
+    {
+        var registry = new FakeSinkRegistry();
+        editor = registry.Add("editor");
+        return new EventRouter(registry, new EventHub());
+    }
+
+    private sealed class DisposableExtension : IShellWindowExtension, IDisposable
+    {
+        public int ClosedCount { get; private set; }
+        public bool Disposed { get; private set; }
+
+        public void CreateView(WindowExtensionContext context)
+        {
+        }
+
+        public void OnWindowClosed(WindowExtensionContext context) => ClosedCount++;
+
+        public void Dispose() => Disposed = true;
+    }
+
+    private sealed class AsyncDisposableExtension : IShellWindowExtension, IAsyncDisposable
+    {
+        public int ClosedCount { get; private set; }
+        public bool Disposed { get; private set; }
+
+        public void CreateView(WindowExtensionContext context)
+        {
+        }
+
+        public void OnWindowClosed(WindowExtensionContext context) => ClosedCount++;
+
+        public ValueTask DisposeAsync()
+        {
+            Disposed = true;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class PlainExtension : IShellWindowExtension
+    {
+        public int ClosedCount { get; private set; }
+        public bool Disposed { get; private set; }
+
+        public void CreateView(WindowExtensionContext context)
+        {
+        }
+
+        public void OnWindowClosed(WindowExtensionContext context) => ClosedCount++;
+
+        public void Dispose() => Disposed = true;
+    }
+
+    private sealed class EmptyProvider : IServiceProvider
+    {
+        public static EmptyProvider Instance { get; } = new();
+
+        private EmptyProvider()
+        {
+        }
+
+        public object? GetService(Type serviceType) => null;
+    }
+
+    private static bool _avaloniaInitialized;
+
+    private static void EnsureAvaloniaInitialized()
+    {
+        if (_avaloniaInitialized)
+        {
+            return;
+        }
+
+        // Constructing a native ShellWindow requires the Avalonia windowing platform. Wire the concrete
+        // desktop backend up without entering the message loop, so Window construction works headlessly.
+        AppBuilder.Configure<Avalonia.Application>()
+            .UsePlatformDetect()
+            .SetupWithoutStarting();
+        _avaloniaInitialized = true;
+    }
+
+    private sealed class TestChromeExtension : IShellWindowExtension
+    {
+        public void CreateView(WindowExtensionContext context) =>
+            context.Composition.Chrome.Children.Add(new Border());
+    }
+
+    private sealed class TestSidebarExtension : IShellWindowExtension
+    {
+        public void CreateView(WindowExtensionContext context) =>
+            context.Composition.Dock(new Border(), Dock.Right);
     }
 
     private static void EntryCarriesWebviewSessionAsSink()

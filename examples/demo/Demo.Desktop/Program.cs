@@ -51,6 +51,7 @@ internal static class Program
 
         builder.Services
             .AddTaruiShell()
+            .AddWindowExtensionRegistrar<DemoWindowExtensions>()
             .AddSingleInstance(new SingleInstanceIdentity(ApplicationId, SingleInstanceChannel))
             .AddCefGlueWebView()
             .AddCorePlugin()

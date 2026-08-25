@@ -25,6 +25,18 @@ public static class TaruiShellServiceCollectionExtensions
     public static IServiceCollection AddTaruiShell(this IServiceCollection services) => services
         .AddSingleton<WindowRegistry>()
         .AddSingleton<IWindowSinkRegistry>(sp => sp.GetRequiredService<WindowRegistry>())
+        .AddSingleton<WindowExtensionRegistry>(sp =>
+        {
+            var builder = new WindowExtensionBuilder();
+            foreach (var registrar in sp.GetServices<IWindowExtensionRegistrar>())
+            {
+                registrar.Configure(builder);
+            }
+
+            var registrations = builder.Registrations
+                .Concat(sp.GetServices<WindowExtensionRegistration>());
+            return new WindowExtensionRegistry(registrations);
+        })
         .AddSingleton<EventHub>()
         .AddSingleton<EventRouter>()
         .AddSingleton<WebViewRequestPolicy>(sp => BuildWebViewRequestPolicy(
@@ -81,6 +93,62 @@ public static class TaruiShellServiceCollectionExtensions
         .AddSingleton<IMainWindowLauncher, MainWindowLauncher>()
         .AddSingleton<IRemoteLogSink, RemoteLogSink>()
         .AddSingleton<ILoggerProvider, RemoteLoggerProvider>();
+
+    /// <summary>
+    /// Registers a plugin-style <see cref="IWindowExtensionRegistrar"/> whose <c>Configure</c> contributes
+    /// native window extensions at shell composition. This is the composition-root entry point a package
+    /// (or shell plugin) uses to declare several window extensions as a unit — mirroring how a plugin
+    /// registers its commands.
+    /// </summary>
+    public static IServiceCollection AddWindowExtensionRegistrar<T>(this IServiceCollection services)
+        where T : class, IWindowExtensionRegistrar =>
+        services.AddSingleton<IWindowExtensionRegistrar, T>();
+
+    /// <summary>
+    /// Registers a native <see cref="IShellWindowExtension"/> that contributes controls to every window.
+    /// The extension instance is created per window on the UI thread; its dependencies are resolved from
+    /// the container, falling back to constructor injection for unregistered types.
+    /// </summary>
+    public static IServiceCollection AddWindowExtension<T>(
+        this IServiceCollection services,
+        Func<IServiceProvider, T>? factory = null)
+        where T : class, IShellWindowExtension =>
+        AddWindowExtensionCore(services, labels: null, factory);
+
+    /// <summary>
+    /// Registers a native <see cref="IShellWindowExtension"/> scoped to the named windows only.
+    /// The extension instance is created per matching window on the UI thread.
+    /// </summary>
+    public static IServiceCollection AddWindowExtension<T>(
+        this IServiceCollection services,
+        string[] labels,
+        Func<IServiceProvider, T>? factory = null)
+        where T : class, IShellWindowExtension =>
+        AddWindowExtensionCore(services, labels, factory);
+
+    private static IServiceCollection AddWindowExtensionCore<T>(
+        IServiceCollection services,
+        string[]? labels,
+        Func<IServiceProvider, T>? factory)
+        where T : class, IShellWindowExtension
+    {
+        services.Add(new ServiceDescriptor(
+            typeof(WindowExtensionRegistration),
+            _ => CreateExtensionRegistration(labels, factory),
+            ServiceLifetime.Singleton));
+        return services;
+    }
+
+    internal static WindowExtensionRegistration CreateExtensionRegistration<T>(
+        string[]? labels,
+        Func<IServiceProvider, T>? factory)
+        where T : class, IShellWindowExtension
+    {
+        Func<IServiceProvider, IShellWindowExtension> create = factory is null
+            ? static provider => ActivatorUtilities.GetServiceOrCreateInstance<T>(provider)
+            : provider => factory(provider);
+        return new WindowExtensionRegistration(create, labels);
+    }
 
     private static string[] GetStartupArgs()
     {

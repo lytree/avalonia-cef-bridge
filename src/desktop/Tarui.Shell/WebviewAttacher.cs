@@ -23,7 +23,8 @@ public sealed class WebviewAttacher(
     WebViewRequestPolicy requestPolicy,
     WindowCapabilityResolver capabilityResolver,
     TaruiAppOrigin appOrigin,
-    IAppShutdownCoordinator shutdownCoordinator)
+    IAppShutdownCoordinator shutdownCoordinator,
+    WindowExtensionRegistry extensionRegistry)
 {
     public WindowRegistry.Entry Attach(WindowOptions options, CommandContext? callerContext = null)
     {
@@ -47,11 +48,72 @@ public sealed class WebviewAttacher(
         var presenter = new WebviewPresenter(session);
 
         var window = ShellWindowFactory.Create(options);
+        var extensions = ApplyExtensions(window, context, options.Label);
         window.AddWebview(presenter);
 
         var entry = new WindowRegistry.Entry(window, session, context) { Webview = session };
+        WireExtensionLifecycle(window, extensions);
         WireWindowEvents(registry, eventRouter, shutdownCoordinator, options.Label, entry);
         return entry;
+    }
+
+    private (IShellWindowExtension Instance, WindowExtensionContext Context)[] ApplyExtensions(
+        ShellWindow window,
+        CommandContext context,
+        string label)
+    {
+        var composition = window.Composition;
+        var extensionContext = new WindowExtensionContext(label, context, composition, services, eventRouter);
+        return extensionRegistry
+            .CreateFor(label, services)
+            .Select(extension =>
+            {
+                extension.CreateView(extensionContext);
+                return (Instance: extension, Context: extensionContext);
+            })
+            .ToArray();
+    }
+
+    private static void WireExtensionLifecycle(
+        ShellWindow window,
+        (IShellWindowExtension Instance, WindowExtensionContext Context)[] extensions)
+    {
+        if (extensions.Length == 0)
+        {
+            return;
+        }
+
+        window.Opened += (_, _) =>
+        {
+            foreach (var (instance, context) in extensions)
+            {
+                instance.OnWindowLoaded(context);
+            }
+        };
+
+        window.Closed += (_, _) => FireAndForget(CloseExtensionsAsync(extensions));
+    }
+
+    /// <summary>
+    /// Tears down a window's extensions in order: notifies each with <c>OnWindowClosed</c> and then releases it
+    /// if it participates in cleanup. Split out so the lifecycle contract is unit-testable without a live window.
+    /// </summary>
+    internal static async ValueTask CloseExtensionsAsync(
+        (IShellWindowExtension Instance, WindowExtensionContext Context)[] extensions)
+    {
+        foreach (var (instance, context) in extensions)
+        {
+            instance.OnWindowClosed(context);
+            switch (instance)
+            {
+                case IAsyncDisposable asyncDisposable:
+                    await asyncDisposable.DisposeAsync();
+                    break;
+                case IDisposable disposable:
+                    disposable.Dispose();
+                    break;
+            }
+        }
     }
 
     private static void WireWindowEvents(
