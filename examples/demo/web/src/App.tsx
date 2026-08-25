@@ -24,6 +24,7 @@ function App() {
   const [dirEntries, setDirEntries] = useState<string[]>([])
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [unknownUi, setUnknownUi] = useState('')
+  const [nativeClicks, setNativeClicks] = useState(0)
 
   const logRef = useRef<LogEntry[]>([])
   const pushLog = (entry: Omit<LogEntry, 'at' | 'kind'> & { kind?: LogEntry['kind'] }) => {
@@ -37,6 +38,14 @@ function App() {
   useEffect(() => {
     return on<{ source: string }>('demo://echo', payload => {
       pushLog({ text: `demo://echo received: ${JSON.stringify(payload)}` })
+    })
+  }, [])
+
+  // The native sidebar (demo window extension) emits this event when its button is clicked.
+  useEffect(() => {
+    return on<{ clicks: number }>('demo://native-sidebar', payload => {
+      setNativeClicks(payload.clicks)
+      pushLog({ kind: 'ok', text: `demo://native-sidebar received: ${payload.clicks} clicks` })
     })
   }, [])
 
@@ -241,6 +250,17 @@ function App() {
           <input value={unknownUi} onChange={e => setUnknownUi(e.target.value)} placeholder="事件文本（可选）" />
           <button onClick={doEmit}>emit demo://echo</button>
         </div>
+      </section>
+
+      <section>
+        <h2>原生扩展（Native Sidebar）</h2>
+        <p className="muted">
+          右侧原生侧边栏由 <code>IShellWindowExtension</code> 注入到 dock 区域。点击其中的
+          「Emit to webview」按钮，原生控件会通过 <code>EmitAsync</code> 向此 Web 页面发事件。
+        </p>
+        <p>
+          本页已收到原生点击 <strong>{nativeClicks}</strong> 次。
+        </p>
       </section>
 
       <section>
