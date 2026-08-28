@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Layout;
+using Tarui.Ipc;
 using Tarui.Shell;
 
 namespace Demo;
@@ -45,7 +46,9 @@ public sealed class DemoSidebarExtension : IShellWindowExtension
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Margin = new Thickness(12, 8),
         };
-        button.Click += (_, _) => Fire(NotifyAsync(context));
+        // The shared FireAndForget helper logs delivery failures instead of silently swallowing
+        // them, matching the bridge-error reporting contract used by the shell itself.
+        button.Click += (_, _) => FireAndForget.Run(NotifyAsync(context));
 
         var sidebar = new StackPanel
         {
@@ -64,11 +67,6 @@ public sealed class DemoSidebarExtension : IShellWindowExtension
         _clicks++;
         _count!.Text = $"Native clicks: {_clicks}";
         var payload = JsonSerializer.SerializeToElement(new { clicks = _clicks });
-        await context.EmitAsync("demo://native-sidebar", payload);
-    }
-
-    private static async void Fire(ValueTask task)
-    {
-        await task.ConfigureAwait(false);
+        await context.EmitAsync("user://demo/native-sidebar", payload);
     }
 }

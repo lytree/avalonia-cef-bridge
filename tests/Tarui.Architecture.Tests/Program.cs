@@ -776,11 +776,12 @@ internal static class Program
             while (directory is not null)
             {
                 var solution = Path.Combine(directory.FullName, "tarui.net.sln");
+                var solutionX = Path.Combine(directory.FullName, "tarui.net.slnx");
                 var source = Path.Combine(directory.FullName, "src");
                 var tests = Path.Combine(directory.FullName, "tests");
 
                 var cefGlue = Path.Combine(source, "webview", "cefglue");
-                if (File.Exists(solution) && Directory.Exists(source) && Directory.Exists(tests) && Directory.Exists(cefGlue))
+                if ((File.Exists(solution) || File.Exists(solutionX)) && Directory.Exists(source) && Directory.Exists(tests) && Directory.Exists(cefGlue))
                 {
                     return directory.FullName;
                 }

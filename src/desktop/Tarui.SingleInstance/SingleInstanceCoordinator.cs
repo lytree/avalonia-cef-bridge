@@ -83,7 +83,7 @@ public sealed class SingleInstanceCoordinator(
 
             if (windows.Labels.Contains("main"))
             {
-                FireAndForget(eventRouter.EmitToAllAsync(EventName, Serialize(args)));
+                FireAndForget.Run(eventRouter.EmitToAllAsync(EventName, Serialize(args)));
                 return;
             }
 
@@ -101,7 +101,7 @@ public sealed class SingleInstanceCoordinator(
         while (_queue.TryDequeue(out var args))
         {
             NotifySinks(args);
-            FireAndForget(eventRouter.EmitToAllAsync(EventName, Serialize(args)));
+            FireAndForget.Run(eventRouter.EmitToAllAsync(EventName, Serialize(args)));
         }
     }
 
@@ -277,15 +277,5 @@ public sealed class SingleInstanceCoordinator(
     private static JsonElement Serialize(SecondInstanceArgs args) =>
         JsonSerializer.SerializeToElement(args, TaruiJsonContext.Default.SecondInstanceArgs);
 
-    private static async void FireAndForget(ValueTask task)
-    {
-        try
-        {
-            await task;
-        }
-        catch
-        {
-            // Second-instance delivery is best-effort; a closed window is not fatal.
-        }
-    }
 }
+

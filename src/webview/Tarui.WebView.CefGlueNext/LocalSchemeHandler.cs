@@ -1,10 +1,10 @@
-using System.Collections.Frozen;
+﻿using System.Collections.Frozen;
 using System.Text;
 using CefGlue.Next.Avalonia;
 
 namespace Tarui.WebView.CefGlueNext;
 
-internal sealed class LocalWebAssetResolver : ICefGlueNextAvaloniaResourceProvider
+internal sealed class LocalWebAssetResolver : ICefGlueNextAvaloniaResourceProvider, IDisposable
 {
     private static readonly FrozenDictionary<string, string> MimeTypes =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -82,13 +82,14 @@ internal sealed class LocalWebAssetResolver : ICefGlueNextAvaloniaResourceProvid
             asset.MimeType,
             asset.CacheControl,
             asset.ResponseLength,
-            asset.Content,
+            Content: [],
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["X-Content-Type-Options"] = "nosniff",
                 ["Cache-Control"] = asset.CacheControl,
                 ["Content-Security-Policy"] = _contentSecurityPolicy
-            });
+            },
+            ContentStream: asset.Content);
     }
 
     public LocalWebAsset Resolve(
@@ -112,23 +113,23 @@ internal sealed class LocalWebAssetResolver : ICefGlueNextAvaloniaResourceProvid
         }
 
         var rawPath = ExtractRawPath(requestUrl);
-        var relativePath = rawPath is null ? null : DecodeRelativePath(rawPath);
-        if (relativePath is null) return Error(403, "Forbidden");
+        var relativePath = rawPath == null ? null : DecodeRelativePath(rawPath);
+        if (relativePath == null) return Error(403, "Forbidden");
 
         var candidate = ResolveCandidate(relativePath);
-        if (candidate is null) return Error(403, "Forbidden");
+        if (candidate == null) return Error(403, "Forbidden");
 
         if (Directory.Exists(candidate))
         {
             candidate = ResolveCandidate(Path.Combine(relativePath, "index.html"));
         }
 
-        if (candidate is null || !File.Exists(candidate) || ContainsReparsePoint(candidate))
+        if (candidate == null || !File.Exists(candidate) || ContainsReparsePoint(candidate))
         {
             candidate = ResolveSpaFallback(relativePath, allowSpaFallback);
         }
 
-        if (candidate is null || !File.Exists(candidate) || ContainsReparsePoint(candidate))
+        if (candidate == null || !File.Exists(candidate) || ContainsReparsePoint(candidate))
         {
             return Error(404, "Not Found");
         }
@@ -139,22 +140,23 @@ internal sealed class LocalWebAssetResolver : ICefGlueNextAvaloniaResourceProvid
             return Error(413, "Content Too Large");
         }
 
-        byte[] content;
+        // Stream the file directly into CEF instead of buffering the whole body in managed memory.
+        // HEAD requests receive an empty stream while still advertising the real Content-Length so
+        // clients can size their caches correctly without consuming bandwidth.
+        Stream content;
         if (string.Equals(method, "HEAD", StringComparison.OrdinalIgnoreCase))
         {
-            content = Array.Empty<byte>();
+            content = Stream.Null;
         }
         else
         {
-            using var stream = new FileStream(
+            content = new FileStream(
                 candidate,
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.Read,
                 bufferSize: 64 * 1024,
                 FileOptions.SequentialScan);
-            content = new byte[stream.Length];
-            stream.ReadExactly(content);
         }
 
         var extension = Path.GetExtension(candidate);
@@ -243,14 +245,23 @@ internal sealed class LocalWebAssetResolver : ICefGlueNextAvaloniaResourceProvid
 
     private static LocalWebAsset Error(int status, string statusText)
     {
-        var content = Encoding.UTF8.GetBytes($"{status} {statusText}");
+        // For error bodies we keep the message in a MemoryStream; they are infrequent and small.
+        var content = new MemoryStream(Encoding.UTF8.GetBytes($"{status} {statusText}"));
         return new LocalWebAsset(
             status,
             statusText,
             "text/plain",
             "no-store",
-            content.LongLength,
+            content.Length,
             content);
+    }
+
+    public void Dispose()
+    {
+        // Successful Resolve calls hand a fresh FileStream back to CEF; disposing here would close it
+        // before CEF reads from it. The provider does not currently cache any long-lived stream so
+        // there is nothing to release today; keep the IDisposable hook so future caching providers
+        // can plug in without changing the contract.
     }
 }
 
@@ -260,4 +271,7 @@ internal sealed record LocalWebAsset(
     string MimeType,
     string CacheControl,
     long ResponseLength,
-    byte[] Content);
+    Stream Content) : IDisposable
+{
+    public void Dispose() => Content.Dispose();
+}

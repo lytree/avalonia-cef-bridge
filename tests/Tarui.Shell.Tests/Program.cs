@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿﻿﻿﻿﻿using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
@@ -847,6 +847,8 @@ internal static class Program
         Assert(webView.DisposeAsyncCallCount == 1, "Asynchronous WebViewHost disposal must call DisposeAsync exactly once.");
     }
 
+
+
     private static Task WebViewHostGatesNavigationByPolicyAndCapability()
     {
         // Policy allows and capability authorizes => allowed and delivered.
@@ -970,6 +972,8 @@ internal static class Program
 
         public Uri? Source { get; private set; }
 
+        public List<string> ExecutedScripts { get; } = new();
+
         public int DisposeCallCount { get; private set; }
 
         public int DisposeAsyncCallCount { get; private set; }
@@ -979,9 +983,11 @@ internal static class Program
             Source = source;
         }
 
-        public ValueTask<string?> ExecuteScriptAsync(
-            string script,
-            CancellationToken cancellationToken = default) => ValueTask.FromResult<string?>(null);
+        public ValueTask ExecuteScriptAsync(string script, CancellationToken cancellationToken = default)
+        {
+            ExecutedScripts.Add(script);
+            return ValueTask.CompletedTask;
+        }
 
         public IReadOnlyList<DraggableRegion> SetDragRegions(IReadOnlyList<DraggableRegion> regions) => [];
 
@@ -1014,6 +1020,9 @@ internal static class Program
 
         public void RaiseFileDropLeft() =>
             FileDropLeft?.Invoke(this, TaruiWebViewFileDropLeftEventArgs.Instance);
+
+        public void RaiseMessage(string json) =>
+            MessageReceived?.Invoke(this, new TaruiWebMessage(json));
 
         public TaruiWebViewDownloadEventArgs RaiseDownload(string url, string? suggestedFilename)
         {

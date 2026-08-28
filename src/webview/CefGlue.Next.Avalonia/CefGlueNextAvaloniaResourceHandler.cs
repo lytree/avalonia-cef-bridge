@@ -36,12 +36,18 @@ internal sealed class CefGlueNextAvaloniaSchemeHandlerFactory(
             headers["Cache-Control"] = response.CacheControl;
         }
 
+        // Prefer an explicit stream from the provider so large assets (videos, models, map tiles)
+        // are forwarded to CEF as they are produced rather than fully buffered into managed memory.
+        // When the provider only supplies a byte[] (small responses, error pages) we still wrap it
+        // in a non-writable MemoryStream because DefaultResourceHandler requires a seekable stream.
+        var stream = response.ContentStream
+            ?? (response.Content is null ? null : new MemoryStream(response.Content, writable: false));
         return new DefaultResourceHandler
         {
             Status = response.Status,
             StatusText = response.StatusText,
             MimeType = response.MimeType,
-            Response = new MemoryStream(response.Content, writable: false),
+            Response = stream ?? Stream.Null,
             ResponseLength = response.ResponseLength,
             Headers = headers
         };

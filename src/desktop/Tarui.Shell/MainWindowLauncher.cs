@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Microsoft.Extensions.Logging;
 using Tarui.Contracts;
 using Tarui.Ipc;
 
@@ -17,18 +18,19 @@ public sealed class MainWindowLauncher(
     EventRouter eventRouter,
     ICapabilityProvider capabilities,
     ISingleInstanceCoordinator singleInstance,
-    WindowOptions mainWindowOptions) : IMainWindowLauncher
+    WindowOptions mainWindowOptions,
+    ILogger<MainWindowLauncher>? logger = null) : IMainWindowLauncher
 {
     public Window LaunchMainWindow()
     {
-        if (!capabilities.Capabilities.ContainsKey("main"))
+        if (!capabilities.Capabilities.ContainsKey(mainWindowOptions.Label))
         {
             throw new InvalidOperationException(
-                "No capability file grants permissions to the 'main' window. Add capabilities/main.json.");
+                "No capability file grants permissions to the '{mainWindowOptions.Label}' window. Add capabilities/{mainWindowOptions.Label}.json.");
         }
 
         var entry = attacher.Attach(mainWindowOptions);
-        registry.Add("main", entry);
+        registry.Add(mainWindowOptions.Label, entry);
 
         // Any second-instance activations that arrived before the main window was registered are now
         // safe to deliver as app://second-instance events.
@@ -37,25 +39,15 @@ public sealed class MainWindowLauncher(
         if (Application.Current is { } application)
         {
             application.ActualThemeVariantChanged += (_, _) =>
-                FireAndForget(eventRouter.EmitToAllAsync(
-                    "shell://theme-changed",
-                    JsonSerializer.SerializeToElement(
-                        new ThemeChanged(ThemeNames.From(application.ActualThemeVariant)),
-                        TaruiJsonContext.Default.ThemeChanged)));
+                FireAndForget.Run(
+                    eventRouter.EmitToAllAsync(
+                        "shell://theme-changed",
+                        JsonSerializer.SerializeToElement(
+                            new ThemeChanged(ThemeNames.From(application.ActualThemeVariant)),
+                            TaruiJsonContext.Default.ThemeChanged)),
+                    logger);
         }
 
         return entry.Window;
-    }
-
-    private static async void FireAndForget(ValueTask task)
-    {
-        try
-        {
-            await task;
-        }
-        catch
-        {
-            // Window events are best-effort notifications.
-        }
     }
 }

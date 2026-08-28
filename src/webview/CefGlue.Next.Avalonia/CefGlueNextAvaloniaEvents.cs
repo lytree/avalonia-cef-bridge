@@ -33,7 +33,11 @@ public sealed record CefGlueNextAvaloniaResourceResponse(
     string CacheControl,
     long ResponseLength,
     byte[] Content,
-    IReadOnlyDictionary<string, string>? Headers = null);
+    IReadOnlyDictionary<string, string>? Headers = null,
+    // When supplied, the handler streams this Stream straight to CEF instead of materializing the
+    // byte[] into a MemoryStream. Large assets (videos, models, map tiles) can therefore be served
+    // from disk without doubling their resident memory; the caller owns the Stream lifetime.
+    Stream? ContentStream = null);
 
 public sealed class CefGlueNextAvaloniaSchemeOptions
 {

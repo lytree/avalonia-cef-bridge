@@ -45,7 +45,7 @@ public sealed class AvaloniaTrayService(WindowRegistry registry, EventRouter eve
             Menu = menu,
             IsVisible = options.Visible,
         };
-        tray.Clicked += (_, _) => FireAndForget(EmitClickedAsync(options.Id, ownerWindow, "Left"));
+        tray.Clicked += (_, _) => FireAndForget.Run(EmitClickedAsync(options.Id, ownerWindow, "Left"));
 
         var handle = new TrayHandle(ownerWindow, tray);
         lock (_gate)
@@ -250,17 +250,6 @@ public sealed class AvaloniaTrayService(WindowRegistry registry, EventRouter eve
         TrayIcon.SetIcons(Application.Current, icons);
     }
 
-    private static async void FireAndForget(ValueTask task)
-    {
-        try
-        {
-            await task;
-        }
-        catch
-        {
-            // Tray notifications are best-effort.
-        }
-    }
 
     private sealed record TrayHandle(string OwnerWindow, TrayIcon Tray);
 }

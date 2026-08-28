@@ -333,25 +333,25 @@ internal static class Program
     private static void TestGetMimeAndQuery(TestFixture fixture)
     {
         var resolver = fixture.CreateResolver(spaFallback: false);
-        var asset = resolver.Resolve(
+        using var asset = resolver.Resolve(
             "tarui://localhost/assets/app.js?cacheBust=42",
             "GET",
             allowSpaFallback: false);
 
         AssertEqual(200, asset.Status, "GET should return 200.");
         AssertEqual("application/javascript", asset.MimeType, "JavaScript MIME type should be selected.");
-        AssertEqual("console.log('tarui');", Encoding.UTF8.GetString(asset.Content), "Query strings must not change the asset path.");
-        AssertEqual(asset.Content.LongLength, asset.ResponseLength, "GET response length should match the body.");
+        AssertEqual("console.log('tarui');", Encoding.UTF8.GetString(ReadAllBytes(asset.Content)), "Query strings must not change the asset path.");
+        AssertEqual(asset.ResponseLength, asset.ResponseLength, "GET response length should match the body.");
     }
 
     private static void TestHeadLength(TestFixture fixture)
     {
         var resolver = fixture.CreateResolver(spaFallback: false);
-        var get = resolver.Resolve("tarui://localhost/index.html", "GET", false);
-        var head = resolver.Resolve("tarui://localhost/index.html", "HEAD", false);
+        using var get = resolver.Resolve("tarui://localhost/index.html", "GET", false);
+        using var head = resolver.Resolve("tarui://localhost/index.html", "HEAD", false);
 
         AssertEqual(200, head.Status, "HEAD should return 200.");
-        AssertEqual(0L, head.Content.LongLength, "HEAD must not return a body.");
+        AssertEqual(0L, head.Content.Length, "HEAD must not return a body.");
         AssertEqual(get.ResponseLength, head.ResponseLength, "HEAD length must equal the corresponding GET length.");
     }
 
@@ -379,7 +379,7 @@ internal static class Program
 
         foreach (var path in rejectedPaths)
         {
-            var asset = resolver.Resolve(path, "GET", false);
+            using var asset = resolver.Resolve(path, "GET", false);
             Assert(asset.Status != 200, $"Unsafe path should be rejected: {Describe(path)}");
         }
     }
@@ -393,21 +393,21 @@ internal static class Program
             "Missing extensionless assets must be 404 when SPA fallback is disabled.");
 
         var fallback = fixture.CreateResolver(spaFallback: true);
-        var route = fallback.Resolve("tarui://localhost/settings/profile?tab=general", "GET", true);
+        using var route = fallback.Resolve("tarui://localhost/settings/profile?tab=general", "GET", true);
         AssertEqual(200, route.Status, "SPA fallback should serve index.html for an allowed main-frame route.");
         AssertEqual("text/html", route.MimeType, "SPA fallback should retain index.html MIME type.");
 
-        var staticMissing = fallback.Resolve("tarui://localhost/assets/missing.js", "GET", true);
+        using var staticMissing = fallback.Resolve("tarui://localhost/assets/missing.js", "GET", true);
         AssertEqual(404, staticMissing.Status, "Missing static assets must not fall back to index.html.");
 
-        var disallowed = fallback.Resolve("tarui://localhost/settings/profile", "GET", false);
+        using var disallowed = fallback.Resolve("tarui://localhost/settings/profile", "GET", false);
         AssertEqual(404, disallowed.Status, "SPA fallback requires allowSpaFallback=true.");
     }
 
     private static void TestAssetSizeLimit(TestFixture fixture)
     {
         var resolver = fixture.CreateResolver(spaFallback: false, maxAssetBytes: 4);
-        var asset = resolver.Resolve("tarui://localhost/assets/app.js", "GET", false);
+        using var asset = resolver.Resolve("tarui://localhost/assets/app.js", "GET", false);
 
         AssertEqual(413, asset.Status, "Assets over the configured size limit must return 413.");
     }
@@ -415,8 +415,8 @@ internal static class Program
     private static void TestAssetCachePolicy(TestFixture fixture)
     {
         var resolver = fixture.CreateResolver(spaFallback: false);
-        var immutable = resolver.Resolve("tarui://localhost/assets/app.js", "GET", false);
-        var mutable = resolver.Resolve("tarui://localhost/index.html", "GET", false);
+        using var immutable = resolver.Resolve("tarui://localhost/assets/app.js", "GET", false);
+        using var mutable = resolver.Resolve("tarui://localhost/index.html", "GET", false);
 
         AssertEqual(
             "public, max-age=31536000, immutable",
@@ -485,6 +485,21 @@ internal static class Program
     private static void Assert(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private static byte[] ReadAllBytes(Stream stream)
+    {
+        // The streaming resolver hands back FileStream instances that keep the source file locked; the
+        // caller has no use for the stream after reading so we dispose it here so the test fixture can
+        // delete its scratch directory on tear-down.
+        if (stream is null) return [];
+        using var memory = new MemoryStream();
+        using (stream)
+        {
+            if (stream.CanSeek) stream.Position = 0;
+            stream.CopyTo(memory);
+        }
+        return memory.ToArray();
     }
 
     private sealed class TestFixture : IDisposable

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿﻿using System.Diagnostics;
 using Avalonia.Controls;
 using CefGlue.Next.Avalonia;
 using Tarui.WebView.Abstractions;
@@ -21,11 +21,7 @@ public static class CefGlueRuntimeBootstrap
             new CefGlueNextAvaloniaRuntimeOptions
             {
                 RuntimeDirectory = ResolveRuntimeRoot(),
-                CacheDirectory = Path.Combine(
-                    Path.GetTempPath(),
-                    "tarui.net",
-                    "cef",
-                    Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                CacheDirectory = ResolveCacheDirectory(),
                 // The custom scheme is served whenever local assets exist — in scheme mode and in
                 // HTTP mode configured with a content root — so both schemes stay usable at once.
                 Schemes = webAppOptions.ContentRoot is null
@@ -71,6 +67,44 @@ public static class CefGlueRuntimeBootstrap
             : OperatingSystem.IsMacOS() ? "osx" : "linux";
         var bundled = Path.Combine(AppContext.BaseDirectory, "CEF", $"{platform}-{architectureName}");
         return Directory.Exists(bundled) ? bundled : null;
+    }
+
+    private static string ResolveCacheDirectory()
+    {
+        // Per-process session-isolation keeps two concurrent instances of the same app from
+        // clobbering each other's on-disk caches (CEF locks several files exclusively). The root
+        // itself is keyed off the application identifier so HTTP-mode asset responses are reused
+        // across restarts instead of being re-fetched every launch.
+        var appId = ResolveApplicationId();
+        var root = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            appId,
+            "cef");
+        var instance = Path.Combine(
+            root,
+            Environment.ProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Directory.CreateDirectory(instance);
+        return instance;
+    }
+
+    private static string ResolveApplicationId()
+    {
+        // We deliberately avoid a Hosting dependency here so this assembly stays usable from
+        // webview-only host programs. Apps identify themselves through TARUI_APP_ID (set by the
+        // hosting builder) or the legacy TARUI_APP_NAME fallback for first-party demos.
+        var explicitId = Environment.GetEnvironmentVariable("TARUI_APP_ID");
+        if (!string.IsNullOrWhiteSpace(explicitId))
+        {
+            return explicitId;
+        }
+
+        var legacyName = Environment.GetEnvironmentVariable("TARUI_APP_NAME");
+        if (!string.IsNullOrWhiteSpace(legacyName))
+        {
+            return legacyName;
+        }
+
+        return "tarui.net";
     }
 }
 
@@ -167,14 +201,16 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
 
     public void Navigate(Uri source) => _component.Navigate(source);
 
-    public async ValueTask<string?> ExecuteScriptAsync(
+    public async ValueTask ExecuteScriptAsync(
         string script,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _component.ExecuteScript(script);
-        await ValueTask.CompletedTask;
-        return null;
+        // The bundled CEF fork only exposes a fire-and-forget ExecuteJavaScript surface; we await the
+        // marshalling back to the UI thread so callers observe completion deterministically without
+        // claiming a return value the underlying API cannot produce.
+        await _component.ExecuteScriptAsync(script, cancellationToken: cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     public IReadOnlyList<DraggableRegion> SetDragRegions(IReadOnlyList<DraggableRegion> regions)

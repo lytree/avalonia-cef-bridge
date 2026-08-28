@@ -24,6 +24,7 @@ public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
     private const string FileDroppedEvent = "window://file-dropped";
     private const string DownloadRequestedEvent = "webview://download-requested";
     private const string NavigationRequestedEvent = "webview://navigation-requested";
+    private const string BridgeErrorCode = "BRIDGE_ERROR";
 
     private readonly IpcDispatcher _dispatcher;
     private readonly EventRouter _eventRouter;
@@ -92,7 +93,7 @@ public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
             return;
         }
 
-        FireAndForget(_eventRouter.EmitToWindowAsync(
+        FireAndForget.Run(_eventRouter.EmitToWindowAsync(
             Label,
             FileDropEnteredEvent,
             JsonSerializer.SerializeToElement(
@@ -107,7 +108,7 @@ public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
             return;
         }
 
-        FireAndForget(_eventRouter.EmitToWindowAsync(
+        FireAndForget.Run(_eventRouter.EmitToWindowAsync(
             Label,
             FileDropLeftEvent,
             JsonSerializer.SerializeToElement(new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs)));
@@ -120,7 +121,7 @@ public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
             return;
         }
 
-        FireAndForget(_eventRouter.EmitToWindowAsync(
+        FireAndForget.Run(_eventRouter.EmitToWindowAsync(
             Label,
             FileDroppedEvent,
             JsonSerializer.SerializeToElement(
@@ -147,7 +148,7 @@ public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
             return;
         }
 
-        FireAndForget(_eventRouter.EmitToWebviewAsync(
+        FireAndForget.Run(_eventRouter.EmitToWebviewAsync(
             Label,
             DownloadRequestedEvent,
             JsonSerializer.SerializeToElement(
@@ -164,7 +165,7 @@ public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
             return;
         }
 
-        FireAndForget(_eventRouter.EmitToWebviewAsync(
+        FireAndForget.Run(_eventRouter.EmitToWebviewAsync(
             Label,
             NavigationRequestedEvent,
             JsonSerializer.SerializeToElement(
@@ -207,28 +208,64 @@ public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
         _ => TaruiWebViewNavigationAction.Deny,
     };
 
-    private async void OnMessageReceived(object? sender, TaruiWebMessage message)
+    private void OnMessageReceived(object? sender, TaruiWebMessage message)
+    {
+        // The web view event marshals to a worker thread; we cannot await inline so we schedule the
+        // dispatcher coroutine through the shared FireAndForget helper and bridge failures back to
+        // the renderer with a BRIDGE_ERROR frame so the front-end never silently times out.
+        FireAndForget.Run(DispatchAndReportAsync(message.Message));
+    }
+
+    private async ValueTask DispatchAndReportAsync(string json)
     {
         try
         {
-            await DispatchMessageAsync(message.Message);
+            await DispatchMessageAsync(json).ConfigureAwait(false);
         }
-        catch
+        catch (Exception exception)
         {
-            // Event handlers cannot surface a failed response to the WebView.
+            // The dispatcher normally converts malformed payloads into InvokeResponse.Fail(...) but
+            // catastrophic errors (renderer crash, base64 failure, native callback throw) still leak
+            // through this catch. Synthesize a bridge error and push it back so the front-end can
+            // surface the failure instead of waiting 30s for a timeout.
+            await TryPushBridgeErrorAsync(json, exception).ConfigureAwait(false);
         }
     }
 
-    private static async void FireAndForget(ValueTask task)
+    private async ValueTask TryPushBridgeErrorAsync(string json, Exception exception)
     {
         try
         {
-            await task;
+            var id = ExtractRequestId(json) ?? "unknown";
+            var response = InvokeResponse.Fail(id, BridgeErrorCode, exception.Message);
+            var payload = JsonSerializer.Serialize(response, TaruiJsonContext.Default.InvokeResponse);
+            var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(payload));
+            await _webView
+                .ExecuteScriptAsync($"window.__tarui_dispatchBase64?.('{encoded}')")
+                .ConfigureAwait(false);
         }
         catch
         {
-            // Native web view events are best-effort notifications.
+            // The web view is gone or its renderer has crashed; nothing more we can do.
         }
+    }
+
+    private static string? ExtractRequestId(string json)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.TryGetProperty("id", out var idElement) &&
+                idElement.ValueKind == JsonValueKind.String)
+            {
+                return idElement.GetString();
+            }
+        }
+        catch (JsonException)
+        {
+            // Fall through; the dispatcher will already have rejected the payload.
+        }
+        return null;
     }
 
     public void Dispose()

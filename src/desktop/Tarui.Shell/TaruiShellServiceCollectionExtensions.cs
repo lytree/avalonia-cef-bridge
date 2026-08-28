@@ -1,6 +1,7 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Tarui.Contracts;
 using Tarui.Ipc;
 using Tarui.Plugins.Autostart;
 using Tarui.Plugins.DeepLink;
@@ -55,10 +56,12 @@ public static class TaruiShellServiceCollectionExtensions
         .AddSingleton<IDialogService, AvaloniaDialogService>()
         .AddSingleton<IClipboardService, AvaloniaClipboardService>()
         .AddSingleton<ShellWindowFactory>()
+        .AddSingleton(WindowLifecycleOptionsFactory.Build)
         .AddSingleton<WebviewAttacher>()
         .AddSingleton<IWindowService>(sp => new AvaloniaWindowService(
             sp.GetRequiredService<WindowRegistry>(),
-            (options, caller) => sp.GetRequiredService<WebviewAttacher>().Attach(options, caller)))
+            (options, caller) => sp.GetRequiredService<WebviewAttacher>().Attach(options, caller),
+            sp.GetRequiredService<WindowOptions>()))
         .AddSingleton<IWebviewService>(sp => new AvaloniaWebviewService(
             sp.GetRequiredService<WindowRegistry>(),
             sp.GetRequiredService<TaruiAppOrigin>()))

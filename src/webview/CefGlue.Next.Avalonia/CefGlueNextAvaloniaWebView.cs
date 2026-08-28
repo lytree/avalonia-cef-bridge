@@ -113,6 +113,25 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
         });
     }
 
+    public async ValueTask ExecuteScriptAsync(string script, string? sourceUrl = null, int line = 1, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(script);
+        cancellationToken.ThrowIfCancellationRequested();
+        // The bundled CEF fork exposes only a fire-and-forget ExecuteJavaScript surface; we await the
+        // UI thread hop so callers observe completion deterministically. The browser call itself is
+        // synchronous so the task completes as soon as the dispatch has been queued.
+        await Dispatcher.UIThread
+            .InvokeAsync(() =>
+            {
+                ThrowIfDisposed();
+                _browser.ExecuteJavaScript(script, sourceUrl ?? "about:blank", line);
+            })
+            .GetTask()
+            .ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+    }
+
     public IReadOnlyList<CefGlueNextAvaloniaDraggableRegion> SetDragRegions(
         IReadOnlyList<CefGlueNextAvaloniaDraggableRegion> regions)
     {

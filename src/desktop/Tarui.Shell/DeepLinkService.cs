@@ -94,20 +94,9 @@ public sealed class DeepLinkService : IDeepLinkService, ISecondActivationSink
             _currentUrl = url;
         }
 
-        FireAndForget(_events.EmitToAllAsync(
+        FireAndForget.Run(_events.EmitToAllAsync(
             $"deeplink://{scheme}",
             JsonSerializer.SerializeToElement(url, TaruiJsonContext.Default.String)));
     }
 
-    private static async void FireAndForget(ValueTask task)
-    {
-        try
-        {
-            await task;
-        }
-        catch
-        {
-            // Deep-link delivery is best-effort; a closing window is not fatal.
-        }
-    }
 }

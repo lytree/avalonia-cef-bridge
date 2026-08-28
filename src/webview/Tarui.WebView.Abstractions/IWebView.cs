@@ -27,7 +27,14 @@ public interface ITaruiWebView : IDisposable
 
     void Navigate(Uri source);
 
-    ValueTask<string?> ExecuteScriptAsync(
+    /// <summary>
+    /// Evaluates <paramref name="script"/> in the renderer's main frame. The current implementation
+    /// does not return a value because the bundled CEF fork's <c>ExecuteJavaScript</c> surface is
+    /// fire-and-forget; callers should treat this as a one-way injection. A future revision can swap
+    /// the underlying call for <c>CefFrame.EvaluateScriptAsync</c> with a V8-context callback to
+    /// materialize a return value without changing this contract.
+    /// </summary>
+    ValueTask ExecuteScriptAsync(
         string script,
         CancellationToken cancellationToken = default);
 

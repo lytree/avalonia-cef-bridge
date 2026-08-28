@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Tarui.Contracts;
+using Tarui.Ipc;
 using Tarui.Plugins.GlobalShortcut;
 
 namespace Tarui.Shell;
@@ -258,7 +259,7 @@ public sealed class WindowsGlobalShortcutService(EventRouter events) : IGlobalSh
             if (userData != nint.Zero)
             {
                 var instance = (WindowsGlobalShortcutService)GCHandle.FromIntPtr(userData).Target!;
-                FireAndForget(instance.OnHotkeyAsync((int)wParam));
+                FireAndForget.Run(instance.OnHotkeyAsync((int)wParam));
             }
 
             return nint.Zero;
@@ -337,17 +338,7 @@ public sealed class WindowsGlobalShortcutService(EventRouter events) : IGlobalSh
         return (modifiers, virtualKey);
     }
 
-    private static async void FireAndForget(ValueTask task)
-    {
-        try
-        {
-            await task;
-        }
-        catch
-        {
-            // Global shortcut delivery is best-effort.
-        }
-    }
+
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern ushort RegisterClass(ref WndClass windowClass);

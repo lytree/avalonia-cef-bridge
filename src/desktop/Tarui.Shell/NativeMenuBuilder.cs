@@ -2,6 +2,7 @@ using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Tarui.Contracts;
+using Tarui.Ipc;
 
 namespace Tarui.Shell;
 
@@ -127,19 +128,9 @@ internal static class NativeMenuBuilder
             var isChecked = item.ToggleType != MenuItemToggleType.CheckBox
                 ? null
                 : (bool?)item.IsChecked;
-            FireAndForget(click(id, item.Header, isChecked));
+            FireAndForget.Run(click(id, item.Header, isChecked));
         }
     }
 
-    private static async void FireAndForget(ValueTask task)
-    {
-        try
-        {
-            await task;
-        }
-        catch
-        {
-            // Menu click notifications are best-effort.
-        }
-    }
+
 }

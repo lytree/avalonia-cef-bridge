@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -36,6 +36,12 @@ public sealed class TaruiApplicationBuilder(string[]? args)
     {
         ArgumentNullException.ThrowIfNull(identity);
         ApplicationIdentity = identity;
+
+        // Surface the sanitized identifier through an environment variable so the CEF bootstrap,
+        // which lives in a separate webview assembly and cannot reference Hosting directly,
+        // can route its on-disk cache to the same per-application root used by every other
+        // OS-scoped resource.
+        Environment.SetEnvironmentVariable("TARUI_APP_ID", identity.SanitizedIdentifier);
         return this;
     }
 

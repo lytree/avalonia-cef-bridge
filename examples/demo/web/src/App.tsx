@@ -36,16 +36,16 @@ function App() {
 
   // Mirror any event routed to this webview so `event:emit` demos are observable.
   useEffect(() => {
-    return on<{ source: string }>('demo://echo', payload => {
-      pushLog({ text: `demo://echo received: ${JSON.stringify(payload)}` })
+    return on<{ source: string }>('user://demo/echo', payload => {
+      pushLog({ text: `user://demo/echo received: ${JSON.stringify(payload)}` })
     })
   }, [])
 
   // The native sidebar (demo window extension) emits this event when its button is clicked.
   useEffect(() => {
-    return on<{ clicks: number }>('demo://native-sidebar', payload => {
+    return on<{ clicks: number }>('user://demo/native-sidebar', payload => {
       setNativeClicks(payload.clicks)
-      pushLog({ kind: 'ok', text: `demo://native-sidebar received: ${payload.clicks} clicks` })
+      pushLog({ kind: 'ok', text: `user://demo/native-sidebar received: ${payload.clicks} clicks` })
     })
   }, [])
 
@@ -166,8 +166,8 @@ function App() {
 
   async function doEmit() {
     try {
-      await emit('demo://echo', { source: 'webview' })
-      pushLog({ kind: 'ok', text: 'event emitted demo://echo (echo visible in log)' })
+      await emit('user://demo/echo', { source: 'webview' })
+      pushLog({ kind: 'ok', text: 'event emitted user://demo/echo (echo visible in log)' })
     } catch (err) {
       pushLog({ kind: 'err', text: `emit: ${String(err)}` })
     }
@@ -248,7 +248,7 @@ function App() {
         <h2>事件</h2>
         <div className="row">
           <input value={unknownUi} onChange={e => setUnknownUi(e.target.value)} placeholder="事件文本（可选）" />
-          <button onClick={doEmit}>emit demo://echo</button>
+          <button onClick={doEmit}>emit user://demo/echo</button>
         </div>
       </section>
 

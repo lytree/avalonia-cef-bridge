@@ -49,6 +49,13 @@ internal static class Program
 
         var builder = TaruiHost.CreateApplicationBuilder(args);
 
+        // Surface the application identity so the CEF bootstrap can route its on-disk cache to
+        // %LOCALAPPDATA%/<sanitized-id>/cef/<pid> instead of the global default. Every other
+        // OS-scoped resource (single-instance endpoint, store directory) is already keyed off the
+        // same identity.
+        builder.UseApplicationIdentity(
+            TaruiApplicationIdentity.FromManifest(ApplicationId, "Tarui Demo", "0.1.0"));
+
         builder.Services
             .AddTaruiShell()
             .AddWindowExtensionRegistrar<DemoWindowExtensions>()
@@ -77,6 +84,8 @@ internal static class Program
             window.Title = "Tarui Demo";
             window.Width = 1280;
             window.Height = 820;
+            window.MinWidth = 900;
+            window.MinHeight = 600;
         });
 
         try

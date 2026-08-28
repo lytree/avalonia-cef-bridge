@@ -1,4 +1,4 @@
-using Avalonia;
+﻿﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Platform;
 using Avalonia.Styling;
@@ -11,7 +11,8 @@ namespace Tarui.Shell;
 
 public sealed class AvaloniaWindowService(
     WindowRegistry registry,
-    Func<WindowOptions, CommandContext?, WindowRegistry.Entry> windowFactory) : IWindowService
+    Func<WindowOptions, CommandContext?, WindowRegistry.Entry> windowFactory,
+    WindowOptions primaryWindowOptions) : IWindowService
 {
     public async ValueTask<Unit> CreateAsync(WindowOptions options, CommandContext callerContext, CancellationToken cancellationToken)
     {
@@ -200,7 +201,7 @@ public sealed class AvaloniaWindowService(
         // Prefer the main window, then fall back to whichever shell is registered, so monitor geometry
         // queries do not hard-code a single window label.
         var labels = registry.Labels;
-        var label = labels.Contains("main") ? "main" : labels.FirstOrDefault();
+        var label = labels.Contains(primaryWindowOptions.Label) ? primaryWindowOptions.Label : labels.FirstOrDefault();
         return label is null || !registry.TryGet(label, out var entry) ? null : entry.Window;
     }
 
