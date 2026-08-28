@@ -41,11 +41,19 @@ public static class CefGlueNextAvaloniaRuntime
 
             if (CefRuntime.IsInitialized)
             {
-                // A second call must be a no-op only when the new options are byte-equivalent to the
-                // ones used for the original startup. Schemes are especially sensitive: silently
-                // dropping new ones on a second call leaves the app with a half-configured browser.
-                var resolved = options ?? new CefGlueNextAvaloniaRuntimeOptions();
-                var fingerprint = ComputeFingerprint(resolved);
+                // A null options argument means "no explicit configuration requested" — the caller
+                // just wants to make sure the runtime is up. Reuse the original startup options
+                // instead of comparing against freshly-constructed defaults.
+                if (options is null)
+                {
+                    return;
+                }
+
+                // An explicit second call must be a no-op only when the options are byte-equivalent
+                // to the ones used for the original startup. Schemes are especially sensitive:
+                // silently dropping new ones on a second call leaves the app with a half-configured
+                // browser.
+                var fingerprint = ComputeFingerprint(options);
                 if (!string.Equals(_optionsFingerprint, fingerprint, StringComparison.Ordinal))
                 {
                     throw new InvalidOperationException(
