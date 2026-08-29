@@ -115,15 +115,32 @@ public sealed class FileAccessPolicy : IFileAccessPolicy
         isReadOnly = string.Equals(baseName, "resources", StringComparison.OrdinalIgnoreCase);
 
         var path = ResolveBase(baseName);
-        if (path is not null && Directory.Exists(path))
+        if (path is not null)
         {
-            directoryPath = path;
-            return true;
+            // 应用自有基目录（appData/appLocalData/appConfig/appCache/appLog）首次访问即创建。
+            // 否则首启时 store/fs 的读路径会因目录缺失而失败——写路径的 CreateDirectory 排在
+            // TryGetBaseDirectory 之后，永远执行不到。用户目录类基目录（home/desktop/...）不创建。
+            if (!Directory.Exists(path) && IsAppOwnedBase(baseName))
+            {
+                Directory.CreateDirectory(path);
+            }
+
+            if (Directory.Exists(path))
+            {
+                directoryPath = path;
+                return true;
+            }
         }
 
         directoryPath = string.Empty;
         return false;
     }
+
+    private static bool IsAppOwnedBase(string baseName) => baseName switch
+    {
+        "appData" or "appLocalData" or "appConfig" or "appCache" or "appLog" => true,
+        _ => false,
+    };
 
     /// <inheritdoc />
     public string? ResolveBase(string baseName) => ResolveBaseInternal(baseName);

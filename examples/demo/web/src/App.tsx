@@ -13,6 +13,15 @@ function now(): string {
   return new Date().toLocaleTimeString()
 }
 
+/** Applies the WinUI 3 theme to the page: data-theme drives the CSS tokens. */
+function applyTheme(theme: string) {
+  const resolved = theme === 'dark' ? 'dark' : 'light'
+  document.documentElement.dataset.theme = resolved
+  document.documentElement.style.colorScheme = resolved
+  // 与原生标题栏背景保持连续（WinUI 3 暗色基底 #202020）
+  document.body.style.background = resolved === 'dark' ? '#202020' : ''
+}
+
 function App() {
   const [info, setInfo] = useState<AppInfo | null>(null)
   const [winState, setWinState] = useState<WindowState | null>(null)
@@ -49,12 +58,24 @@ function App() {
     })
   }, [])
 
+  // The shell broadcasts shell://theme-changed whenever the app theme variant changes
+  // (the title-bar theme toggle sets RequestedThemeVariant), so the page follows along.
+  useEffect(() => {
+    return on<{ theme: string }>('shell://theme-changed', payload => {
+      applyTheme(payload.theme)
+      pushLog({ kind: 'ok', text: `shell://theme-changed -> ${payload.theme === 'dark' ? 'dark' : 'light'}` })
+    })
+  }, [])
+
   useEffect(() => {
     const window = getCurrentWindow()
     async function boot() {
       try {
         setInfo(await getAppInfo())
-        setWinState(await window.getState())
+        const state = await window.getState()
+        setWinState(state)
+        // 启动即同步当前主题：shell 的 theme-changed 首播可能早于页面加载，页面必须主动拉取。
+        applyTheme(state.theme)
         setStoreKeys((await store.keys()).keys)
       } catch (err) {
         pushLog({ kind: 'err', text: `boot: ${String(err)}` })

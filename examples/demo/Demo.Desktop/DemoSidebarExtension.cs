@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Layout;
+using Avalonia.Styling;
 using Tarui.Ipc;
 using Tarui.Shell;
 
@@ -19,7 +20,15 @@ namespace Demo;
 /// </summary>
 public sealed class DemoSidebarExtension : IShellWindowExtension
 {
+    // 明/暗配色，与 DemoWindowChromeExtension 的标题栏保持一致的观感。
+    private static readonly Color LightBackground = Color.Parse("#F3F3F3");
+    private static readonly Color LightForeground = Color.Parse("#3D3D3D");
+    private static readonly Color DarkBackground = Color.Parse("#202124");
+    private static readonly Color DarkForeground = Color.Parse("#E6FFFFFF");
+
     private int _clicks;
+    private StackPanel? _sidebar;
+    private TextBlock? _title;
     private TextBlock? _count;
 
     public void CreateView(WindowExtensionContext context)
@@ -28,15 +37,13 @@ public sealed class DemoSidebarExtension : IShellWindowExtension
         _count = new TextBlock
         {
             Text = "Native clicks: 0",
-            Foreground = Brushes.White,
             Margin = new Thickness(12, 0, 12, 8),
         };
 
-        var title = new TextBlock
+        _title = new TextBlock
         {
             Text = "Native Sidebar",
             FontWeight = FontWeight.Bold,
-            Foreground = Brushes.White,
             Margin = new Thickness(12),
         };
 
@@ -50,16 +57,32 @@ public sealed class DemoSidebarExtension : IShellWindowExtension
         // them, matching the bridge-error reporting contract used by the shell itself.
         button.Click += (_, _) => FireAndForget.Run(NotifyAsync(context));
 
-        var sidebar = new StackPanel
+        _sidebar = new StackPanel
         {
             Width = 200,
             Spacing = 0,
             Orientation = Orientation.Vertical,
-            Background = new SolidColorBrush(Color.Parse("#202124")),
-            Children = { title, _count, button },
+            Children = { _title, _count, button },
         };
 
-        context.Composition.Dock(sidebar, Dock.Right);
+        // 初始应用当前主题，并监听应用级请求主题变化（与 DemoWindowChromeExtension 一致）。
+        ApplyTheme(Application.Current?.ActualThemeVariant);
+        if (Application.Current is { } app)
+        {
+            app.ActualThemeVariantChanged += (_, _) => ApplyTheme(app.ActualThemeVariant);
+        }
+
+        context.Composition.Dock(_sidebar, Dock.Right);
+    }
+
+    private void ApplyTheme(ThemeVariant? variant)
+    {
+        var dark = variant == ThemeVariant.Dark;
+        var background = new SolidColorBrush(dark ? DarkBackground : LightBackground);
+        var foreground = new SolidColorBrush(dark ? DarkForeground : LightForeground);
+        if (_sidebar is not null) _sidebar.Background = background;
+        if (_title is not null) _title.Foreground = foreground;
+        if (_count is not null) _count.Foreground = foreground;
     }
 
     private async ValueTask NotifyAsync(WindowExtensionContext context)

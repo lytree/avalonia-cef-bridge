@@ -15,8 +15,36 @@ internal static class Program
         DeduplicatesRegisteredPermissions();
         ExposesRouterRegisteredPermissions();
         await HandlerExceptionsDoNotCorruptDispatcherAsync();
+        LazilyCreatesAppOwnedBaseDirectory();
         Console.WriteLine("Tarui.Ipc self-tests passed.");
         return 0;
+    }
+
+    private static void LazilyCreatesAppOwnedBaseDirectory()
+    {
+        // 回归：首启时 %APPDATA%/tarui.net 等应用自有基目录不存在，store/fs 的读路径
+        // （TryGetBaseDirectory）必须自动创建，否则报 "Base directory 'appData' is not
+        // available on this system."。
+        var policy = new FileAccessPolicy();
+        var resolved = policy.ResolveBase("appData");
+        Assert(resolved is not null, "The appData base must resolve to a physical path.");
+        var createdByTest = !Directory.Exists(resolved);
+        try
+        {
+            Assert(
+                policy.TryGetBaseDirectory("appData", out var path, out var readOnly),
+                "A missing app-owned base must be created lazily on first access.");
+            Assert(Directory.Exists(path), "The created base directory must exist on disk.");
+            Assert(!readOnly, "appData must be writable.");
+        }
+        finally
+        {
+            // 只清理测试自己创建的目录，绝不删除既有用户数据。
+            if (createdByTest)
+            {
+                Directory.Delete(resolved!);
+            }
+        }
     }
 
     private static async Task DeniesCommandsOutsideCapability()

@@ -1,13 +1,50 @@
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
-  color-scheme: light dark;
+
+  /* WinUI 3 / Fluent 亮色 tokens（背景与原生标题栏 #F3F3F3 连续，形成顶部统一条） */
+  --bg-base: #f3f3f3;
+  --bg-layer: #ffffff;
+  --bg-subtle: #e8e8e8;
+  --text-primary: #1a1a1a;
+  --text-secondary: #717171;
+  --text-on-accent: #ffffff;
+  --stroke-default: rgba(0, 0, 0, 0.06);
+  --stroke-strong: rgba(0, 0, 0, 0.4);
+  --accent: #4c8bf5;
+  --accent-hover: #5d97f6;
+  --log-bg: rgba(0, 0, 0, 0.25);
+
+  background: var(--bg-base);
+  color: var(--text-primary);
+  color-scheme: light;
+}
+
+/* WinUI 3 暗色 tokens（背景与原生暗色标题栏 #202020 连续） */
+:root[data-theme='dark'] {
+  --bg-base: #202020;
+  --bg-layer: #2d2d30;
+  --bg-subtle: #2b2b2b;
+  --text-primary: #ffffff;
+  --text-secondary: #c9c9c9;
+  --text-on-accent: #ffffff;
+  --stroke-default: rgba(255, 255, 255, 0.08);
+  --stroke-strong: rgba(255, 255, 255, 0.4);
+  --accent: #4c8bf5;
+  --accent-hover: #6ea8f7;
+  --log-bg: rgba(255, 255, 255, 0.08);
+
+  background: var(--bg-base);
+  color: var(--text-primary);
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: var(--bg-base);
+  color: var(--text-primary);
 }
 
 .app {
@@ -18,10 +55,11 @@ body {
 
 h1 {
   margin-bottom: 0.25rem;
+  color: var(--text-primary);
 }
 
 .muted {
-  color: rgba(127, 127, 127, 0.9);
+  color: var(--text-secondary);
   font-size: 0.9rem;
 }
 
@@ -31,12 +69,13 @@ section {
 
 h2 {
   font-size: 1.1rem;
-  border-left: 3px solid #4c8bf5;
+  border-left: 3px solid var(--accent);
   padding-left: 0.5rem;
+  color: var(--text-primary);
 }
 
 code {
-  background: rgba(127, 127, 127, 0.15);
+  background: var(--bg-subtle);
   padding: 0.1em 0.3em;
   border-radius: 4px;
   font-size: 0.9rem;
@@ -59,10 +98,10 @@ code {
 
 .row input {
   padding: 0.35rem 0.5rem;
-  border: 1px solid rgba(127, 127, 127, 0.4);
+  border: 1px solid var(--stroke-strong);
   border-radius: 6px;
-  background: transparent;
-  color: inherit;
+  background: var(--bg-layer);
+  color: var(--text-primary);
   min-width: 9rem;
   flex: 0 1 auto;
 }
@@ -71,10 +110,10 @@ textarea {
   width: 100%;
   box-sizing: border-box;
   padding: 0.5rem;
-  border: 1px solid rgba(127, 127, 127, 0.4);
+  border: 1px solid var(--stroke-strong);
   border-radius: 6px;
-  background: transparent;
-  color: inherit;
+  background: var(--bg-layer);
+  color: var(--text-primary);
   font: inherit;
   margin-top: 0.5rem;
   resize: vertical;
@@ -82,16 +121,17 @@ textarea {
 
 button {
   padding: 0.4rem 0.9rem;
-  border: 1px solid #4c8bf5;
+  border: 1px solid var(--accent);
   border-radius: 6px;
-  background: #4c8bf5;
-  color: #fff;
+  background: var(--accent);
+  color: var(--text-on-accent);
   cursor: pointer;
   font: inherit;
 }
 
 button:hover {
-  filter: brightness(1.1);
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 ul.muted {
@@ -99,7 +139,7 @@ ul.muted {
 }
 
 .log {
-  background: rgba(0, 0, 0, 0.25);
+  background: var(--log-bg);
   border-radius: 8px;
   padding: 0.75rem 1rem;
   font-size: 0.85rem;

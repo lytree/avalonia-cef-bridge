@@ -11,5 +11,6 @@ namespace Demo;
 public sealed class DemoWindowExtensions : IWindowExtensionRegistrar
 {
     public void Configure(WindowExtensionBuilder extensions) =>
-        extensions.Add<DemoSidebarExtension>();
+        extensions.Add<DemoWindowChromeExtension>()
+                  .Add<DemoSidebarExtension>();
 }
