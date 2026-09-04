@@ -15,6 +15,16 @@ public interface IDialogService
         SaveDialogOptions options,
         string windowLabel,
         CancellationToken cancellationToken);
+
+    ValueTask<MessageBoxResult> MessageAsync(
+        MessageBoxOptions options,
+        string windowLabel,
+        CancellationToken cancellationToken);
+
+    ValueTask<ConfirmResult> ConfirmAsync(
+        ConfirmOptions options,
+        string windowLabel,
+        CancellationToken cancellationToken);
 }
 
 public sealed class DialogPlugin(IDialogService service) : ITaruiPlugin
@@ -36,6 +46,20 @@ public sealed class DialogPlugin(IDialogService service) : ITaruiPlugin
             TaruiJsonContext.Default.SaveDialogResult,
             handlers.SaveAsync,
             "plugin:dialog|save");
+
+        commands.Add(
+            "plugin:dialog|message",
+            TaruiJsonContext.Default.MessageBoxOptions,
+            TaruiJsonContext.Default.MessageBoxResult,
+            handlers.MessageAsync,
+            "plugin:dialog|message");
+
+        commands.Add(
+            "plugin:dialog|confirm",
+            TaruiJsonContext.Default.ConfirmOptions,
+            TaruiJsonContext.Default.ConfirmResult,
+            handlers.ConfirmAsync,
+            "plugin:dialog|confirm");
     }
 
     private sealed class DialogCommands(IDialogService service)
@@ -53,6 +77,20 @@ public sealed class DialogPlugin(IDialogService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.SaveAsync(options, context.WindowLabel, cancellationToken);
+
+        [TaruiCommand("plugin:dialog|message")]
+        public ValueTask<MessageBoxResult> MessageAsync(
+            MessageBoxOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.MessageAsync(options, context.WindowLabel, cancellationToken);
+
+        [TaruiCommand("plugin:dialog|confirm")]
+        public ValueTask<ConfirmResult> ConfirmAsync(
+            ConfirmOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.ConfirmAsync(options, context.WindowLabel, cancellationToken);
     }
 }
 

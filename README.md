@@ -218,7 +218,7 @@ GitHub Actions 自动化集成与发布门禁(设计稿 §10):
 | Core | `core:app|get-info` | 壳握手:product、version、capabilities。 |
 | Window | `core:window|*`(24 条) | 创建/关闭/最小化/最大化/隐藏/显示/聚焦/居中、标题、尺寸、位置、最小/最大尺寸、置顶、可缩放、装饰、全屏、状态、监视器、列表。 |
 | Event | `core:event|emit` | 从 Web 侧发出路由或广播事件。 |
-| Dialog | `plugin:dialog|open`、`plugin:dialog|save` | 绑定到请求窗口的原生文件/目录选择器。 |
+| Dialog | `plugin:dialog|open`、`plugin:dialog|save`、`plugin:dialog|message`、`plugin:dialog|confirm` | 绑定到请求窗口的原生文件/目录选择器、消息框与确认框。 |
 | System | `core:path|resolve`、`core:os|info`、`core:process|exit`、`core:process|relaunch`、`core:shell|open`、`core:clipboard|read-text`、`core:clipboard|write-text` | 路径解析(含越界保护)、OS 信息、进程生命周期、OS 默认处理器、剪贴板文本。 |
 
 Shell 把窗口生命周期事件路由到所属 Webview(`window://moved`、`window://resized`、`window://focus-changed`、`window://close-requested`),并向所有窗口广播 `window://destroyed` 与 `shell://theme-changed`。关闭是协作式的:标题栏的关闭请求被作为事件投递,Web 端通过调用 `core:window|close` 来确认。

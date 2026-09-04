@@ -54,6 +54,44 @@ public sealed class AvaloniaDialogService(WindowRegistry registry) : IDialogServ
         });
     }
 
+    public async ValueTask<MessageBoxResult> MessageAsync(
+        MessageBoxOptions options,
+        string windowLabel,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var owner = registry.Get(windowLabel).Window;
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var box = new MessageBoxWindow(options);
+            var result = await box.ShowDialog<MessageBoxResult>(owner);
+            // Closing via the window chrome returns default; treat it as a cancel.
+            return result ?? new MessageBoxResult(MessageBoxResultNames.Cancel);
+        });
+    }
+
+    public async ValueTask<ConfirmResult> ConfirmAsync(
+        ConfirmOptions options,
+        string windowLabel,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var owner = registry.Get(windowLabel).Window;
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var box = new MessageBoxWindow(
+                new MessageBoxOptions(
+                    options.Title,
+                    options.Content,
+                    options.Icon,
+                    MessageBoxButtonNames.OkCancel),
+                okLabel: options.OkLabel,
+                cancelLabel: options.CancelLabel);
+            var result = await box.ShowDialog<MessageBoxResult>(owner);
+            return new ConfirmResult(result?.Result == MessageBoxResultNames.Ok);
+        });
+    }
+
     private static string ToPath(IStorageItem item) =>
         item.TryGetLocalPath() ?? item.Path.ToString();
 

@@ -26,6 +26,8 @@ internal static class Program
         await ExitsAndRelaunchesThroughProcessCommands();
         await OpensShellTargetsAndReportsOsInfo();
         await OpensDialogsForRequestingWindow();
+        await ShowsMessageBoxForRequestingWindow();
+        await ConfirmsForRequestingWindow();
         await DeniesCommandsOutsideCapability();
         RegistersWebviewCommandsWithPermissions();
         await NavigatesOwnWebviewWithoutOtherPermission();
@@ -277,6 +279,51 @@ internal static class Program
             new CommandContext("editor", "editor", new CapabilitySet(["plugin:dialog|open", "plugin:dialog|save"])));
         var saved = Result(saveResponse, TaruiJsonContext.Default.SaveDialogResult);
         Assert(saved.Path == "C:/tmp/notes.txt", "Dialog save results must round-trip.");
+    }
+
+    private static async Task ShowsMessageBoxForRequestingWindow()
+    {
+        var dialog = new FakeDialogService();
+        var router = BuildRouter(dialog);
+        var response = await router.InvokeAsync(
+            Request(
+                "plugin:dialog|message",
+                new MessageBoxOptions(
+                    "Save changes?",
+                    "This change cannot be undone.",
+                    MessageBoxIconNames.Warning,
+                    MessageBoxButtonNames.OkCancel),
+                TaruiJsonContext.Default.MessageBoxOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:dialog|message"])));
+
+        Assert(response.Success, "Message box must succeed.");
+        var result = Result(response, TaruiJsonContext.Default.MessageBoxResult);
+        Assert(result.Result == MessageBoxResultNames.Ok, "Message box results must round-trip.");
+        Assert(
+            dialog.WindowLabels.Contains("editor"),
+            "Message boxes must run against the requesting window.");
+        Assert(
+            dialog.Messages.Contains((MessageBoxIconNames.Warning, MessageBoxButtonNames.OkCancel)),
+            "Message box options must round-trip.");
+    }
+
+    private static async Task ConfirmsForRequestingWindow()
+    {
+        var dialog = new FakeDialogService();
+        var router = BuildRouter(dialog);
+        var response = await router.InvokeAsync(
+            Request(
+                "plugin:dialog|confirm",
+                new ConfirmOptions("Delete file?", "This action cannot be undone."),
+                TaruiJsonContext.Default.ConfirmOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:dialog|confirm"])));
+
+        Assert(response.Success, "Confirm must succeed.");
+        var result = Result(response, TaruiJsonContext.Default.ConfirmResult);
+        Assert(result.Confirmed, "Confirm results must round-trip.");
+        Assert(
+            dialog.Confirms.Contains("Delete file?|question|OK|Cancel"),
+            "Confirm options must round-trip with their defaults.");
     }
 
     private static async Task DeniesCommandsOutsideCapability()

@@ -79,7 +79,7 @@ Reserved native events are delivered to a window only when its capability `event
 | Core | `core:app|get-info` |
 | Window | `core:window|create/close/minimize/maximize/unmaximize/toggle-maximize/hide/show/focus/center/set-title/set-size/set-position/set-min-size/set-max-size/set-always-on-top/set-resizable/set-decorations/set-fullscreen/get-state/current-monitor/primary-monitor/monitors/list` |
 | Event | `core:event|emit` |
-| Dialog | `plugin:dialog|open`, `plugin:dialog|save` |
+| Dialog | `plugin:dialog|open`, `plugin:dialog|save`, `plugin:dialog|message`, `plugin:dialog|confirm` |
 | System | `core:path|resolve`, `core:os|info`, `core:process|exit`, `core:process|relaunch`, `core:shell|open`, `core:clipboard|read-text`, `core:clipboard|write-text` |
 
 Adding a command means: DTO record in `Tarui.Contracts` (plus `TaruiJsonContext` registration), a handler wired in the plugin class's `ConfigureCommands(CommandRouterBuilder)`, a `commands.Add` entry with its permission, and the permission listed in the target capability file.

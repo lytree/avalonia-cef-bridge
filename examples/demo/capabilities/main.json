@@ -91,6 +91,8 @@
     "plugin:webview|get-state-other-webview",
     "plugin:dialog|open",
     "plugin:dialog|save",
+    "plugin:dialog|message",
+    "plugin:dialog|confirm",
     "plugin:menu|set-window-menu",
     "plugin:menu|update-item",
     "plugin:menu|remove-window-menu",

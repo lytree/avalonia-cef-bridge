@@ -32,6 +32,8 @@
     "core:window|set-fullscreen",
     "core:window|get-state",
     "core:window|list",
+    "plugin:dialog|message",
+    "plugin:dialog|confirm",
     "plugin:webview|navigate",
     "plugin:webview|get-state",
     "plugin:webview|list"
