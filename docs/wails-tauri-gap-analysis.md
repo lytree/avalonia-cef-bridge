@@ -59,8 +59,8 @@
 | 自定义协议 + CSP | ✅ | `tarui://localhost`、CSP、SPA fallback |
 | 导航/下载策略 | ✅ | 策略引擎 + capability 双重授权，语义等价 |
 | 事件 emit/listen（含 once、定向） | ✅ | 等价且多一层接收权限 |
-| DevTools 开关 | ❌ | CEF 本身支持，未暴露 API（仅 URL 策略黑名单中提及） |
-| Cookie 管理 | ❌ | `CefGlue.Core` 已有 `CefCookieManager` 封装，未暴露为插件 |
+| DevTools 开关 | ✅ | `plugin:webview|devtools`（Open/Close，CEF `ShowDevTools`，权限门控 + `-other-webview`） |
+| Cookie 管理 | ✅ | `IWebViewCookieManager` + `Tarui.Plugins.Cookie`（list/set/remove/flush，CEF 全局存储；无宿主时诚实降级） |
 | webview 崩溃/渲染进程终止事件 | 🟡 | CEF 事件模型具备，未见对外投递 |
 | `eval_with_callback` | ❌ | 有 `ExecuteScriptAsync`，无回调形式 |
 | 文件关联（file association） | ❌ | 未实现 |
@@ -141,7 +141,7 @@
 | 8 | 剪贴板扩展（图片、HTML、clear） | Tauri clipboard-manager | Avalonia/CEF 均可承载 |
 | 9 | fs watch 目录监听 | Tauri fs | ✅ 已完成（`plugin:fs|watch`/`unwatch`：`FileSystemWatcher` + `fs://watch-change` 定向事件） |
 | 10 | Cookie 管理 API | CEF 原生 | ✅ 已完成（`plugin:cookie|list|set|remove|flush`：`CefGlueCookieStore` 组件 + `Tarui.Plugins.Cookie`，无宿主时可读降级） |
-| 11 | DevTools 开关 | 双方均有 | CEF `ShowDevTools`，需权限门控 |
+| 11 | DevTools 开关 | 双方均有 | ✅ 已完成（`plugin:webview|devtools`：CEF `ShowDevTools/CloseDevTools`，webview 权限门控 + `-other-webview` 变体） |
 | 12 | 窗口增强：setIcon、setTheme、transparent/acrylic、modal、父子窗口 | Tauri window / Wails v3 | Avalonia 原语均支持，逐项封装 |
 | 13 | Positioner（托盘图标旁定位等预设位置） | Tauri positioner / Wails tray attach | 托盘应用标准场景 |
 | 14 | macOS/Linux 平台补齐（notification、global-shortcut、autostart、deep-link 真机验收） | 双方均跨平台 | 🟡 进展：autostart 已三平台落地；`core:platform|capabilities` 能力矩阵已暴露；notification / global-shortcut / macOS deep-link 仍待真机验收 |
@@ -185,7 +185,7 @@
 3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——✅ 已完成（`plugin:menu|show-context-menu` + `plugin:dialog|ask`）。
 4. **Updater apply + 打包分发**（P0-5/6）——✅ 已完成（apply 落地 MSIX 安装 + 状态事件；打包分发为现有 `tarui build` zip/MSIX/签名 latest.json，重启由调用方衔接 process relaunch，与 OIDC 发布工作流衔接）。
 5. **平台补齐（macOS/Linux）**——🟡 进展：autostart 已三平台落地，`core:platform|capabilities` 能力矩阵已暴露；notification / global-shortcut / macOS deep-link 需 macOS/Linux 真机验收后补齐。
-6. **P2 项按产品需求排期**（Cookie API、DevTools 开关、剪贴板扩展、结构化 CLI 解析等）——Upload（multipart）、WebView 运行时配置（UserAgent/Proxy）、fs watch 与 Cookie API 已落地。
+6. **P2 项按产品需求排期**（Cookie API、DevTools 开关、剪贴板扩展、结构化 CLI 解析等）——Upload（multipart）、WebView 运行时配置（UserAgent/Proxy）、fs watch、Cookie API 与 DevTools 开关已落地。
 
 每项仍须遵循既有模板：`Contracts DTO → 显式插件注册 → Shell/平台实现 → Capability 授权 → @lytree/api 模块 → 控制台式自测试 → 文档同步`。
 

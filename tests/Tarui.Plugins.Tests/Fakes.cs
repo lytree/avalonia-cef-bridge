@@ -156,6 +156,12 @@ internal sealed class FakeWebviewService : IWebviewService
         Calls.Add("list");
         return ValueTask.FromResult(Labels);
     }
+
+    public ValueTask<Unit> SetDevToolsAsync(string webviewLabel, bool open, CancellationToken cancellationToken)
+    {
+        Calls.Add($"devtools|{webviewLabel}|{(open ? "open" : "close")}");
+        return ValueTask.FromResult(new Unit());
+    }
 }
 
 internal sealed class FakeEventSender : IEventSender

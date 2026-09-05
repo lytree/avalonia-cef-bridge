@@ -1042,6 +1042,13 @@ internal static class Program
             Source = source;
         }
 
+        public void SetDevTools(bool open)
+        {
+            DevToolsCalls.Add(open);
+        }
+
+        public List<bool> DevToolsCalls { get; } = new();
+
         public ValueTask ExecuteScriptAsync(string script, CancellationToken cancellationToken = default)
         {
             ExecutedScripts.Add(script);

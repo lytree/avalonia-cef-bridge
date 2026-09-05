@@ -3,6 +3,7 @@ import { getAppInfo } from '@lytree/api/app'
 import type { AppInfo } from '@lytree/api/app'
 import { getCurrentWindow } from '@lytree/api/window'
 import type { WindowState } from '@lytree/api/window'
+import { Webview } from '@lytree/api/webview'
 import { emit, on } from '@lytree/api/event'
 import { ask } from '@lytree/api/dialog'
 import { showContextMenu } from '@lytree/api/menu'
@@ -614,6 +615,35 @@ function App() {
         )}
         <p className="muted">
           经浏览器全局 Cookie 存储（CEF）。宿主无 Cookie 存储时诚实降级并报告原因，而不是伪造空列表。
+        </p>
+      </section>
+
+      <section>
+        <h2>WebView DevTools</h2>
+        <div className="row">
+          <button
+            onClick={() =>
+              Webview.getCurrent()
+                .openDevtools()
+                .then(() => pushLog({ kind: 'ok', text: 'webview.openDevtools() -> ok' }))
+                .catch(err => pushLog({ kind: 'err', text: `webview.openDevtools: ${String(err)}` }))
+            }
+          >
+            打开 DevTools
+          </button>
+          <button
+            onClick={() =>
+              Webview.getCurrent()
+                .closeDevtools()
+                .then(() => pushLog({ kind: 'ok', text: 'webview.closeDevtools() -> ok' }))
+                .catch(err => pushLog({ kind: 'err', text: `webview.closeDevtools: ${String(err)}` }))
+            }
+          >
+            关闭 DevTools
+          </button>
+        </div>
+        <p className="muted">
+          经 <code>plugin:webview|devtools</code> 门控；打开附着到浏览器独立的 DevTools 原生窗口，无需配置即隔离于应用页面。
         </p>
       </section>
 

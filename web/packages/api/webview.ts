@@ -51,6 +51,16 @@ export class Webview {
     return invoke<WebviewState>('plugin:webview|get-state', this.target())
   }
 
+  /** Opens the browser developer tools for this webview. */
+  async openDevtools(): Promise<void> {
+    await invoke('plugin:webview|devtools', { open: true, ...this.target() })
+  }
+
+  /** Closes the browser developer tools for this webview if they are open. */
+  async closeDevtools(): Promise<void> {
+    await invoke('plugin:webview|devtools', { open: false, ...this.target() })
+  }
+
   /** Fires for download requests allowed by the host policy and authorized for this webview. */
   onDownloadRequested(handler: (request: DownloadRequestEvent) => void): Unlisten {
     return listen<DownloadRequestEvent>(DOWNLOAD_REQUESTED_EVENT, event => handler(event.payload))

@@ -102,6 +102,32 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
         });
     }
 
+    /// <summary>Opens the browser developer tools in a detached native window.</summary>
+    public void OpenDevTools() => DevTools(true);
+
+    /// <summary>Closes the browser developer tools if they are currently open.</summary>
+    public void CloseDevTools() => DevTools(false);
+
+    private void DevTools(bool open)
+    {
+        ThrowIfDisposed();
+        InvokeOnUiThread(() =>
+        {
+            ThrowIfDisposed();
+            if (_browser.IsBrowserInitialized)
+            {
+                if (open)
+                {
+                    _browser.ShowDeveloperTools();
+                }
+                else
+                {
+                    _browser.CloseDeveloperTools();
+                }
+            }
+        });
+    }
+
     public void ExecuteScript(string script, string? sourceUrl = null, int line = 1)
     {
         ThrowIfDisposed();

@@ -28,6 +28,13 @@ public interface ITaruiWebView : IDisposable
     void Navigate(Uri source);
 
     /// <summary>
+    /// Opens or closes the browser's developer tools for this web view. Opening attaches to the
+    /// underlying browser's devtools window; closing detaches an already-open instance. A web view
+    /// whose browser has not been initialized yet no-ops until the surface is ready.
+    /// </summary>
+    void SetDevTools(bool open);
+
+    /// <summary>
     /// Evaluates <paramref name="script"/> in the renderer's main frame. The current implementation
     /// does not return a value because the bundled CEF fork's <c>ExecuteJavaScript</c> surface is
     /// fire-and-forget; callers should treat this as a one-way injection. A future revision can swap

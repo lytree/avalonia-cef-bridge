@@ -9,7 +9,8 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
     private static readonly string[] OtherWebviewPermissions =
     [
         "plugin:webview|navigate",
-        "plugin:webview|get-state"
+        "plugin:webview|get-state",
+        "plugin:webview|devtools"
     ];
 
     public void ConfigureCommands(CommandRouterBuilder commands)
@@ -29,6 +30,13 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             TaruiJsonContext.Default.WebviewStateInfo,
             handlers.GetStateAsync,
             "plugin:webview|get-state");
+
+        commands.Add(
+            "plugin:webview|devtools",
+            TaruiJsonContext.Default.WebviewDevToolsOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.SetDevToolsAsync,
+            "plugin:webview|devtools");
 
         commands.Add(
             "plugin:webview|list",
@@ -60,6 +68,13 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.GetStateAsync(Resolve(options.Label, context, "plugin:webview|get-state"), cancellationToken);
+
+        [TaruiCommand("plugin:webview|devtools")]
+        public ValueTask<Unit> SetDevToolsAsync(
+            WebviewDevToolsOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.SetDevToolsAsync(Resolve(options.Label, context, "plugin:webview|devtools"), options.Open, cancellationToken);
 
         [TaruiCommand("plugin:webview|list")]
         public async ValueTask<WebviewLabels> ListAsync(

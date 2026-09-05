@@ -35,6 +35,7 @@ internal static class Program
         await NavigatesOwnWebviewWithoutOtherPermission();
         await DeniesOtherWebviewWithoutPermission();
         await AllowsOtherWebviewWithPermission();
+        await TogglesDevToolsForOwnAndOtherWebview();
         await ReturnsWebviewStateAndLabels();
         ResolvesCorePluginThroughServiceCollection();
         ResolvesWindowPluginThroughServiceCollection();
@@ -389,6 +390,7 @@ internal static class Program
         {
             "plugin:webview|navigate",
             "plugin:webview|get-state",
+            "plugin:webview|devtools",
             "plugin:webview|list",
         };
         var router = builder.Build();
@@ -400,7 +402,8 @@ internal static class Program
             "Every webview command must register its permission.");
         Assert(
             builder.RegisteredPermissions.Contains("plugin:webview|navigate-other-webview") &&
-            builder.RegisteredPermissions.Contains("plugin:webview|get-state-other-webview"),
+            builder.RegisteredPermissions.Contains("plugin:webview|get-state-other-webview") &&
+            builder.RegisteredPermissions.Contains("plugin:webview|devtools-other-webview"),
             "The other-webview permission variants must be registered.");
     }
 
@@ -454,6 +457,41 @@ internal static class Program
         Assert(
             service.Calls.Contains("get-state|main"),
             "The target webview label must be passed to the service.");
+    }
+
+    private static async Task TogglesDevToolsForOwnAndOtherWebview()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+
+        var own = await router.InvokeAsync(
+            Request(
+                "plugin:webview|devtools",
+                new WebviewDevToolsOptions(Open: true),
+                TaruiJsonContext.Default.WebviewDevToolsOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|devtools"])));
+        Assert(own.Success, "Opening devtools on the caller's own webview must succeed.");
+        Assert(service.Calls.Contains("devtools|editor|open"), "The open state must reach the service.");
+
+        var other = await router.InvokeAsync(
+            Request(
+                "plugin:webview|devtools",
+                new WebviewDevToolsOptions(Open: false, Label: "main"),
+                TaruiJsonContext.Default.WebviewDevToolsOptions),
+            new CommandContext(
+                "editor",
+                "editor",
+                new CapabilitySet(["plugin:webview|devtools", "plugin:webview|devtools-other-webview"])));
+        Assert(other.Success, "Closing devtools on another webview requires the -other-webview permission.");
+        Assert(service.Calls.Contains("devtools|main|close"), "The close state must reach the target webview.");
+
+        var denied = await router.InvokeAsync(
+            Request(
+                "plugin:webview|devtools",
+                new WebviewDevToolsOptions(Open: true, Label: "main"),
+                TaruiJsonContext.Default.WebviewDevToolsOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|devtools"])));
+        Assert(!denied.Success, "Addressing another webview without the -other-webview permission must fail.");
     }
 
     private static async Task ReturnsWebviewStateAndLabels()

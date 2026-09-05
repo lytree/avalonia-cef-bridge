@@ -89,6 +89,7 @@
     "core:window|monitors-other-window",
     "plugin:webview|navigate",
     "plugin:webview|get-state",
+    "plugin:webview|devtools",
     "plugin:webview|list",
     "plugin:webview|navigate-other-webview",
     "plugin:webview|get-state-other-webview",

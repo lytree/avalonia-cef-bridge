@@ -6,6 +6,9 @@ public sealed record WebviewLabelOptions(string? Label = null);
 /// <summary>Navigates a web view to a resolved, same-origin URL.</summary>
 public sealed record WebviewNavigateOptions(string Url, string? Label = null);
 
+/// <summary>Opens (<see cref="Open"/> = true) or closes the browser developer tools of a web view.</summary>
+public sealed record WebviewDevToolsOptions(bool Open = true, string? Label = null);
+
 /// <summary>The observable state of a web view and its host window.</summary>
 public sealed record WebviewStateInfo(
     string Label,

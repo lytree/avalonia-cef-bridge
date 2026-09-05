@@ -50,6 +50,19 @@ public sealed class AvaloniaWebviewService(WindowRegistry registry, TaruiAppOrig
         return ValueTask.FromResult(registry.Labels.ToArray());
     }
 
+    public ValueTask<Unit> SetDevToolsAsync(string webviewLabel, bool open, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var entry = registry.Get(webviewLabel);
+            var session = entry.Webview
+                ?? throw new InvalidOperationException($"No web view session is mounted for '{webviewLabel}'.");
+            session.WebView.SetDevTools(open);
+        }).GetTask().GetAwaiter().GetResult();
+        return ValueTask.FromResult(new Unit());
+    }
+
     private Uri Resolve(string webviewLabel, string url)
     {
         if (string.IsNullOrWhiteSpace(url))

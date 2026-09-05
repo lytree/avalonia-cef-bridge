@@ -209,6 +209,18 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
 
     public void Navigate(Uri source) => _component.Navigate(source);
 
+    public void SetDevTools(bool open)
+    {
+        if (open)
+        {
+            _component.OpenDevTools();
+        }
+        else
+        {
+            _component.CloseDevTools();
+        }
+    }
+
     public async ValueTask ExecuteScriptAsync(
         string script,
         CancellationToken cancellationToken = default)

@@ -39,6 +39,8 @@
 - **Cookie 管理**：`plugin:cookie|list|set|remove|flush`（`src/plugins/Tarui.Plugins.Cookie`）——`IWebViewCookieManager`
   抽象 + `CefGlueCookieStore` 组件（CEF 全局 cookie 存储）；无浏览器宿主时各命令诚实降级并说明原因，
   前端经 `@lytree/api/cookie` 调用。
+- **DevTools 开关**：`plugin:webview|devtools` 打开/关闭浏览器开发者工具（CEF `ShowDevTools/CloseDevTools`），
+  经 webview 权限门控（含 `-other-webview` 变体），前端经 `@lytree/api/webview` 的 `openDevtools/closeDevtools` 调用。
 
 逐项能力与安装/打包细节见 [docs/wails-tauri-gap-analysis.md](docs/wails-tauri-gap-analysis.md) 与
 [examples/demo](examples/demo)。

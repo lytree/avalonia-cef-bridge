@@ -14,5 +14,7 @@ public interface IWebviewService
 
     ValueTask<WebviewStateInfo> GetStateAsync(string webviewLabel, CancellationToken cancellationToken);
 
+    ValueTask<Unit> SetDevToolsAsync(string webviewLabel, bool open, CancellationToken cancellationToken);
+
     ValueTask<string[]> ListAsync(CancellationToken cancellationToken);
 }
