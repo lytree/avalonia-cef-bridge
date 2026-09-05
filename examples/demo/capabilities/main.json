@@ -63,6 +63,8 @@
     "core:window|set-min-size",
     "core:window|set-max-size",
     "core:window|set-always-on-top",
+    "core:window|set-icon",
+    "core:window|set-theme",
     "core:window|set-resizable",
     "core:window|set-decorations",
     "core:window|set-fullscreen",

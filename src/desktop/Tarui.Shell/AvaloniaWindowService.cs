@@ -1,4 +1,4 @@
-﻿﻿using Avalonia;
+﻿using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Platform;
 using Avalonia.Styling;
@@ -121,6 +121,33 @@ public sealed class AvaloniaWindowService(
 
     public ValueTask<Unit> SetAlwaysOnTopAsync(string label, bool value, CancellationToken cancellationToken) =>
         RunWindowActionAsync(label, window => window.Topmost = value, cancellationToken);
+
+    public ValueTask<Unit> SetIconAsync(string label, byte[]? png, CancellationToken cancellationToken) =>
+        RunWindowActionAsync(
+            label,
+            window =>
+            {
+                if (png is null || png.Length == 0)
+                {
+                    window.Icon = null;
+                    return;
+                }
+
+                using var stream = new MemoryStream(png);
+                window.Icon = new WindowIcon(stream);
+            },
+            cancellationToken);
+
+    public ValueTask<Unit> SetThemeAsync(string label, string? theme, CancellationToken cancellationToken) =>
+        RunWindowActionAsync(
+            label,
+            window => window.RequestedThemeVariant = theme switch
+            {
+                "dark" => ThemeVariant.Dark,
+                "light" => ThemeVariant.Light,
+                _ => null,
+            },
+            cancellationToken);
 
     public ValueTask<Unit> SetResizableAsync(string label, bool value, CancellationToken cancellationToken) =>
         RunWindowActionAsync(label, window => window.CanResize = value, cancellationToken);

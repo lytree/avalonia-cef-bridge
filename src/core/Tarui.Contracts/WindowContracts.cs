@@ -68,6 +68,13 @@ public sealed record SetExtentOptions(double? Width, double? Height, string? Lab
 
 public sealed record SetFlagOptions(bool Value, string? Label = null);
 
+/// <summary>Sets the window icon from PNG bytes, or clears it when <see cref="Png"/> is null.</summary>
+public sealed record SetIconOptions(byte[]? Png = null, string? Label = null);
+
+/// <summary>Sets the window theme variant. <see cref="Theme"/> is <c>system</c>/<c>light</c>/<c>dark</c>,
+/// defaulting to <c>system</c>.</summary>
+public sealed record SetThemeOptions(string? Theme = "system", string? Label = null);
+
 public sealed record WindowLabels(string[] Labels);
 
 public sealed record EventEmitOptions(

@@ -188,6 +188,19 @@ export class Window {
     await invoke('core:window|set-always-on-top', { value, ...this.target() })
   }
 
+  /**
+   * Sets the window icon from PNG bytes, or clears it when `png` is null.
+   * The PNG is base64-encoded for the native bridge.
+   */
+  async setIcon(png: Uint8Array | null): Promise<void> {
+    await invoke('core:window|set-icon', { png: png === null ? undefined : toBase64(png), ...this.target() })
+  }
+
+  /** Sets the window theme variant: 'system' | 'light' | 'dark'. */
+  async setTheme(theme: 'system' | 'light' | 'dark'): Promise<void> {
+    await invoke('core:window|set-theme', { theme, ...this.target() })
+  }
+
   async setResizable(value: boolean): Promise<void> {
     await invoke('core:window|set-resizable', { value, ...this.target() })
   }
@@ -275,4 +288,12 @@ export class Window {
 /** Shorthand for {@link Window.getCurrent}. */
 export function getCurrentWindow(): Window {
   return Window.getCurrent()
+}
+
+function toBase64(bytes: Uint8Array): string {
+  let binary = ''
+  for (const value of bytes) {
+    binary += String.fromCharCode(value)
+  }
+  return btoa(binary)
 }

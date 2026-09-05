@@ -97,6 +97,8 @@ public sealed record StreamEchoArgs(string? Channel, int Count);
 [JsonSerializable(typeof(SetPositionOptions))]
 [JsonSerializable(typeof(SetExtentOptions))]
 [JsonSerializable(typeof(SetFlagOptions))]
+[JsonSerializable(typeof(SetIconOptions))]
+[JsonSerializable(typeof(SetThemeOptions))]
 [JsonSerializable(typeof(WindowLabels))]
 [JsonSerializable(typeof(EventEmitOptions))]
 [JsonSerializable(typeof(PathResolveOptions))]

@@ -45,6 +45,8 @@
   前端经 `@lytree/api/clipboard` 的 `readHtml/writeHtml/readImage/writeImage` 调用。
 - **结构化 CLI 解析**：`core:cli|parse` 按声明 schema 解析 `--long`/`-x` 选项、位置参数（flag/文本/多值/数字类型、
   必需校验，未知选项与类型错误诚实失败），前端经 `@lytree/api/cli` 的 `parseCliArgs/getCliMatches` 调用。
+- **窗口图标与主题**：`core:window|set-icon`（PNG 字节，含清除）与 `set-theme`（system/light/dark）——
+  前端经 `@lytree/api/window` 的 `setIcon/setTheme` 调用。
 
 逐项能力与安装/打包细节见 [docs/wails-tauri-gap-analysis.md](docs/wails-tauri-gap-analysis.md) 与
 [examples/demo](examples/demo)。

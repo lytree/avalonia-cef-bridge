@@ -71,6 +71,12 @@ internal sealed class FakeWindowService : IWindowService
     public ValueTask<Unit> SetAlwaysOnTopAsync(string label, bool value, CancellationToken cancellationToken) =>
         RecordUnit($"set-always-on-top|{label}|{value}");
 
+    public ValueTask<Unit> SetIconAsync(string label, byte[]? png, CancellationToken cancellationToken) =>
+        RecordUnit($"set-icon|{label}|{(png is null ? "clear" : $"png:{png.Length}")}");
+
+    public ValueTask<Unit> SetThemeAsync(string label, string? theme, CancellationToken cancellationToken) =>
+        RecordUnit($"set-theme|{label}|{theme ?? "system"}");
+
     public ValueTask<Unit> SetResizableAsync(string label, bool value, CancellationToken cancellationToken) =>
         RecordUnit($"set-resizable|{label}|{value}");
 

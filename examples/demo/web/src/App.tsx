@@ -525,6 +525,16 @@ function App() {
           <button onClick={() => getCurrentWindow().toggleMaximize().then(refreshWindow)}>
             最大化切换
           </button>
+          <button
+            onClick={() =>
+              getCurrentWindow()
+                .setTheme(winState?.theme === 'dark' ? 'light' : 'dark')
+                .then(refreshWindow)
+                .catch(err => pushLog({ kind: 'err', text: `window.setTheme: ${String(err)}` }))
+            }
+          >
+            切换主题（明/暗）
+          </button>
         </div>
         <p className="muted">拖动或缩放窗口，事件日志会实时记录 moved / resized / focus 事件。</p>
       </section>

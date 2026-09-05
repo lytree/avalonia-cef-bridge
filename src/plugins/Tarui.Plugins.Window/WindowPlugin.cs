@@ -149,6 +149,20 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             "core:window|set-always-on-top");
 
         commands.Add(
+            "core:window|set-icon",
+            TaruiJsonContext.Default.SetIconOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.SetIconAsync,
+            "core:window|set-icon");
+
+        commands.Add(
+            "core:window|set-theme",
+            TaruiJsonContext.Default.SetThemeOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.SetThemeAsync,
+            "core:window|set-theme");
+
+        commands.Add(
             "core:window|set-resizable",
             TaruiJsonContext.Default.SetFlagOptions,
             TaruiJsonContext.Default.Unit,
@@ -355,6 +369,20 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.SetAlwaysOnTopAsync(Resolve(options.Label, context, "core:window|set-always-on-top"), options.Value, cancellationToken);
+
+        [TaruiCommand("core:window|set-icon")]
+        public ValueTask<Unit> SetIconAsync(
+            SetIconOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.SetIconAsync(Resolve(options.Label, context, "core:window|set-icon"), options.Png, cancellationToken);
+
+        [TaruiCommand("core:window|set-theme")]
+        public ValueTask<Unit> SetThemeAsync(
+            SetThemeOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.SetThemeAsync(Resolve(options.Label, context, "core:window|set-theme"), options.Theme, cancellationToken);
 
         [TaruiCommand("core:window|set-resizable")]
         public ValueTask<Unit> SetResizableAsync(

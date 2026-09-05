@@ -55,7 +55,7 @@
 | Channel 流式数据 | ✅ | 端到端流式协议已接线；fs 大文件流式读/分片写与 HTTP 流式响应已解锁 |
 | 多窗口 | ✅ | create/getAll/by label，能力对齐 |
 | 单窗口多 webview | ❌ | Tarui 为窗口↔webview 一对一模型 |
-| 窗口 API 全集 | 🟡 | 缺 setIcon、setTheme、透明/acrylic 模糊、modal 对话框窗口、父子窗口关联 |
+| 窗口 API 全集 | 🟡 | 已补齐 setIcon/setTheme；缺透明/acrylic 模糊、modal 对话框窗口、父子窗口关联 |
 | 自定义协议 + CSP | ✅ | `tarui://localhost`、CSP、SPA fallback |
 | 导航/下载策略 | ✅ | 策略引擎 + capability 双重授权，语义等价 |
 | 事件 emit/listen（含 once、定向） | ✅ | 等价且多一层接收权限 |
@@ -138,11 +138,11 @@
 | # | 缺口 | 对标 | 说明 |
 | --- | --- | --- | --- |
 | 7 | Dialog `ask`（Yes/No 语义） | Tauri dialog | ✅ 已完成（`plugin:dialog|ask`，Yes/No 三态，显式 cancel 可选） |
-| 8 | 剪贴板扩展（图片、HTML、clear） | Tauri clipboard-manager | Avalonia/CEF 均可承载 |
+| 8 | 剪贴板扩展（图片、HTML） | Tauri clipboard-manager | ✅ 已完成（`core:clipboard|read/write-html`、`read/write-image`；HTML 含纯文本回退，图片以 PNG 字节承载） |
 | 9 | fs watch 目录监听 | Tauri fs | ✅ 已完成（`plugin:fs|watch`/`unwatch`：`FileSystemWatcher` + `fs://watch-change` 定向事件） |
 | 10 | Cookie 管理 API | CEF 原生 | ✅ 已完成（`plugin:cookie|list|set|remove|flush`：`CefGlueCookieStore` 组件 + `Tarui.Plugins.Cookie`，无宿主时可读降级） |
 | 11 | DevTools 开关 | 双方均有 | ✅ 已完成（`plugin:webview|devtools`：CEF `ShowDevTools/CloseDevTools`，webview 权限门控 + `-other-webview` 变体） |
-| 12 | 窗口增强：setIcon、setTheme、transparent/acrylic、modal、父子窗口 | Tauri window / Wails v3 | Avalonia 原语均支持，逐项封装 |
+| 12 | 窗口增强：setIcon、setTheme | Tauri window / Wails v3 | 🟡 进展：`core:window|set-icon`、`set-theme` 已落地；transparent/acrylic、modal、父子窗口待后续 |
 | 13 | Positioner（托盘图标旁定位等预设位置） | Tauri positioner / Wails tray attach | 托盘应用标准场景 |
 | 14 | macOS/Linux 平台补齐（notification、global-shortcut、autostart、deep-link 真机验收） | 双方均跨平台 | 🟡 进展：autostart 已三平台落地；`core:platform|capabilities` 能力矩阵已暴露；notification / global-shortcut / macOS deep-link 仍待真机验收 |
 | 15 | 结构化 CLI 参数解析插件 | Tauri cli | ✅ 已完成（`core:cli|parse`：声明式 `--long`/`-x` 选项 + 位置参数，flag/文本/多值/数字类型、必需校验，未知或类型错误诚实失败） |

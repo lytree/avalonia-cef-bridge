@@ -37,6 +37,10 @@ public interface IWindowService
 
     ValueTask<Unit> SetAlwaysOnTopAsync(string label, bool value, CancellationToken cancellationToken);
 
+    ValueTask<Unit> SetIconAsync(string label, byte[]? png, CancellationToken cancellationToken);
+
+    ValueTask<Unit> SetThemeAsync(string label, string? theme, CancellationToken cancellationToken);
+
     ValueTask<Unit> SetResizableAsync(string label, bool value, CancellationToken cancellationToken);
 
     ValueTask<Unit> SetDecorationsAsync(string label, bool value, CancellationToken cancellationToken);

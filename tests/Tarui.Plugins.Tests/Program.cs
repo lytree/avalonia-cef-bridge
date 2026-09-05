@@ -19,6 +19,7 @@ internal static class Program
         await RegistersWindowCommandsWithPermissions();
         await DispatchesWindowCreateWithOptions();
         await FallsBackToContextWindowLabel();
+        await SetsWindowIconAndTheme();
         await ReturnsWindowStateAndLabels();
         await EmitsEventsThroughEventPlugin();
         await ResolvesPathsThroughSystemPlugin();
@@ -73,6 +74,8 @@ internal static class Program
             "core:window|set-min-size",
             "core:window|set-max-size",
             "core:window|set-always-on-top",
+            "core:window|set-icon",
+            "core:window|set-theme",
             "core:window|set-resizable",
             "core:window|set-decorations",
             "core:window|set-fullscreen",
@@ -120,6 +123,34 @@ internal static class Program
         Assert(
             service.Calls.Contains("minimize|editor"),
             "A missing label must fall back to the context window label.");
+    }
+
+    private static async Task SetsWindowIconAndTheme()
+    {
+        var service = new FakeWindowService();
+        var router = BuildRouter(service);
+
+        var iconResponse = await router.InvokeAsync(
+            Request(
+                "core:window|set-icon",
+                new SetIconOptions([137, 80]),
+                TaruiJsonContext.Default.SetIconOptions),
+            AllowAll());
+        Assert(iconResponse.Success, "Setting a window icon must succeed.");
+        Assert(
+            service.Calls.Contains("set-icon|main|png:2"),
+            "The icon bytes must reach the service with the caller window label.");
+
+        var themeResponse = await router.InvokeAsync(
+            Request(
+                "core:window|set-theme",
+                new SetThemeOptions("dark"),
+                TaruiJsonContext.Default.SetThemeOptions),
+            AllowAll());
+        Assert(themeResponse.Success, "Setting the window theme must succeed.");
+        Assert(
+            service.Calls.Contains("set-theme|main|dark"),
+            "The theme must reach the service with the caller window label.");
     }
 
     private static async Task ReturnsWindowStateAndLabels()
