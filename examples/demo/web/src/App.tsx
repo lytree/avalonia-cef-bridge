@@ -5,6 +5,7 @@ import { getCurrentWindow } from '@lytree/api/window'
 import type { WindowState } from '@lytree/api/window'
 import { Webview } from '@lytree/api/webview'
 import { emit, on } from '@lytree/api/event'
+import { readHtml, writeHtml } from '@lytree/api/clipboard'
 import { ask } from '@lytree/api/dialog'
 import { showContextMenu } from '@lytree/api/menu'
 import { fs, readFileStream, writeFileChunked } from '@lytree/api/fs'
@@ -537,6 +538,36 @@ function App() {
           <button onClick={doStoreRemove}>remove</button>
         </div>
         <p className="muted">当前键：{storeKeys.length ? storeKeys.join(', ') : '（空 store appData/settings.json）'}</p>
+      </section>
+
+      <section>
+        <h2>剪贴板（HTML / 图片）</h2>
+        <div className="row">
+          <button
+            onClick={() =>
+              writeHtml('<b>Tarui 富文本</b>', 'Tarui 纯文本')
+                .then(() => pushLog({ kind: 'ok', text: 'clipboard.writeHtml() -> ok' }))
+                .catch(err => pushLog({ kind: 'err', text: `clipboard.writeHtml: ${String(err)}` }))
+            }
+          >
+            写 HTML + 文本
+          </button>
+          <button
+            onClick={() =>
+              readHtml()
+                .then(result => pushLog({
+                  kind: result.available ? 'ok' : 'info',
+                  text: result.available ? `clipboard.readHtml() -> ${result.html}` : 'clipboard.readHtml(): 剪贴板无 HTML',
+                }))
+                .catch(err => pushLog({ kind: 'err', text: `clipboard.readHtml: ${String(err)}` }))
+            }
+          >
+            读 HTML
+          </button>
+        </div>
+        <p className="muted">
+          写入时同时携带纯文本回退；读取在无 HTML 时诚实报告不可用，而非伪造空串。图片读写以 PNG 字节承载。
+        </p>
       </section>
 
       <section>

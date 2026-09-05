@@ -71,7 +71,7 @@
 | Tauri v2 官方能力 | Tarui 状态 | 说明 |
 | --- | --- | --- |
 | Autostart | ✅ (Windows/macOS/Linux) | Windows registry / macOS LaunchAgents plist / Linux `.desktop` 均已实现；平台感知 DI 选择 |
-| Clipboard Manager | 🟡 | 仅 readText/writeText；缺图片、HTML、文件列表、clear |
+| Clipboard Manager | ✅ | readText/writeText + readHtml/writeHtml（含纯文本回退）+ readImage/writeImage（PNG 字节） |
 | CLI（结构化参数解析） | ❌ | 只有原始 process args |
 | Deep Linking | 🟡 | Windows 全链路；macOS delegate / Linux .desktop 未验收 |
 | Dialog | ✅ | open/save/message/confirm + ask（Yes/No 三态语义） |
@@ -111,7 +111,7 @@
 | Bindings 自动生成 | 🟡 | C# 侧 Roslyn 源生成；TS 侧手写模块（24 个），与 Wails 自动生成 JS/TS 绑定的开发体验有差距 |
 | 构建系统（wails3 build/task、打包分发） | 🟡 | `tarui dev/build` 已有；无安装包产物（NSIS/MSI）、图标/版本资源嵌入 |
 | Dialogs（message/FileDialog/OpenDirectoryDialog） | ✅ | 等价 |
-| 剪贴板 | ✅ | 文本读写等价 |
+| 剪贴板 | ✅ | 文本 + HTML（含回退纯文本）+ 图片（PNG 字节） |
 | 通知 | ✅ (Windows) | balloon 实现（Wails v3 同样基于平台通知，Tarui 载体偏旧） |
 | 全局快捷键 | ✅ (Windows) | 等价 |
 | Screen API（屏幕列表、主屏、DPI） | ✅ | 显示器信息已有 |
@@ -185,7 +185,7 @@
 3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——✅ 已完成（`plugin:menu|show-context-menu` + `plugin:dialog|ask`）。
 4. **Updater apply + 打包分发**（P0-5/6）——✅ 已完成（apply 落地 MSIX 安装 + 状态事件；打包分发为现有 `tarui build` zip/MSIX/签名 latest.json，重启由调用方衔接 process relaunch，与 OIDC 发布工作流衔接）。
 5. **平台补齐（macOS/Linux）**——🟡 进展：autostart 已三平台落地，`core:platform|capabilities` 能力矩阵已暴露；notification / global-shortcut / macOS deep-link 需 macOS/Linux 真机验收后补齐。
-6. **P2 项按产品需求排期**（Cookie API、DevTools 开关、剪贴板扩展、结构化 CLI 解析等）——Upload（multipart）、WebView 运行时配置（UserAgent/Proxy）、fs watch、Cookie API 与 DevTools 开关已落地。
+6. **P2 项按产品需求排期**（Cookie API、DevTools 开关、剪贴板扩展、结构化 CLI 解析等）——Upload（multipart）、WebView 运行时配置（UserAgent/Proxy）、fs watch、Cookie API、DevTools 开关与剪贴板扩展（HTML/图片）已落地。
 
 每项仍须遵循既有模板：`Contracts DTO → 显式插件注册 → Shell/平台实现 → Capability 授权 → @lytree/api 模块 → 控制台式自测试 → 文档同步`。
 

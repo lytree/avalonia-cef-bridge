@@ -224,12 +224,39 @@ internal sealed class FakeClipboardService : IClipboardService
 {
     public string Text { get; private set; } = string.Empty;
 
+    public string? Html { get; private set; }
+
+    public byte[]? Png { get; private set; }
+
     public ValueTask<string> ReadTextAsync(CancellationToken cancellationToken) =>
         ValueTask.FromResult(Text);
 
     public ValueTask<Unit> WriteTextAsync(string text, CancellationToken cancellationToken)
     {
         Text = text;
+        return ValueTask.FromResult(new Unit());
+    }
+
+    public ValueTask<ClipboardReadHtmlResult> ReadHtmlAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new ClipboardReadHtmlResult(Html is not null, Html));
+
+    public ValueTask<Unit> WriteHtmlAsync(string html, string? plainText, CancellationToken cancellationToken)
+    {
+        Html = html;
+        if (plainText is not null)
+        {
+            Text = plainText;
+        }
+
+        return ValueTask.FromResult(new Unit());
+    }
+
+    public ValueTask<ClipboardReadImageResult> ReadImageAsync(CancellationToken cancellationToken) =>
+        ValueTask.FromResult(new ClipboardReadImageResult(Png is not null, Png));
+
+    public ValueTask<Unit> WriteImageAsync(byte[] png, CancellationToken cancellationToken)
+    {
+        Png = png;
         return ValueTask.FromResult(new Unit());
     }
 }

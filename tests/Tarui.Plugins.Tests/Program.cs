@@ -23,6 +23,7 @@ internal static class Program
         await EmitsEventsThroughEventPlugin();
         await ResolvesPathsThroughSystemPlugin();
         await ReadsAndWritesClipboard();
+        await ReadsAndWritesClipboardHtmlAndImage();
         await ExitsAndRelaunchesThroughProcessCommands();
         await OpensShellTargetsAndReportsOsInfo();
         await ReportsPlatformCapabilities();
@@ -219,6 +220,45 @@ internal static class Program
         Assert(
             read.Text == "hello tarui",
             "Clipboard reads must return the previously written text.");
+    }
+
+    private static async Task ReadsAndWritesClipboardHtmlAndImage()
+    {
+        var services = new FakeSystemServices();
+        var router = BuildRouter(services);
+
+        var htmlResponse = await router.InvokeAsync(
+            Request(
+                "core:clipboard|write-html",
+                new ClipboardWriteHtmlOptions("<b>hi</b>", "hi"),
+                TaruiJsonContext.Default.ClipboardWriteHtmlOptions),
+            AllowAll());
+        Assert(htmlResponse.Success, "HTML clipboard writes must succeed.");
+        Assert(
+            services.Clipboard.Html == "<b>hi</b>" && services.Clipboard.Text == "hi",
+            "Writing HTML must store the HTML and the plain-text fallback.");
+
+        var htmlReadResponse = await router.InvokeAsync(
+            Request("core:clipboard|read-html", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
+            AllowAll());
+        var htmlRead = Result(htmlReadResponse, TaruiJsonContext.Default.ClipboardReadHtmlResult);
+        Assert(htmlRead.Available && htmlRead.Html == "<b>hi</b>", "Reading HTML must return what was written.");
+
+        byte[] png = [137, 80, 78, 71];
+        var imageResponse = await router.InvokeAsync(
+            Request(
+                "core:clipboard|write-image",
+                new ClipboardWriteImageOptions(png),
+                TaruiJsonContext.Default.ClipboardWriteImageOptions),
+            AllowAll());
+        Assert(imageResponse.Success, "Image clipboard writes must succeed.");
+        Assert(services.Clipboard.Png!.SequenceEqual(png), "Writing an image must reach the clipboard bytes.");
+
+        var imageReadResponse = await router.InvokeAsync(
+            Request("core:clipboard|read-image", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
+            AllowAll());
+        var imageRead = Result(imageReadResponse, TaruiJsonContext.Default.ClipboardReadImageResult);
+        Assert(imageRead.Available && imageRead.Png!.SequenceEqual(png), "Reading an image must return the PNG bytes.");
     }
 
     private static async Task ExitsAndRelaunchesThroughProcessCommands()

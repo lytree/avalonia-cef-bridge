@@ -41,6 +41,8 @@
   前端经 `@lytree/api/cookie` 调用。
 - **DevTools 开关**：`plugin:webview|devtools` 打开/关闭浏览器开发者工具（CEF `ShowDevTools/CloseDevTools`），
   经 webview 权限门控（含 `-other-webview` 变体），前端经 `@lytree/api/webview` 的 `openDevtools/closeDevtools` 调用。
+- **剪贴板扩展**：`core:clipboard|read/write-html`（含纯文本回退）与 `read/write-image`（PNG 字节）——
+  前端经 `@lytree/api/clipboard` 的 `readHtml/writeHtml/readImage/writeImage` 调用。
 
 逐项能力与安装/打包细节见 [docs/wails-tauri-gap-analysis.md](docs/wails-tauri-gap-analysis.md) 与
 [examples/demo](examples/demo)。

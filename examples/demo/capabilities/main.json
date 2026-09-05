@@ -38,6 +38,10 @@
     "core:shell|open",
     "core:clipboard|read-text",
     "core:clipboard|write-text",
+    "core:clipboard|read-html",
+    "core:clipboard|write-html",
+    "core:clipboard|read-image",
+    "core:clipboard|write-image",
     "core:channel|stream-echo",
     {
       "identifier": "core:window|create",

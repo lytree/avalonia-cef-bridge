@@ -89,7 +89,8 @@ export { open as openExternal } from './shell'
 export { shell, spawn, writeStdin as shellWriteStdin, kill as killShell } from './shell'
 export type { ShellOpenResult, ShellStreamEvent, ShellSpawnOptions, ShellSpawnResult } from './shell'
 
-export { readText, writeText } from './clipboard'
+export { readText, writeText, readHtml, writeHtml, readImage, writeImage } from './clipboard'
+export type { ClipboardHtmlReadResult, ClipboardImageReadResult } from './clipboard'
 
 export {
   fs,

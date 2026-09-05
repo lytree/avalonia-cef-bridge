@@ -70,6 +70,34 @@ public sealed class SystemPlugin(
             TaruiJsonContext.Default.Unit,
             handlers.WriteClipboardAsync,
             "core:clipboard|write-text");
+
+        commands.Add(
+            "core:clipboard|read-html",
+            TaruiJsonContext.Default.EmptyArgs,
+            TaruiJsonContext.Default.ClipboardReadHtmlResult,
+            handlers.ReadClipboardHtmlAsync,
+            "core:clipboard|read-html");
+
+        commands.Add(
+            "core:clipboard|write-html",
+            TaruiJsonContext.Default.ClipboardWriteHtmlOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.WriteClipboardHtmlAsync,
+            "core:clipboard|write-html");
+
+        commands.Add(
+            "core:clipboard|read-image",
+            TaruiJsonContext.Default.EmptyArgs,
+            TaruiJsonContext.Default.ClipboardReadImageResult,
+            handlers.ReadClipboardImageAsync,
+            "core:clipboard|read-image");
+
+        commands.Add(
+            "core:clipboard|write-image",
+            TaruiJsonContext.Default.ClipboardWriteImageOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.WriteClipboardImageAsync,
+            "core:clipboard|write-image");
     }
 
     private sealed class SystemCommands(
@@ -158,6 +186,40 @@ public sealed class SystemPlugin(
             CancellationToken cancellationToken)
         {
             await clipboardService.WriteTextAsync(options.Text, cancellationToken);
+            return new Unit();
+        }
+
+        [TaruiCommand("core:clipboard|read-html")]
+        public ValueTask<ClipboardReadHtmlResult> ReadClipboardHtmlAsync(
+            EmptyArgs options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            clipboardService.ReadHtmlAsync(cancellationToken);
+
+        [TaruiCommand("core:clipboard|write-html")]
+        public async ValueTask<Unit> WriteClipboardHtmlAsync(
+            ClipboardWriteHtmlOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken)
+        {
+            await clipboardService.WriteHtmlAsync(options.Html, options.PlainText, cancellationToken);
+            return new Unit();
+        }
+
+        [TaruiCommand("core:clipboard|read-image")]
+        public ValueTask<ClipboardReadImageResult> ReadClipboardImageAsync(
+            EmptyArgs options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            clipboardService.ReadImageAsync(cancellationToken);
+
+        [TaruiCommand("core:clipboard|write-image")]
+        public async ValueTask<Unit> WriteClipboardImageAsync(
+            ClipboardWriteImageOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken)
+        {
+            await clipboardService.WriteImageAsync(options.Png, cancellationToken);
             return new Unit();
         }
     }
