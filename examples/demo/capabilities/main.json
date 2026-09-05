@@ -298,6 +298,17 @@
         { "path": "https://api.github.com/**" }
       ]
     },
+    {
+      "identifier": "plugin:shell|spawn",
+      "allow": [
+        { "path": "cmd.exe" },
+        { "path": "ping.exe" },
+        { "path": "powershell.exe" }
+      ],
+      "deny": []
+    },
+    "plugin:shell|stdin",
+    "plugin:shell|kill",
     "plugin:updater|check",
     "plugin:updater|download"
   ]

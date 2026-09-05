@@ -13,6 +13,7 @@ using Tarui.Plugins.Menu;
 using Tarui.Plugins.Notification;
 using Tarui.Plugins.Store;
 using Tarui.Plugins.System;
+using Tarui.Plugins.Shell;
 using Tarui.Plugins.Tray;
 using Tarui.Plugins.Updater;
 using Tarui.Plugins.Webview;
@@ -70,6 +71,7 @@ internal static class Program
             .AddEventPlugin()
             .AddDialogPlugin()
             .AddSystemPlugin()
+            .AddShellPlugin()
             .AddFileSystemPlugin()
             .AddMenuPlugin()
             .AddTrayPlugin()

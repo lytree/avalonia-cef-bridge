@@ -7,6 +7,7 @@ import { emit, on } from '@lytree/api/event'
 import { fs, readFileStream, writeFileChunked } from '@lytree/api/fs'
 import { store } from '@lytree/api/store'
 import { http } from '@lytree/api/http'
+import { shell } from '@lytree/api/shell'
 import { Channel, invoke } from '@lytree/api/ipc'
 
 type StreamProgress = { step: number; total: number }
@@ -43,6 +44,8 @@ function App() {
   const [bigFileStatus, setBigFileStatus] = useState('')
   const [httpReads, setHttpReads] = useState(0)
   const [lastHttp, setLastHttp] = useState('')
+  const [shellLines, setShellLines] = useState<string[]>([])
+  const [shellRunning, setShellRunning] = useState(false)
 
   const logRef = useRef<LogEntry[]>([])
   const pushLog = (entry: Omit<LogEntry, 'at' | 'kind'> & { kind?: LogEntry['kind'] }) => {
@@ -274,6 +277,30 @@ function App() {
     }
   }
 
+  async function doShellRun() {
+    setShellRunning(true)
+    setShellLines([])
+    let text = ''
+    try {
+      const result = await shell.spawn('ping.exe', {
+        args: ['-n', '3', '127.0.0.1'],
+        onEvent: event => {
+          if (event.kind === 'stdout') {
+            text += new TextDecoder().decode(event.data)
+            setShellLines(text.split('\n').map(line => line.trimEnd()).filter(Boolean))
+          } else if (event.kind === 'terminated') {
+            pushLog({ kind: 'ok', text: `shell spawn terminated with code ${event.code}` })
+          }
+        },
+      })
+      pushLog({ kind: 'ok', text: `shell.spawn(ping.exe) -> ${result.id}` })
+    } catch (err) {
+      pushLog({ kind: 'err', text: `shell.spawn: ${String(err)}` })
+    } finally {
+      setShellRunning(false)
+    }
+  }
+
   return (
     <main className="app">
       <h1>Tarui Demo</h1>
@@ -356,6 +383,25 @@ function App() {
         {lastHttp && <p className="muted">http.fetch: {lastHttp}</p>}
         <p className="muted">
           分片写走 native 临时文件原子提交；流式读逐帧回调呈现进度；HTTP 探测受能力作用域（github API）约束。
+        </p>
+      </section>
+
+      <section>
+        <h2>Shell 子进程（作用域白名单）</h2>
+        <div className="row">
+          <button onClick={doShellRun} disabled={shellRunning}>
+            {shellRunning ? '运行中…' : 'spawn ping.exe -n 3'}
+          </button>
+        </div>
+        {shellLines.length > 0 && (
+          <pre className="muted">
+            {shellLines.map((line, index) => (
+              <div key={index}>{line}</div>
+            ))}
+          </pre>
+        )}
+        <p className="muted">
+          仅允许能力作用域内显式白名单的程序；stdout/stderr 经 Channel 逐行流式回传，退出后回调 terminated。
         </p>
       </section>
 

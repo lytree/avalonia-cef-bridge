@@ -22,6 +22,8 @@
   `write-begin|write-chunk|write-commit|write-cancel`（分片写 + 原子提交 + 窗口级清理）。
 - **HTTP 客户端**：`plugin:http|fetch`（`src/plugins/Tarui.Plugins.Http`）——URL 作用域默认拒绝、
   重定向逐跳复检、内联与流式响应双模式；前端经 `@lytree/api/http` 调用。
+- **Shell 子进程**：`plugin:shell|spawn|stdin|kill`（`src/plugins/Tarui.Plugins.Shell`）——程序白名单作用域
+  默认拒绝、stdout/stderr 经 Channel 流式回传、退出码 terminated 帧、进程树终止；前端经 `@lytree/api/shell`。
 
 逐项能力与安装/打包细节见 [docs/wails-tauri-gap-analysis.md](docs/wails-tauri-gap-analysis.md) 与
 [examples/demo](examples/demo)。
@@ -59,8 +61,9 @@ docs/                      架构与实现说明
 dotnet restore tarui.net.sln --configfile NuGet.Config
 dotnet build tarui.net.sln --no-restore
 
+dotnet run --project tests/Tarui.Http.Tests --no-build
+dotnet run --project tests/Tarui.ShellPlugin.Tests --no-build
 dotnet run --project tests/Tarui.Ipc.Tests --no-build
-dotnet run --project tests/Tarui.WebView.Tests --no-build
 dotnet run --project tests/Tarui.Shell.Tests --no-build
 dotnet run --project tests/Tarui.Plugins.Tests --no-build
 dotnet run --project tests/Tarui.Hosting.Tests --no-build

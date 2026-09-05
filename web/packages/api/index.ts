@@ -81,7 +81,8 @@ export type { PathKind } from './path'
 export { exit, relaunch } from './process'
 
 export { open as openExternal } from './shell'
-export type { ShellOpenResult } from './shell'
+export { shell, spawn, writeStdin as shellWriteStdin, kill as killShell } from './shell'
+export type { ShellOpenResult, ShellStreamEvent, ShellSpawnOptions, ShellSpawnResult } from './shell'
 
 export { readText, writeText } from './clipboard'
 

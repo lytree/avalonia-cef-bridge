@@ -8,10 +8,10 @@
 
 ## 1. 结论摘要
 
-- Tarui 已完成桌面壳层核心：无反射 IPC、多窗口、CEF 150 WebView（自定义协议/导航与下载策略/文件拖放）、Capability v2 权限模型、Channel 端到端流式 IPC（含 fs 大文件流式读写与 HTTP 流式响应）、23+1 套自测试、24 个前端 API 模块。
-- Tauri v2 桌面相关 25 个官方能力中：已对齐约 17 个（多为 Windows 验证）、部分对齐 5 个、缺失 3 个（shell 子进程、sql、stronghold、persisted-scope 等）。
+- Tarui 已完成桌面壳层核心：无反射 IPC、多窗口、CEF 150 WebView（自定义协议/导航与下载策略/文件拖放）、Capability v2 权限模型、Channel 端到端流式 IPC（含 fs 大文件流式读写与 HTTP 流式响应、Shell 子进程 stdio 流）、24+1 套自测试、24 个前端 API 模块。
+- Tauri v2 桌面相关 25 个官方能力中：已对齐约 18 个（多为 Windows 验证）、部分对齐 5 个、缺失 3 个（sql、stronghold、persisted-scope 等）。
 - Wails v3 桌面能力（多窗口/托盘/菜单/事件/对话框/拖放/frameless）基本具备等价实现；显著差距在开发体验（bindings 自动生成、可取消窗口事件钩子）与托盘窗口附着定位。
-- **最高优先缺口（P0）**：HTTP 客户端插件、Shell 子进程执行、上下文菜单、Updater apply 与安装包分发（Channel 流式 IPC 已落地）。
+- **最高优先缺口（P0）**：上下文菜单、Dialog ask、Updater apply 与安装包分发（Channel 流式 IPC、fs 大文件、HTTP 客户端、Shell 子进程均已落地）。
 - 平台现实：所有原生能力当前仅 Windows 完成验证；notification/global-shortcut/autostart 在非 Windows 为诚实降级 no-op。
 
 ## 2. Tarui 当前能力基线（2026-09-04 快照）
@@ -43,7 +43,7 @@
 | CLI（init / plugin init+pack / info / dev / build） | 已实现 | `src/tarui-cli/Program.cs` |
 | 前端 API（24 模块：ipc/app/window/webview/event/dialog/os/path/process/shell/clipboard/fs/menu/tray/window-state/single-instance/notification/autostart/global-shortcut/store/log/deep-link/updater/http） | 已实现 | `web/packages/api/index.ts` |
 | Channel 流式 IPC | 已实现 | 端到端链路（Channel→sink→WebviewSession），`core:channel|stream-echo` 验证 |
-| 测试 | 24 套控制台式自测试 | `tests/Tarui.*.Tests`（含 `Tarui.Http.Tests`） |
+| 测试 | 25 套控制台式自测试 | `tests/Tarui.*.Tests`（含 `Tarui.Http.Tests`、`Tarui.ShellPlugin.Tests`） |
 
 ## 3. 与 Tauri v2 对照
 
@@ -86,7 +86,7 @@
 | Persisted Scope | ❌ | 未实现（运行时动态 scope 持久化） |
 | Positioner | ❌ | 无窗口预设定位（托盘附着弹窗的核心依赖） |
 | Process | ✅ | exit/restart 走 Host 协调退出，等价 |
-| Shell（子进程/sidecar） | ❌ | 仅有 opener，无 spawn/stdio/退出码/作用域 |
+| Shell（子进程/sidecar） | ✅ | spawn + stdio 流式回传 + 退出码 + 程序白名单作用域（默认拒绝）|
 | Single Instance | ✅ | Mutex + 管道/Unix socket + 参数转发事件 |
 | SQL | ❌ | 未实现（按产品需求延后） |
 | Store | ✅ | 等价（JSON KV + scope + 原子写） |
@@ -126,7 +126,7 @@
 | # | 缺口 | 对标 | 依赖/前置 |
 | --- | --- | --- | --- |
 | 1 | HTTP 客户端插件（受限 fetch：URL scope、流式响应、超时） | Tauri http-client | ✅ 已完成（`Tarui.Plugins.Http`） |
-| 2 | Shell 子进程执行（spawn + stdio + 退出码 + sidecar） | Tauri shell | 作用域授权（command allowlist） |
+| 2 | Shell 子进程执行（spawn + stdio + 退出码 + sidecar） | Tauri shell | ✅ 已完成（`Tarui.Plugins.Shell`：程序白名单作用域默认拒绝 + Channel 流式 stdio + 退出码 + 进程树终止） |
 | 3 | 上下文菜单（context menu popup，任意坐标弹出） | Tauri Menu::popup / Wails menus | 复用 `NativeMenuBuilder` |
 | 4 | Channel 端到端流式 IPC | Tauri ipc::Channel | ✅ 已完成（解锁 fs 大文件与 http 流式响应） |
 | 5 | Updater apply（安装、替换、重启） | Tauri updater | 已有 staging + 签名验证，补安装器与重启流程 |
@@ -180,7 +180,7 @@
 衔接 [tauri-desktop-alignment-plan.md](./tauri-desktop-alignment-plan.md) 的既有阶段（其 §14 顺序已执行至第 10 步），后续建议：
 
 1. **Channel 端到端流式 IPC**（P0-4）——✅ 已完成（`core:channel|stream-echo` 全链路验证）。
-2. **HTTP 客户端 + Shell 子进程插件**（P0-1/2）——HTTP 客户端已完成（URL scope + 流式响应）；Shell 子进程待做。
+2. **HTTP 客户端 + Shell 子进程插件**（P0-1/2）——HTTP 客户端已完成（URL scope + 流式响应）；Shell 子进程已完成（程序白名单作用域默认拒绝 + stdio 流式 + 退出码 + kill）。
 3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——小成本高感知。
 4. **Updater apply + 打包分发**（P0-5/6）——打通"发布闭环"，与既有 OIDC 发布工作流衔接。
 5. **平台补齐（macOS/Linux）**——按产品跨平台节奏推进，优先 notification/global-shortcut/autostart/deep-link 验收。

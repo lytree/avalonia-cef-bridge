@@ -39,6 +39,7 @@
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Notification\Tarui.Plugins.Notification.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Store\Tarui.Plugins.Store.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.System\Tarui.Plugins.System.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Shell\Tarui.Plugins.Shell.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Tray\Tarui.Plugins.Tray.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Updater\Tarui.Plugins.Updater.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Webview\Tarui.Plugins.Webview.csproj" />
