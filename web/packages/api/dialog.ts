@@ -32,6 +32,15 @@ export type ConfirmOptions = {
   cancelLabel?: string
 }
 
+export type AskOptions = {
+  title?: string
+  content?: string
+  icon?: MessageBoxIcon
+  yesLabel?: string
+  noLabel?: string
+  cancelLabel?: string
+}
+
 /**
  * Opens a native file or directory picker attached to the calling
  * window. Returns the selected paths, or an empty array when the
@@ -68,4 +77,13 @@ export async function message(options: MessageBoxOptions = {}): Promise<MessageB
 export async function confirm(options: ConfirmOptions = {}): Promise<boolean> {
   const result = await invoke<{ confirmed: boolean }>('plugin:dialog|confirm', options)
   return result.confirmed
+}
+
+/**
+ * Shows a tri-state native question prompt: returns true for Yes, false for No, and null when the user
+ * cancels or dismisses the dialog. Pass `cancelLabel` to expose an explicit cancel button.
+ */
+export async function ask(options: AskOptions = {}): Promise<boolean | null> {
+  const result = await invoke<{ answer: boolean | null }>('plugin:dialog|ask', options)
+  return result.answer
 }

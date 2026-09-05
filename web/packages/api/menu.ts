@@ -36,6 +36,14 @@ export interface MenuItemClicked {
   checked?: boolean | undefined
 }
 
+export interface ContextMenuOptions {
+  items: MenuItemDefinition[]
+  /** Logical X coordinate relative to the window's top-left. */
+  x?: number
+  /** Logical Y coordinate relative to the window's top-left. */
+  y?: number
+}
+
 export async function setWindowMenu(options: SetWindowMenuOptions): Promise<void> {
   await invoke('plugin:menu|set-window-menu', options)
 }
@@ -48,8 +56,17 @@ export async function removeWindowMenu(): Promise<void> {
   await invoke('plugin:menu|remove-window-menu', {})
 }
 
+/**
+ * Pops a temporary context menu on the calling window at the requested (x, y) logical coordinates.
+ * Item clicks route to the same `menu://item-clicked` event as the window menu.
+ */
+export async function showContextMenu(options: ContextMenuOptions): Promise<void> {
+  await invoke('plugin:menu|show-context-menu', options)
+}
+
 export const menu = {
   setWindowMenu,
   updateItem,
   removeWindowMenu,
+  showContextMenu,
 } as const

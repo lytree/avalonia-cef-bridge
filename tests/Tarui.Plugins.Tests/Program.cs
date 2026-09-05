@@ -28,6 +28,7 @@ internal static class Program
         await OpensDialogsForRequestingWindow();
         await ShowsMessageBoxForRequestingWindow();
         await ConfirmsForRequestingWindow();
+        await AsksForRequestingWindow();
         await DeniesCommandsOutsideCapability();
         RegistersWebviewCommandsWithPermissions();
         await NavigatesOwnWebviewWithoutOtherPermission();
@@ -324,6 +325,28 @@ internal static class Program
         Assert(
             dialog.Confirms.Contains("Delete file?|question|OK|Cancel"),
             "Confirm options must round-trip with their defaults.");
+    }
+
+    private static async Task AsksForRequestingWindow()
+    {
+        var dialog = new FakeDialogService();
+        var router = BuildRouter(dialog);
+        var response = await router.InvokeAsync(
+            Request(
+                "plugin:dialog|ask",
+                new AskOptions("Keep changes?", "Unsaved edits will be lost.", CancelLabel: "Cancel"),
+                TaruiJsonContext.Default.AskOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:dialog|ask"])));
+
+        Assert(response.Success, "Ask must succeed.");
+        var result = Result(response, TaruiJsonContext.Default.AskResult);
+        Assert(result.Answer == true, "Ask results must round-trip (Yes => true).");
+        Assert(
+            dialog.WindowLabels.Contains("editor"),
+            "Ask dialogs must run against the requesting window.");
+        Assert(
+            dialog.Asks.Contains("Keep changes?|question|Yes|No|Cancel"),
+            "Ask options must round-trip with their defaults and cancel label.");
     }
 
     private static async Task DeniesCommandsOutsideCapability()

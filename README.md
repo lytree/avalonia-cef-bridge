@@ -24,6 +24,8 @@
   重定向逐跳复检、内联与流式响应双模式；前端经 `@lytree/api/http` 调用。
 - **Shell 子进程**：`plugin:shell|spawn|stdin|kill`（`src/plugins/Tarui.Plugins.Shell`）——程序白名单作用域
   默认拒绝、stdout/stderr 经 Channel 流式回传、退出码 terminated 帧、进程树终止；前端经 `@lytree/api/shell`。
+- **上下文菜单 + Dialog ask**：`plugin:menu|show-context-menu` 任意坐标弹出（复用声明式 items + `menu://item-clicked`
+  点击路由）；`plugin:dialog|ask` Yes/No 三态询问（可选显式取消）；前端经 `@lytree/api/menu`、`@lytree/api/dialog`。
 
 逐项能力与安装/打包细节见 [docs/wails-tauri-gap-analysis.md](docs/wails-tauri-gap-analysis.md) 与
 [examples/demo](examples/demo)。

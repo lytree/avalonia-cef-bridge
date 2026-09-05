@@ -59,3 +59,19 @@ public sealed record ConfirmOptions(
     string CancelLabel = "Cancel");
 
 public sealed record ConfirmResult(bool Confirmed);
+
+/// <summary>
+/// Options for <c>plugin:dialog|ask</c>: a Yes/No prompt with a tri-state result. When <see cref="CancelLabel"/>
+/// is supplied a cancel button (alongside a <c>cancel</c> on dismiss) is also shown; otherwise only Yes/No plus
+/// the window close affordance map to cancel.
+/// </summary>
+public sealed record AskOptions(
+    string Title = "",
+    string Content = "",
+    string Icon = MessageBoxIconNames.Question,
+    string YesLabel = "Yes",
+    string NoLabel = "No",
+    string? CancelLabel = null);
+
+/// <summary>Result of an ask dialog: <see langword="true"/> = Yes, <see langword="false"/> = No, <see langword="null"/> = cancel/dismiss.</summary>
+public sealed record AskResult(bool? Answer);

@@ -92,6 +92,35 @@ public sealed class AvaloniaDialogService(WindowRegistry registry) : IDialogServ
         });
     }
 
+    public async ValueTask<AskResult> AskAsync(
+        AskOptions options,
+        string windowLabel,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var owner = registry.Get(windowLabel).Window;
+        return await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            // 显式 cancel 按钮时用三键组合；否则 Yes/No + 关闭即取消。
+            var button = string.IsNullOrEmpty(options.CancelLabel)
+                ? MessageBoxButtonNames.YesNo
+                : MessageBoxButtonNames.YesNoCancel;
+            var box = new MessageBoxWindow(
+                new MessageBoxOptions(options.Title, options.Content, options.Icon, button),
+                yesLabel: options.YesLabel,
+                noLabel: options.NoLabel,
+                cancelLabel: options.CancelLabel);
+            var result = await box.ShowDialog<MessageBoxResult>(owner);
+            bool? answer = result?.Result switch
+            {
+                MessageBoxResultNames.Yes => true,
+                MessageBoxResultNames.No => false,
+                _ => null,
+            };
+            return new AskResult(answer);
+        });
+    }
+
     private static string ToPath(IStorageItem item) =>
         item.TryGetLocalPath() ?? item.Path.ToString();
 

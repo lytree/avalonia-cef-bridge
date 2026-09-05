@@ -71,6 +71,8 @@ export { emit, on } from './event'
 
 export { open as openDialog, save as saveDialog } from './dialog'
 export type { OpenDialogOptions, SaveDialogOptions } from './dialog'
+export { ask as askDialog } from './dialog'
+export type { AskOptions } from './dialog'
 
 export { info as getOsInfo } from './os'
 export type { OsInfo } from './os'
@@ -121,8 +123,8 @@ export type {
 export { http, fetch as httpFetch } from './http'
 export type { HttpStreamEvent, HttpHeaders, HttpFetchOptions, HttpResponse } from './http'
 
-export { menu, setWindowMenu, updateItem, removeWindowMenu, menuItemKinds } from './menu'
-export type { MenuItemDefinition, MenuItemKind, SetWindowMenuOptions, MenuUpdateItemOptions, MenuItemClicked } from './menu'
+export { menu, setWindowMenu, updateItem, removeWindowMenu, showContextMenu, menuItemKinds } from './menu'
+export type { MenuItemDefinition, MenuItemKind, SetWindowMenuOptions, MenuUpdateItemOptions, MenuItemClicked, ContextMenuOptions } from './menu'
 
 export { tray, create as createTray, setMenu as setTrayMenu, setIcon as setTrayIcon, setTooltip as setTrayTooltip, setVisible as setTrayVisible, remove as removeTray } from './tray'
 export type { TrayCreateOptions, TraySetMenuOptions, TraySetIconOptions, TraySetTooltipOptions, TraySetVisibleOptions, TrayRemoveOptions, TrayClicked, TrayMenuItemClicked } from './tray'

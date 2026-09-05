@@ -48,6 +48,7 @@ internal static class Program
             "plugin:menu|set-window-menu",
             "plugin:menu|update-item",
             "plugin:menu|remove-window-menu",
+            "plugin:menu|show-context-menu",
         };
 
         foreach (var command in expected)
@@ -93,11 +94,23 @@ internal static class Program
             "plugin:menu|set-window-menu",
             Element(new SetWindowMenuOptions([new MenuItemDefinition("open", Text: "Open")])));
 
+        await InvokeAndAssertOwnerAsync(
+            service,
+            "plugin:menu|show-context-menu",
+            "plugin:menu|show-context-menu",
+            Element(new ContextMenuOptions([new MenuItemDefinition("copy", Text: "Copy")], X: 12, Y: 34)));
+
         await AssertPermissionGatedAsync(
             "plugin:menu|update-item",
             Element(new MenuUpdateItemOptions("open", Text: "Rename")),
             "plugin:menu|set-window-menu",
             "plugin:menu|update-item");
+
+        await AssertPermissionGatedAsync(
+            "plugin:menu|show-context-menu",
+            Element(new ContextMenuOptions([new MenuItemDefinition("copy", Text: "Copy")])),
+            "plugin:menu|set-window-menu",
+            "plugin:menu|show-context-menu");
     }
 
     private static async Task TrayDispatchForwardsOwnerAndGatesPermissionAsync()
@@ -311,6 +324,7 @@ internal static class Program
     private static object JsonTypeInfoFor(Type type) => type switch
     {
         _ when type == typeof(SetWindowMenuOptions) => TaruiJsonContext.Default.SetWindowMenuOptions,
+        _ when type == typeof(ContextMenuOptions) => TaruiJsonContext.Default.ContextMenuOptions,
         _ when type == typeof(MenuUpdateItemOptions) => TaruiJsonContext.Default.MenuUpdateItemOptions,
         _ when type == typeof(TrayCreateOptions) => TaruiJsonContext.Default.TrayCreateOptions,
         _ when type == typeof(TraySetMenuOptions) => TaruiJsonContext.Default.TraySetMenuOptions,
@@ -355,6 +369,12 @@ internal static class Program
         }
 
         public ValueTask<Unit> RemoveWindowMenuAsync(string ownerWindow, CancellationToken cancellationToken)
+        {
+            Owners.Add(ownerWindow);
+            return ValueTask.FromResult(new Unit());
+        }
+
+        public ValueTask<Unit> ShowContextMenuAsync(string ownerWindow, ContextMenuOptions options, CancellationToken cancellationToken)
         {
             Owners.Add(ownerWindow);
             return ValueTask.FromResult(new Unit());

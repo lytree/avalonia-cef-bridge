@@ -236,6 +236,8 @@ internal sealed class FakeDialogService : IDialogService
 
     public List<string> Confirms { get; } = [];
 
+    public List<string> Asks { get; } = [];
+
     public ValueTask<OpenDialogResult> OpenAsync(
         OpenDialogOptions options,
         string windowLabel,
@@ -273,5 +275,15 @@ internal sealed class FakeDialogService : IDialogService
         WindowLabels.Add(windowLabel);
         Confirms.Add($"{options.Title}|{options.Icon}|{options.OkLabel}|{options.CancelLabel}");
         return ValueTask.FromResult(new ConfirmResult(true));
+    }
+
+    public ValueTask<AskResult> AskAsync(
+        AskOptions options,
+        string windowLabel,
+        CancellationToken cancellationToken)
+    {
+        WindowLabels.Add(windowLabel);
+        Asks.Add($"{options.Title}|{options.Icon}|{options.YesLabel}|{options.NoLabel}|{options.CancelLabel ?? "-"}");
+        return ValueTask.FromResult(new AskResult(Answer: true));
     }
 }

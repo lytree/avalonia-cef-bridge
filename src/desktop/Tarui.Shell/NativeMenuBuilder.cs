@@ -1,5 +1,6 @@
 using System.Windows.Input;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -47,6 +48,78 @@ internal static class NativeMenuBuilder
         }
 
         return menu;
+    }
+
+    /// <summary>
+    /// Builds a lightweight context-menu <see cref="Popup"/> (hosting a widget <see cref="Menu"/> built from the
+    /// same declarative items) positioned at <paramref name="x"/>/<paramref name="y"/> relative to
+    /// <paramref name="target"/>. Item activation routes through <paramref name="click"/> and closes the popup.
+    /// </summary>
+    public static Popup BuildContextMenuPopup(
+        Window target,
+        MenuItemDefinition[] items,
+        double x,
+        double y,
+        Func<string, string?, bool?, ValueTask> click)
+    {
+        var popup = new Popup
+        {
+            PlacementTarget = target,
+            Placement = PlacementMode.Top,
+            HorizontalOffset = x,
+            VerticalOffset = y,
+        };
+        var menu = new Menu();
+        AddWidgets(menu.Items, items, click, popup);
+        popup.Child = menu;
+        return popup;
+    }
+
+    private static void AddWidgets(
+        Avalonia.Controls.ItemCollection destination,
+        MenuItemDefinition[] items,
+        Func<string, string?, bool?, ValueTask> click,
+        Popup popup)
+    {
+        foreach (var item in items)
+        {
+            switch (item.Kind)
+            {
+                case MenuItemKind.Divider:
+                    destination.Add(new Separator());
+                    break;
+
+                case MenuItemKind.Submenu:
+                {
+                    var sub = new MenuItem { Header = item.Text ?? string.Empty, IsEnabled = item.Enabled ?? true };
+                    AddWidgets(sub.Items, item.Items ?? [], click, popup);
+                    destination.Add(sub);
+                    break;
+                }
+
+                case MenuItemKind.Check:
+                {
+                    var check = new MenuItem
+                    {
+                        Header = item.Text ?? string.Empty,
+                        IsEnabled = item.Enabled ?? true,
+                        IsChecked = item.Checked ?? false,
+                        ToggleType = MenuItemToggleType.CheckBox,
+                    };
+                    check.Command = new WidgetClickCommand(check, item.Id, click, popup);
+                    destination.Add(check);
+                    break;
+                }
+
+                default:
+                {
+                    var normal = new MenuItem { Header = item.Text ?? string.Empty, IsEnabled = item.Enabled ?? true };
+                    normal.Command = new WidgetClickCommand(normal, item.Id, click, popup);
+                    destination.Add(normal);
+                    break;
+                }
+            }
+        }
     }
 
     private static NativeMenuItemBase BuildItem(MenuItemDefinition definition, Func<string, string?, bool?, ValueTask> click)
@@ -129,6 +202,30 @@ internal static class NativeMenuBuilder
                 ? null
                 : (bool?)item.IsChecked;
             FireAndForget.Run(click(id, item.Header, isChecked));
+        }
+    }
+
+    /// <summary>
+    /// Routes a widget <see cref="MenuItem"/> activation through <paramref name="click"/> and closes the
+    /// hosting context-menu <see cref="Popup"/>. For check items the live toggle state is reported.
+    /// </summary>
+    private sealed class WidgetClickCommand(MenuItem item, string id, Func<string, string?, bool?, ValueTask> click, Popup popup) : ICommand
+    {
+        public event EventHandler? CanExecuteChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public bool CanExecute(object? parameter) => true;
+
+        public void Execute(object? parameter)
+        {
+            var isChecked = item.ToggleType != MenuItemToggleType.CheckBox
+                ? null
+                : (bool?)item.IsChecked;
+            FireAndForget.Run(click(id, item.Header?.ToString(), isChecked));
+            popup.Close();
         }
     }
 

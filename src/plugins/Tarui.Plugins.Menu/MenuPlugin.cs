@@ -30,6 +30,13 @@ public sealed class MenuPlugin(IMenuService service) : ITaruiPlugin
             TaruiJsonContext.Default.Unit,
             handlers.RemoveWindowMenuAsync,
             "plugin:menu|remove-window-menu");
+
+        commands.Add(
+            "plugin:menu|show-context-menu",
+            TaruiJsonContext.Default.ContextMenuOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.ShowContextMenuAsync,
+            "plugin:menu|show-context-menu");
     }
 
     private sealed class MenuCommands(IMenuService service)
@@ -54,6 +61,13 @@ public sealed class MenuPlugin(IMenuService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.RemoveWindowMenuAsync(context.WindowLabel, cancellationToken);
+
+        [TaruiCommand("plugin:menu|show-context-menu")]
+        public ValueTask<Unit> ShowContextMenuAsync(
+            ContextMenuOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.ShowContextMenuAsync(context.WindowLabel, options, cancellationToken);
     }
 }
 

@@ -11,7 +11,7 @@
 - Tarui 已完成桌面壳层核心：无反射 IPC、多窗口、CEF 150 WebView（自定义协议/导航与下载策略/文件拖放）、Capability v2 权限模型、Channel 端到端流式 IPC（含 fs 大文件流式读写与 HTTP 流式响应、Shell 子进程 stdio 流）、24+1 套自测试、24 个前端 API 模块。
 - Tauri v2 桌面相关 25 个官方能力中：已对齐约 18 个（多为 Windows 验证）、部分对齐 5 个、缺失 3 个（sql、stronghold、persisted-scope 等）。
 - Wails v3 桌面能力（多窗口/托盘/菜单/事件/对话框/拖放/frameless）基本具备等价实现；显著差距在开发体验（bindings 自动生成、可取消窗口事件钩子）与托盘窗口附着定位。
-- **最高优先缺口（P0）**：上下文菜单、Dialog ask、Updater apply 与安装包分发（Channel 流式 IPC、fs 大文件、HTTP 客户端、Shell 子进程均已落地）。
+- **最高优先缺口（P0）**：Updater apply 与安装包分发（Channel 流式 IPC、fs 大文件、HTTP 客户端、Shell 子进程、上下文菜单、Dialog ask 均已落地）。
 - 平台现实：所有原生能力当前仅 Windows 完成验证；notification/global-shortcut/autostart 在非 Windows 为诚实降级 no-op。
 
 ## 2. Tarui 当前能力基线（2026-09-04 快照）
@@ -74,7 +74,7 @@
 | Clipboard Manager | 🟡 | 仅 readText/writeText；缺图片、HTML、文件列表、clear |
 | CLI（结构化参数解析） | ❌ | 只有原始 process args |
 | Deep Linking | 🟡 | Windows 全链路；macOS delegate / Linux .desktop 未验收 |
-| Dialog | 🟡 | 有 open/save/message/confirm；缺 `ask`（Yes/No 三态语义） |
+| Dialog | ✅ | open/save/message/confirm + ask（Yes/No 三态语义） |
 | File System | 🟡 | 14 条命令 + scope + 流式读/分片写；缺目录监听 watch |
 | Global Shortcut | ✅ (Windows) | 含 accelerator 归一化与 scope，语义对齐 |
 | HTTP Client | ✅ | URL scope 默认拒绝、重定向逐跳复检、内联/流式响应；`Tarui.Plugins.Http` |
@@ -104,7 +104,7 @@
 | 多窗口（含生命周期、创建/销毁回调） | ✅ | 多窗口 + 事件 + owner 归属校验 |
 | 父子窗口 + modal（macOS sheet） | ❌ | 无 parent/child 关联与模态语义 |
 | 系统托盘（图标、菜单、明暗自适应图标、窗口附着居中） | 🟡 | 图标/菜单/tooltip/事件已有；无"点击托盘在图标旁弹出窗口"（依赖 Positioner 类能力与 `HiddenOnTaskbar` 类选项） |
-| 原生菜单（菜单栏 + 上下文菜单） | 🟡 | 窗口菜单已有；无 context menu popup（`Menu::popup` 等价物） |
+| 原生菜单（菜单栏 + 上下文菜单） | ✅ | 窗口菜单 + 任意坐标 context menu popup（`menu://item-clicked` 路由） |
 | 事件系统（应用/窗口事件 + RegisterHook 可取消钩子） | 🟡 | 事件 + 权限对齐；无 Web 侧可取消的窗口事件钩子（如拦截 close） |
 | Services 生命周期（ServiceStartup/Shutdown） | ✅ | .NET `IHostedService` + DI 生态等价且更强 |
 | Bindings 自动生成 | 🟡 | C# 侧 Roslyn 源生成；TS 侧手写模块（23 个），与 Wails 自动生成 JS/TS 绑定的开发体验有差距 |
@@ -127,7 +127,7 @@
 | --- | --- | --- | --- |
 | 1 | HTTP 客户端插件（受限 fetch：URL scope、流式响应、超时） | Tauri http-client | ✅ 已完成（`Tarui.Plugins.Http`） |
 | 2 | Shell 子进程执行（spawn + stdio + 退出码 + sidecar） | Tauri shell | ✅ 已完成（`Tarui.Plugins.Shell`：程序白名单作用域默认拒绝 + Channel 流式 stdio + 退出码 + 进程树终止） |
-| 3 | 上下文菜单（context menu popup，任意坐标弹出） | Tauri Menu::popup / Wails menus | 复用 `NativeMenuBuilder` |
+| 3 | 上下文菜单（context menu popup，任意坐标弹出） | Tauri Menu::popup / Wails menus | ✅ 已完成（`plugin:menu|show-context-menu`，Popup + Menu 复用声明式 items + 点击路由） |
 | 4 | Channel 端到端流式 IPC | Tauri ipc::Channel | ✅ 已完成（解锁 fs 大文件与 http 流式响应） |
 | 5 | Updater apply（安装、替换、重启） | Tauri updater | 已有 staging + 签名验证，补安装器与重启流程 |
 | 6 | 打包分发（安装包 NSIS/MSI、图标与版本资源嵌入） | Tauri bundler / wails3 build | CLI `tarui build` 扩展 |
@@ -136,7 +136,7 @@
 
 | # | 缺口 | 对标 | 说明 |
 | --- | --- | --- | --- |
-| 7 | Dialog `ask`（Yes/No 语义） | Tauri dialog | `MessageBoxWindow` 加按钮映射即可 |
+| 7 | Dialog `ask`（Yes/No 语义） | Tauri dialog | ✅ 已完成（`plugin:dialog|ask`，Yes/No 三态，显式 cancel 可选） |
 | 8 | 剪贴板扩展（图片、HTML、clear） | Tauri clipboard-manager | Avalonia/CEF 均可承载 |
 | 9 | fs watch 目录监听 | Tauri fs | `FileSystemWatcher` + 事件投递 |
 | 10 | Cookie 管理 API | CEF 原生 | `CefGlue.Core/CefCookieManager` 已有底层封装，仅缺插件暴露 |
@@ -181,7 +181,7 @@
 
 1. **Channel 端到端流式 IPC**（P0-4）——✅ 已完成（`core:channel|stream-echo` 全链路验证）。
 2. **HTTP 客户端 + Shell 子进程插件**（P0-1/2）——HTTP 客户端已完成（URL scope + 流式响应）；Shell 子进程已完成（程序白名单作用域默认拒绝 + stdio 流式 + 退出码 + kill）。
-3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——小成本高感知。
+3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——✅ 已完成（`plugin:menu|show-context-menu` + `plugin:dialog|ask`）。
 4. **Updater apply + 打包分发**（P0-5/6）——打通"发布闭环"，与既有 OIDC 发布工作流衔接。
 5. **平台补齐（macOS/Linux）**——按产品跨平台节奏推进，优先 notification/global-shortcut/autostart/deep-link 验收。
 6. **P2 项按产品需求排期**（fs watch、upload、positioner 等）。

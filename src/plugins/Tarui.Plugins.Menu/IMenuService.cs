@@ -15,4 +15,7 @@ public interface IMenuService
     ValueTask<Unit> UpdateItemAsync(string ownerWindow, MenuUpdateItemOptions options, CancellationToken cancellationToken);
 
     ValueTask<Unit> RemoveWindowMenuAsync(string ownerWindow, CancellationToken cancellationToken);
+
+    /// <summary>Pops a temporary context menu on the owner window at the requested coordinates.</summary>
+    ValueTask<Unit> ShowContextMenuAsync(string ownerWindow, ContextMenuOptions options, CancellationToken cancellationToken);
 }

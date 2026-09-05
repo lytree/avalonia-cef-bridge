@@ -34,6 +34,13 @@ public sealed record MenuUpdateItemOptions(string Id, string? Text = null, bool?
 public sealed record MenuItemClicked(string Id, string? Text = null, bool? Checked = null);
 
 /// <summary>
+/// Request for <c>plugin:menu|show-context-menu</c>: pops a context menu built from <see cref="Items"/> at the
+/// requested <see cref="X"/>/<see cref="Y"/> logical coordinates (relative to the owner window's top-left corner).
+/// Item clicks route to the same <c>menu://item-clicked</c> event as the window menu.
+/// </summary>
+public sealed record ContextMenuOptions(MenuItemDefinition[] Items, double X = 0, double Y = 0);
+
+/// <summary>
 /// Tray options for <c>plugin:tray|create</c>. The tray is owned by the window that creates it;
 /// only that window may later update or remove it. <see cref="Icon"/> is optional; when set it is
 /// a file path (optionally prefixed with a <c>base:</c> base directory, e.g. <c>resources:tray.ico</c>)

@@ -25,6 +25,11 @@ public interface IDialogService
         ConfirmOptions options,
         string windowLabel,
         CancellationToken cancellationToken);
+
+    ValueTask<AskResult> AskAsync(
+        AskOptions options,
+        string windowLabel,
+        CancellationToken cancellationToken);
 }
 
 public sealed class DialogPlugin(IDialogService service) : ITaruiPlugin
@@ -60,6 +65,13 @@ public sealed class DialogPlugin(IDialogService service) : ITaruiPlugin
             TaruiJsonContext.Default.ConfirmResult,
             handlers.ConfirmAsync,
             "plugin:dialog|confirm");
+
+        commands.Add(
+            "plugin:dialog|ask",
+            TaruiJsonContext.Default.AskOptions,
+            TaruiJsonContext.Default.AskResult,
+            handlers.AskAsync,
+            "plugin:dialog|ask");
     }
 
     private sealed class DialogCommands(IDialogService service)
@@ -91,6 +103,13 @@ public sealed class DialogPlugin(IDialogService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.ConfirmAsync(options, context.WindowLabel, cancellationToken);
+
+        [TaruiCommand("plugin:dialog|ask")]
+        public ValueTask<AskResult> AskAsync(
+            AskOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.AskAsync(options, context.WindowLabel, cancellationToken);
     }
 }
 

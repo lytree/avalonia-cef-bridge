@@ -4,6 +4,8 @@ import type { AppInfo } from '@lytree/api/app'
 import { getCurrentWindow } from '@lytree/api/window'
 import type { WindowState } from '@lytree/api/window'
 import { emit, on } from '@lytree/api/event'
+import { ask } from '@lytree/api/dialog'
+import { showContextMenu } from '@lytree/api/menu'
 import { fs, readFileStream, writeFileChunked } from '@lytree/api/fs'
 import { store } from '@lytree/api/store'
 import { http } from '@lytree/api/http'
@@ -46,6 +48,7 @@ function App() {
   const [lastHttp, setLastHttp] = useState('')
   const [shellLines, setShellLines] = useState<string[]>([])
   const [shellRunning, setShellRunning] = useState(false)
+  const [lastAsk, setLastAsk] = useState<boolean | null>(null)
 
   const logRef = useRef<LogEntry[]>([])
   const pushLog = (entry: Omit<LogEntry, 'at' | 'kind'> & { kind?: LogEntry['kind'] }) => {
@@ -59,6 +62,13 @@ function App() {
   useEffect(() => {
     return on<{ source: string }>('user://demo/echo', payload => {
       pushLog({ text: `user://demo/echo received: ${JSON.stringify(payload)}` })
+    })
+  }, [])
+
+  // Context-menu and window-menu item clicks arrive here.
+  useEffect(() => {
+    return on<{ id: string; text?: string | null }>('menu://item-clicked', payload => {
+      pushLog({ kind: 'ok', text: `menu://item-clicked -> ${payload.id}${payload.text ? ` (${payload.text})` : ''}` })
     })
   }, [])
 
@@ -301,6 +311,46 @@ function App() {
     }
   }
 
+  async function doAsk() {
+    try {
+      const answer = await ask({
+        title: 'Keep changes?',
+        content: 'Unsaved edits will be lost.',
+        cancelLabel: 'Cancel',
+      })
+      setLastAsk(answer)
+      pushLog({ kind: 'ok', text: `ask -> ${answer === null ? 'cancel' : answer ? 'Yes' : 'No'}` })
+    } catch (err) {
+      pushLog({ kind: 'err', text: `dialog.ask: ${String(err)}` })
+    }
+  }
+
+  async function doContextMenu() {
+    try {
+      await showContextMenu({
+        items: [
+          { id: 'ctx-copy', text: 'Copy' },
+          { id: 'ctx-paste', text: 'Paste', enabled: false },
+          { id: 'ctx-divider', kind: 'divider' },
+          {
+            id: 'ctx-share',
+            text: 'Share',
+            items: [
+              { id: 'ctx-email', text: 'Email' },
+              { id: 'ctx-link', text: 'Copy link' },
+            ],
+          },
+          { id: 'ctx-bold', kind: 'check', text: 'Bold', checked: true },
+        ],
+        x: 140,
+        y: 40,
+      })
+      pushLog({ kind: 'ok', text: 'context menu popped at (140, 40)' })
+    } catch (err) {
+      pushLog({ kind: 'err', text: `showContextMenu: ${String(err)}` })
+    }
+  }
+
   return (
     <main className="app">
       <h1>Tarui Demo</h1>
@@ -402,6 +452,18 @@ function App() {
         )}
         <p className="muted">
           仅允许能力作用域内显式白名单的程序；stdout/stderr 经 Channel 逐行流式回传，退出后回调 terminated。
+        </p>
+      </section>
+
+      <section>
+        <h2>Dialog + 上下文菜单</h2>
+        <div className="row">
+          <button onClick={doAsk}>ask（Yes/No/Cancel）</button>
+          <button onClick={doContextMenu}>弹出上下文菜单 (140, 40)</button>
+        </div>
+        {lastAsk !== null && <p className="muted">上次 ask 结果：{lastAsk === null ? 'cancel' : lastAsk ? 'Yes' : 'No'}</p>}
+        <p className="muted">
+          ask 是三态询问（Yes/No/关闭即取消）；上下文菜单项点击经 <code>menu://item-clicked</code> 路由到本页日志。
         </p>
       </section>
 

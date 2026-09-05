@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Threading;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -62,6 +63,51 @@ public sealed class AvaloniaMenuService(WindowRegistry registry, EventRouter eve
         _definitions.Remove(ownerWindow);
         ApplyMenu(ownerWindow, null);
         return new Unit();
+    }
+
+    public async ValueTask<Unit> ShowContextMenuAsync(
+        string ownerWindow,
+        ContextMenuOptions options,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        NativeMenuBuilder.ValidateUniqueIds(options.Items);
+
+        if (!registry.TryGet(ownerWindow, out var entry) || entry.Window is null)
+        {
+            return new Unit();
+        }
+
+        var window = entry.Window;
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            OpenContextMenu(window, ownerWindow, options);
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(() => OpenContextMenu(window, ownerWindow, options));
+        }
+
+        return new Unit();
+    }
+
+    private void OpenContextMenu(Window window, string windowLabel, ContextMenuOptions options)
+    {
+        var popup = NativeMenuBuilder.BuildContextMenuPopup(
+            window,
+            options.Items,
+            options.X,
+            options.Y,
+            (id, text, isChecked) => EmitContextMenuClickedAsync(windowLabel, id, text, isChecked));
+        popup.Open();
+    }
+
+    private async ValueTask EmitContextMenuClickedAsync(string windowLabel, string id, string? text, bool? isChecked)
+    {
+        await events.EmitToWindowAsync(
+            windowLabel,
+            ItemClickedEvent,
+            JsonSerializer.SerializeToElement(new MenuItemClicked(id, text, isChecked), TaruiJsonContext.Default.MenuItemClicked));
     }
 
     private NativeMenu Build(string windowLabel, MenuItemDefinition[] items) =>
