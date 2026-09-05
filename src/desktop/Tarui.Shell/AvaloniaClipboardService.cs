@@ -44,7 +44,7 @@ public sealed class AvaloniaClipboardService(WindowRegistry registry) : IClipboa
             }
 
             var html = await AsyncDataTransferExtensions.TryGetValueAsync(data, HtmlFormat);
-            return new ClipboardReadHtmlResult(true, html);
+            return new ClipboardReadHtmlResult(!string.IsNullOrEmpty(html), html);
         });
     }
 
@@ -88,16 +88,23 @@ public sealed class AvaloniaClipboardService(WindowRegistry registry) : IClipboa
     private static async Task<ClipboardReadImageResult> ReadImageCoreAsync(IClipboard clipboard)
     {
         var image = await clipboard.TryGetBitmapAsync();
-        if (image is null)
+        if (image is not Bitmap bitmap)
         {
             return new ClipboardReadImageResult(false);
         }
 
-        // The clipboard bitmap is always a concrete Avalonia Bitmap on the cut/paste surface; encode it back
-        // to PNG bytes for the wire.
-        using var stream = new MemoryStream();
-        image.Save(stream, PngBitmapEncoderOptions.Default);
-        return new ClipboardReadImageResult(true, stream.ToArray());
+        // Encode the concrete Avalonia bitmap back to PNG bytes for the wire. Bitmaps of an unsupported
+        // pixel format degrade to "unavailable" instead of letting a broken frame crash the command.
+        try
+        {
+            using var stream = new MemoryStream();
+            bitmap.Save(stream, PngBitmapEncoderOptions.Default);
+            return new ClipboardReadImageResult(true, stream.ToArray());
+        }
+        catch (Exception)
+        {
+            return new ClipboardReadImageResult(false);
+        }
     }
 
     private async ValueTask<TResult> OnClipboard<TResult>(
