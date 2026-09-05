@@ -92,6 +92,9 @@ export type { ShellOpenResult, ShellStreamEvent, ShellSpawnOptions, ShellSpawnRe
 export { readText, writeText, readHtml, writeHtml, readImage, writeImage } from './clipboard'
 export type { ClipboardHtmlReadResult, ClipboardImageReadResult } from './clipboard'
 
+export { cli, parseCli as parseCliArgs, matches as getCliMatches, cliArgKinds } from './cli'
+export type { CliArgKind, CliArgSpec, CliParseOptions, CliArgValue, CliParseResult } from './cli'
+
 export {
   fs,
   readTextFile,

@@ -98,6 +98,13 @@ public sealed class SystemPlugin(
             TaruiJsonContext.Default.Unit,
             handlers.WriteClipboardImageAsync,
             "core:clipboard|write-image");
+
+        commands.Add(
+            "core:cli|parse",
+            TaruiJsonContext.Default.CliParseOptions,
+            TaruiJsonContext.Default.CliParseResult,
+            SystemCommands.ParseCliAsync,
+            "core:cli|parse");
     }
 
     private sealed class SystemCommands(
@@ -221,6 +228,16 @@ public sealed class SystemPlugin(
         {
             await clipboardService.WriteImageAsync(options.Png, cancellationToken);
             return new Unit();
+        }
+
+        [TaruiCommand("core:cli|parse")]
+        public static ValueTask<CliParseResult> ParseCliAsync(
+            CliParseOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(CliParser.Parse(options));
         }
     }
 }

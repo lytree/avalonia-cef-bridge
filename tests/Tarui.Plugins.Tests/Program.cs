@@ -24,6 +24,8 @@ internal static class Program
         await ResolvesPathsThroughSystemPlugin();
         await ReadsAndWritesClipboard();
         await ReadsAndWritesClipboardHtmlAndImage();
+        ParsesStructuredCliArguments();
+        CliParsingRejectsInvalidInput();
         await ExitsAndRelaunchesThroughProcessCommands();
         await OpensShellTargetsAndReportsOsInfo();
         await ReportsPlatformCapabilities();
@@ -259,6 +261,59 @@ internal static class Program
             AllowAll());
         var imageRead = Result(imageReadResponse, TaruiJsonContext.Default.ClipboardReadImageResult);
         Assert(imageRead.Available && imageRead.Png!.SequenceEqual(png), "Reading an image must return the PNG bytes.");
+    }
+
+    private static void ParsesStructuredCliArguments()
+    {
+        var options = new CliParseOptions(
+            [
+                new CliArgSpec("verbose", "v", CliArgKind.Flag),
+                new CliArgSpec("name", "n", CliArgKind.Text, Required: true),
+                new CliArgSpec("count", "c", CliArgKind.Text),
+                new CliArgSpec("tag", Kind: CliArgKind.TextList, Multiple: true),
+                new CliArgSpec("level", Kind: CliArgKind.Number),
+            ],
+            PositionalName: "input",
+            Args: ["--verbose", "-n", "demo", "--count=3", "--tag", "a", "--tag", "b", "--level", "9", "file.txt"]);
+
+        var result = CliParser.Parse(options);
+        Assert(result.Success, "A well-formed CLI invocation must parse successfully.");
+        var values = result.Values.ToDictionary(static value => value.Name);
+        Assert(values["verbose"].Present && values["verbose"].Kind == CliArgKind.Flag,
+            "A flag must parse as present.");
+        Assert(values["name"].Value == "demo", "A long option must capture its value.");
+        Assert(values["count"].Value == "3", "Inline --name=value must parse.");
+        Assert(values["tag"]!.Values!.SequenceEqual(["a", "b"]), "A repeated multi option must collect all values.");
+        Assert(values["level"].Number == 9, "A number option must parse to a 64-bit value.");
+        Assert(result.Positionals.SequenceEqual(["file.txt"]), "Bare arguments must become positionals.");
+    }
+
+    private static void CliParsingRejectsInvalidInput()
+    {
+        var requiredMissing = CliParser.Parse(new CliParseOptions(
+            [new CliArgSpec("name", Kind: CliArgKind.Text, Required: true)],
+            Args: []));
+        Assert(!requiredMissing.Success && requiredMissing.Error!.Contains("required"),
+            "A missing required option must fail the parse.");
+
+        var badInteger = CliParser.Parse(new CliParseOptions(
+            [new CliArgSpec("level", Kind: CliArgKind.Number)],
+            Args: ["--level", "nine"]));
+        Assert(!badInteger.Success && badInteger.Error!.Contains("integer"),
+            "A malformed typed value must fail the parse.");
+
+        var unknown = CliParser.Parse(new CliParseOptions(
+            [new CliArgSpec("known", Kind: CliArgKind.Text)],
+            Args: ["--wat"]));
+        Assert(!unknown.Success && unknown.Error!.Contains("Unknown option '--wat'"),
+            "An unknown long option must fail the parse.");
+
+        var positionalRequired = CliParser.Parse(new CliParseOptions(
+            [new CliArgSpec("flag")],
+            PositionalName: "input",
+            PositionalRequired: true,
+            Args: ["--flag"]));
+        Assert(!positionalRequired.Success, "A required positional that is absent must fail the parse.");
     }
 
     private static async Task ExitsAndRelaunchesThroughProcessCommands()

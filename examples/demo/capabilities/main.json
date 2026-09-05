@@ -42,6 +42,7 @@
     "core:clipboard|write-html",
     "core:clipboard|read-image",
     "core:clipboard|write-image",
+    "core:cli|parse",
     "core:channel|stream-echo",
     {
       "identifier": "core:window|create",

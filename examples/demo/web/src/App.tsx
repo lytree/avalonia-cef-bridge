@@ -6,6 +6,7 @@ import type { WindowState } from '@lytree/api/window'
 import { Webview } from '@lytree/api/webview'
 import { emit, on } from '@lytree/api/event'
 import { readHtml, writeHtml } from '@lytree/api/clipboard'
+import { parseCliArgs } from '@lytree/api/cli'
 import { ask } from '@lytree/api/dialog'
 import { showContextMenu } from '@lytree/api/menu'
 import { fs, readFileStream, writeFileChunked } from '@lytree/api/fs'
@@ -567,6 +568,36 @@ function App() {
         </div>
         <p className="muted">
           写入时同时携带纯文本回退；读取在无 HTML 时诚实报告不可用，而非伪造空串。图片读写以 PNG 字节承载。
+        </p>
+      </section>
+
+      <section>
+        <h2>结构化 CLI 解析</h2>
+        <div className="row">
+          <button
+            onClick={() =>
+              parseCliArgs({
+                options: [
+                  { name: 'verbose', shortName: 'v', kind: 'flag' },
+                  { name: 'name', shortName: 'n', kind: 'text' },
+                  { name: 'tag', kind: 'text-list', multiple: true },
+                ],
+                args: ['--verbose', '-n', 'demo', '--tag', 'a', '--tag', 'b'],
+              })
+                .then(result => pushLog({
+                  kind: result.success ? 'ok' : 'err',
+                  text: result.success
+                    ? `cli.parse() -> ${result.values.map(v => `${v.name}=${JSON.stringify(v)}`).join(' ')}`
+                    : `cli.parse() 失败：${result.error}`,
+                }))
+                .catch(err => pushLog({ kind: 'err', text: `cli.parse: ${String(err)}` }))
+            }
+          >
+            解析演示参数
+          </button>
+        </div>
+        <p className="muted">
+          按声明的 <code>--long</code>/<code>-x</code> 选项与位置参数解析；缺失必需项、未知选项、类型错误都会诚实失败并报错。
         </p>
       </section>
 

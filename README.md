@@ -43,6 +43,8 @@
   经 webview 权限门控（含 `-other-webview` 变体），前端经 `@lytree/api/webview` 的 `openDevtools/closeDevtools` 调用。
 - **剪贴板扩展**：`core:clipboard|read/write-html`（含纯文本回退）与 `read/write-image`（PNG 字节）——
   前端经 `@lytree/api/clipboard` 的 `readHtml/writeHtml/readImage/writeImage` 调用。
+- **结构化 CLI 解析**：`core:cli|parse` 按声明 schema 解析 `--long`/`-x` 选项、位置参数（flag/文本/多值/数字类型、
+  必需校验，未知选项与类型错误诚实失败），前端经 `@lytree/api/cli` 的 `parseCliArgs/getCliMatches` 调用。
 
 逐项能力与安装/打包细节见 [docs/wails-tauri-gap-analysis.md](docs/wails-tauri-gap-analysis.md) 与
 [examples/demo](examples/demo)。

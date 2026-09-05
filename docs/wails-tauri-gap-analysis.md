@@ -72,7 +72,7 @@
 | --- | --- | --- |
 | Autostart | ✅ (Windows/macOS/Linux) | Windows registry / macOS LaunchAgents plist / Linux `.desktop` 均已实现；平台感知 DI 选择 |
 | Clipboard Manager | ✅ | readText/writeText + readHtml/writeHtml（含纯文本回退）+ readImage/writeImage（PNG 字节） |
-| CLI（结构化参数解析） | ❌ | 只有原始 process args |
+| CLI（结构化参数解析） | ✅ | `core:cli|parse`：声明 `--long`/`-x` 选项、位置参数、多值、必需校验与类型解析 |
 | Deep Linking | 🟡 | Windows 全链路；macOS delegate / Linux .desktop 未验收 |
 | Dialog | ✅ | open/save/message/confirm + ask（Yes/No 三态语义） |
 | FileSystem | ✅ | 16 条命令 + scope + 流式读/分片写 + 大文件按块推送 + 目录 watch |
@@ -145,7 +145,7 @@
 | 12 | 窗口增强：setIcon、setTheme、transparent/acrylic、modal、父子窗口 | Tauri window / Wails v3 | Avalonia 原语均支持，逐项封装 |
 | 13 | Positioner（托盘图标旁定位等预设位置） | Tauri positioner / Wails tray attach | 托盘应用标准场景 |
 | 14 | macOS/Linux 平台补齐（notification、global-shortcut、autostart、deep-link 真机验收） | 双方均跨平台 | 🟡 进展：autostart 已三平台落地；`core:platform|capabilities` 能力矩阵已暴露；notification / global-shortcut / macOS deep-link 仍待真机验收 |
-| 15 | 结构化 CLI 参数解析插件 | Tauri cli | 可先以 System 插件扩展 |
+| 15 | 结构化 CLI 参数解析插件 | Tauri cli | ✅ 已完成（`core:cli|parse`：声明式 `--long`/`-x` 选项 + 位置参数，flag/文本/多值/数字类型、必需校验，未知或类型错误诚实失败） |
 | 16 | Web 侧可取消窗口事件钩子（onCloseRequested 拦截） | Tauri / Wails v3 RegisterHook | 事件系统已有，补回执通道 |
 
 ### P2 — 按需增强（产品需求驱动，对标中为可选插件）
@@ -185,7 +185,7 @@
 3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——✅ 已完成（`plugin:menu|show-context-menu` + `plugin:dialog|ask`）。
 4. **Updater apply + 打包分发**（P0-5/6）——✅ 已完成（apply 落地 MSIX 安装 + 状态事件；打包分发为现有 `tarui build` zip/MSIX/签名 latest.json，重启由调用方衔接 process relaunch，与 OIDC 发布工作流衔接）。
 5. **平台补齐（macOS/Linux）**——🟡 进展：autostart 已三平台落地，`core:platform|capabilities` 能力矩阵已暴露；notification / global-shortcut / macOS deep-link 需 macOS/Linux 真机验收后补齐。
-6. **P2 项按产品需求排期**（Cookie API、DevTools 开关、剪贴板扩展、结构化 CLI 解析等）——Upload（multipart）、WebView 运行时配置（UserAgent/Proxy）、fs watch、Cookie API、DevTools 开关与剪贴板扩展（HTML/图片）已落地。
+6. **P2 项按产品需求排期**（Cookie API、DevTools 开关、剪贴板扩展、结构化 CLI 解析等）——Upload（multipart）、WebView 运行时配置（UserAgent/Proxy）、fs watch、Cookie API、DevTools 开关、剪贴板扩展（HTML/图片）与结构化 CLI 解析已落地。
 
 每项仍须遵循既有模板：`Contracts DTO → 显式插件注册 → Shell/平台实现 → Capability 授权 → @lytree/api 模块 → 控制台式自测试 → 文档同步`。
 
