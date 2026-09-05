@@ -25,6 +25,7 @@ internal static class Program
         await ReadsAndWritesClipboard();
         await ExitsAndRelaunchesThroughProcessCommands();
         await OpensShellTargetsAndReportsOsInfo();
+        await ReportsPlatformCapabilities();
         await OpensDialogsForRequestingWindow();
         await ShowsMessageBoxForRequestingWindow();
         await ConfirmsForRequestingWindow();
@@ -252,6 +253,25 @@ internal static class Program
             AllowAll());
         var os = Result(osResponse, TaruiJsonContext.Default.OsInfo);
         Assert(os.Platform == "windows", "OS info must round-trip from the OS service.");
+    }
+
+    private static async Task ReportsPlatformCapabilities()
+    {
+        var router = BuildRouter(new FakeSystemServices());
+        var response = await router.InvokeAsync(
+            Request("core:platform|capabilities", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
+            AllowAll());
+        var caps = Result(response, TaruiJsonContext.Default.PlatformCapabilities);
+        Assert(caps.AutostartSupported, "Autostart must be reported as supported on the current platform.");
+        Assert(
+            caps.NotificationSupported == OperatingSystem.IsWindows(),
+            "Notification availability must honestly reflect the current OS footprint.");
+        Assert(
+            caps.GlobalShortcutSupported == OperatingSystem.IsWindows(),
+            "Global-shortcut availability must honestly reflect the current OS footprint.");
+        Assert(
+            caps.DeepLinkSupported == (OperatingSystem.IsWindows() || OperatingSystem.IsLinux()),
+            "Deep-link availability must honestly reflect the current OS footprint.");
     }
 
     private static async Task OpensDialogsForRequestingWindow()

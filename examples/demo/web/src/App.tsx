@@ -11,6 +11,8 @@ import { store } from '@lytree/api/store'
 import { http } from '@lytree/api/http'
 import { shell } from '@lytree/api/shell'
 import { checkUpdate, downloadUpdate, applyUpdate } from '@lytree/api/updater'
+import { platform } from '@lytree/api/platform'
+import type { PlatformCapabilities } from '@lytree/api/platform'
 import { Channel, invoke } from '@lytree/api/ipc'
 
 type StreamProgress = { step: number; total: number }
@@ -51,6 +53,7 @@ function App() {
   const [shellRunning, setShellRunning] = useState(false)
   const [lastAsk, setLastAsk] = useState<boolean | null>(null)
   const [updaterStatus, setUpdaterStatus] = useState('')
+  const [platformCaps, setPlatformCaps] = useState<PlatformCapabilities | null>(null)
 
   const logRef = useRef<LogEntry[]>([])
   const pushLog = (entry: Omit<LogEntry, 'at' | 'kind'> & { kind?: LogEntry['kind'] }) => {
@@ -72,6 +75,11 @@ function App() {
     return on<{ id: string; text?: string | null }>('menu://item-clicked', payload => {
       pushLog({ kind: 'ok', text: `menu://item-clicked -> ${payload.id}${payload.text ? ` (${payload.text})` : ''}` })
     })
+  }, [])
+
+  // Surface which OS-coupled features are genuinely available on this platform.
+  useEffect(() => {
+    platform.capabilities().then(setPlatformCaps).catch(() => setPlatformCaps(null))
   }, [])
 
   // The native sidebar (demo window extension) emits this event when its button is clicked.
@@ -511,6 +519,27 @@ function App() {
         {updaterStatus && <p className="muted">updater: {updaterStatus}</p>}
         <p className="muted">
           演示串联校验、暂存与 apply 编排；真实发布需更新服务器 + 签名 + 已签名的 MSIX，apply 成功后会自动重启。
+        </p>
+      </section>
+
+      <section>
+        <h2>平台可用能力（core:platform|capabilities）</h2>
+        {platformCaps ? (
+          <div className="grid">
+            <span>通知</span>
+            <code>{platformCaps.notificationSupported ? '支持' : `不支持（${platformCaps.notificationReason ?? 'n/a'}）`}</code>
+            <span>全局快捷键</span>
+            <code>{platformCaps.globalShortcutSupported ? '支持' : `不支持（${platformCaps.globalShortcutReason ?? 'n/a'}）`}</code>
+            <span>开机自启</span>
+            <code>{platformCaps.autostartSupported ? '支持' : '不支持'}</code>
+            <span>深链</span>
+            <code>{platformCaps.deepLinkSupported ? '支持' : `不支持（${platformCaps.deepLinkReason ?? 'n/a'}）`}</code>
+          </div>
+        ) : (
+          <p className="muted">加载平台能力中…</p>
+        )}
+        <p className="muted">
+          前端据此禁用当前平台不可用的 UI，而不是触发运行时诚实降级 no-op。
         </p>
       </section>
 

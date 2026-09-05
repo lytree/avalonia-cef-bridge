@@ -102,6 +102,7 @@ public sealed record StreamEchoArgs(string? Channel, int Count);
 [JsonSerializable(typeof(PathResolveOptions))]
 [JsonSerializable(typeof(PathResolveResult))]
 [JsonSerializable(typeof(OsInfo))]
+[JsonSerializable(typeof(PlatformCapabilities))]
 [JsonSerializable(typeof(ProcessExitOptions))]
 [JsonSerializable(typeof(ShellOpenOptions))]
 [JsonSerializable(typeof(ShellOpenResult))]

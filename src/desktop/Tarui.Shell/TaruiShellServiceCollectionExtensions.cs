@@ -77,7 +77,19 @@ public static class TaruiShellServiceCollectionExtensions
                 "tarui.net",
                 "window-state")))
         .AddSingleton<IWindowStateService, AvaloniaWindowStateService>()
-        .AddSingleton<IAutostartService, WindowsAutostartService>()
+        .AddSingleton<IAutostartService>(_ =>
+        {
+            var processPath = Environment.ProcessPath
+                ?? throw new InvalidOperationException("Autostart requires the application executable path.");
+            if (OperatingSystem.IsMacOS())
+            {
+                return new MacAutostartService(MacAutostartService.DefaultBaseDirectory(), processPath);
+            }
+
+            return OperatingSystem.IsLinux()
+                ? new LinuxAutostartService(LinuxAutostartService.DefaultBaseDirectory(), processPath)
+                : new WindowsAutostartService();
+        })
         .AddSingleton<IGlobalShortcutService>(sp => new WindowsGlobalShortcutService(sp.GetRequiredService<EventRouter>()))
         .AddSingleton<INotificationService, WindowsNotificationService>()
         .AddSingleton<DeepLinkService>(sp => new DeepLinkService(

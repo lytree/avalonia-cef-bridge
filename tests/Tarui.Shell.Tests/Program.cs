@@ -1,9 +1,10 @@
-﻿﻿﻿﻿﻿using System.Text.Json;
+﻿﻿﻿﻿using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
+using Tarui.Plugins.Autostart;
 using Tarui.Plugins.Dialog;
 using Tarui.Plugins.Events;
 using Tarui.Plugins.System;
@@ -37,6 +38,7 @@ internal static class Program
         ComposerRejectsUnregisteredPermissions();
         CapabilitySetProviderCachesDirectorySnapshot();
         AddTaruiShellRegistersShellServices();
+        await AutostartPlatformServicesRoundTripLaunchEntries();
         ShellPolicyAcceptsAllApplicationSchemes();
         AddWindowExtensionRegistersAndScopesByLabel();
         AddWindowExtensionRegistrarMergesIntoRegistry();
@@ -361,6 +363,63 @@ internal static class Program
         Assert(
             provider.GetRequiredService<CommandRouter>() is not null,
             "AddTaruiShell must register the command router.");
+    }
+
+    private static async Task AutostartPlatformServicesRoundTripLaunchEntries()
+    {
+        var macDir = Path.Combine(Path.GetTempPath(), "tarui-mac-" + Guid.NewGuid().ToString("N"));
+        var linuxDir = Path.Combine(Path.GetTempPath(), "tarui-linux-" + Guid.NewGuid().ToString("N"));
+        var exe = OperatingSystem.IsWindows() ? @"C:\Apps\Demo.exe" : "/opt/demo";
+        try
+        {
+            var mac = new MacAutostartService(macDir, exe);
+            Assert(!(await mac.IsEnabledAsync(default)).Enabled, "A missing macOS entry must be disabled.");
+            await mac.EnableAsync(new AutostartEnableOptions(["--minimized"]), default);
+            Assert((await mac.IsEnabledAsync(default)).Enabled, "After writing, the macOS entry must be enabled.");
+            var plistPath = Path.Combine(macDir, "Demo.plist");
+            Assert(File.Exists(plistPath), "The macOS LaunchAgents plist must exist after enable.");
+            var plist = File.ReadAllText(plistPath);
+            Assert(
+                plist.Contains("RunAtLoad", StringComparison.Ordinal) && plist.Contains(exe, StringComparison.Ordinal),
+                "The macOS plist must carry RunAtLoad and the application executable.");
+            await mac.DisableAsync(default);
+            Assert(!File.Exists(plistPath), "Disabling must remove the macOS entry.");
+
+            var linux = new LinuxAutostartService(linuxDir, exe);
+            Assert(!(await linux.IsEnabledAsync(default)).Enabled, "A missing Linux entry must be disabled.");
+            await linux.EnableAsync(new AutostartEnableOptions(["--minimized"]), default);
+            Assert((await linux.IsEnabledAsync(default)).Enabled, "After writing, the Linux entry must be enabled.");
+            var desktopPath = Path.Combine(linuxDir, "Demo.desktop");
+            Assert(File.Exists(desktopPath), "The Linux .desktop entry must exist after enable.");
+            var desktop = File.ReadAllText(desktopPath);
+            Assert(
+                desktop.Contains("Type=Application", StringComparison.Ordinal) && desktop.Contains("Exec=", StringComparison.Ordinal),
+                "The Linux .desktop entry must be a valid Desktop Entry with an Exec line.");
+            await linux.DisableAsync(default);
+            Assert(!File.Exists(desktopPath), "Disabling must remove the Linux entry.");
+        }
+        finally
+        {
+            TryDeletePath(macDir);
+            TryDeletePath(linuxDir);
+        }
+    }
+
+    private static void TryDeletePath(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
     }
 
     private static void ShellPolicyAcceptsAllApplicationSchemes()

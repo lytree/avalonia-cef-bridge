@@ -29,6 +29,9 @@
 - **Updater apply + 打包分发**：`plugin:updater|apply` 对已校验暂存的 MSIX 执行安装（Windows `Add-AppxPackage`）
   并广播 apply 状态事件；`tarui build` 产出 zip / 自研 MSIX 打包器 / 签名 `latest.json`；重启由前端经
   `@lytree/api/updater` 衔接 `process.relaunch`。
+- **平台能力矩阵 + 跨平台自启**：`core:platform|capabilities` 暴露 notification/global-shortcut/autostart/deep-link
+  的真实可用性，前端据此禁用不可用 UI；Autostart 覆盖三平台（Windows registry / macOS LaunchAgents / Linux `.desktop`），
+  前端经 `@lytree/api/platform`、`@lytree/api/autostart` 调用。
 
 逐项能力与安装/打包细节见 [docs/wails-tauri-gap-analysis.md](docs/wails-tauri-gap-analysis.md) 与
 [examples/demo](examples/demo)。

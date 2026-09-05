@@ -30,6 +30,7 @@
     "core:app|get-info",
     "core:event|emit",
     "core:os|info",
+    "core:platform|capabilities",
     "core:path|resolve",
     "core:process|exit",
     "core:process|relaunch",

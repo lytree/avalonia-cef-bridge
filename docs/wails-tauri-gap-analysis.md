@@ -8,11 +8,11 @@
 
 ## 1. 结论摘要
 
-- Tarui 已完成桌面壳层核心：无反射 IPC、多窗口、CEF 150 WebView（自定义协议/导航与下载策略/文件拖放）、Capability v2 权限模型、Channel 端到端流式 IPC（含 fs 大文件流式读写与 HTTP 流式响应、Shell 子进程 stdio 流）、24+1 套自测试、24 个前端 API 模块。
+- Tarui 已完成桌面壳层核心：无反射 IPC、多窗口、CEF 150 WebView（自定义协议/导航与下载策略/文件拖放）、Capability v2 权限模型、Channel 端到端流式 IPC（含 fs 大文件流式读写与 HTTP 流式响应、Shell 子进程 stdio 流）、25 套自测试、25 个前端 API 模块。
 - Tauri v2 桌面相关 25 个官方能力中：已对齐约 18 个（多为 Windows 验证）、部分对齐 5 个、缺失 3 个（sql、stronghold、persisted-scope 等）。
 - Wails v3 桌面能力（多窗口/托盘/菜单/事件/对话框/拖放/frameless）基本具备等价实现；显著差距在开发体验（bindings 自动生成、可取消窗口事件钩子）与托盘窗口附着定位。
-- **最高优先缺口（P0）**：已全部落地（Channel 流式 IPC、fs 大文件、HTTP 客户端、Shell 子进程、上下文菜单、Dialog ask、Updater apply + 打包分发）。剩余聚焦**平台补齐（macOS/Linux）**与 P2 按需增强。
-- 平台现实：所有原生能力当前仅 Windows 完成验证；notification/global-shortcut/autostart 在非 Windows 为诚实降级 no-op。
+- **最高优先缺口（P0）**：已全部落地（Channel 流式 IPC、fs 大文件、HTTP 客户端、Shell 子进程、上下文菜单、Dialog ask、Updater apply + 打包分发）。剩余聚焦**平台补齐**（autostart 三平台已落地，notification/global-shortcut/macOS deep-link 待真机验收）与 P2 按需增强。
+- 平台现实：所有原生能力当前仅 Windows 完成验证；autostart 已有 macOS/Linux 实现，notification/global-shortcut 在非 Windows 为诚实降级并通过 `core:platform|capabilities` 如实暴露。
 
 ## 2. Tarui 当前能力基线（2026-09-04 快照）
 
@@ -35,13 +35,13 @@
 | Tray（create/set-menu/set-icon/set-tooltip/set-visible/remove） | 已实现 | `Tarui.Plugins.Tray`、`Tarui.Shell/AvaloniaTrayService.cs` |
 | Notification（权限模型 + show/cancel + activated/dismissed 事件；Windows balloon） | 已实现(Windows) | `Tarui.Shell/WindowsNotificationService.cs`（非 Windows no-op） |
 | GlobalShortcut（register/unregister/is-registered、accelerator 归一化、scope glob） | 已实现(Windows) | `Tarui.Shell/WindowsGlobalShortcutService.cs`（非 Windows 降级） |
-| Autostart（enable/disable/is-enabled） | 已实现(Windows) | `Tarui.Shell/WindowsAutostartService.cs`（HKCU Run 键） |
+| Autostart（enable/disable/is-enabled） | 已实现 | `WindowsAutostartService`（HKCU Run）/ `MacAutostartService`（LaunchAgents plist）/ `LinuxAutostartService`（.desktop） |
 | WindowState（save/restore/clear + 显示器拟合） | 已实现 | `Tarui.Plugins.WindowState`、`WindowStateFit.ClampToMonitors` |
 | SingleInstance（Mutex + 命名管道/Unix socket 转发、`app://second-instance`） | 已实现(Windows 验证) | `Tarui.SingleInstance/SingleInstanceGuard.cs` |
 | DeepLink（get-current + 事件；Windows cold/warm） | 部分实现 | `Tarui.Plugins.DeepLink`、`Tarui.Shell/DeepLinkService.cs`（macOS/Linux 待真机验收） |
 | Updater（check/download + 签名验证 + SHA-256 + staging、apply、`updater://status`） | 已实现 | `Tarui.Shell/UpdaterService.cs`、`Tarui.Shell/UpdateApplier.cs` |
 | CLI（init / plugin init+pack / info / dev / build） | 已实现 | `src/tarui-cli/Program.cs` |
-| 前端 API（24 模块：ipc/app/window/webview/event/dialog/os/path/process/shell/clipboard/fs/menu/tray/window-state/single-instance/notification/autostart/global-shortcut/store/log/deep-link/updater/http） | 已实现 | `web/packages/api/index.ts` |
+| 前端 API（25 模块：ipc/app/window/webview/event/dialog/os/path/platform/process/shell/clipboard/fs/menu/tray/window-state/single-instance/notification/autostart/global-shortcut/store/log/deep-link/updater/http） | 已实现 | `web/packages/api/index.ts` |
 | Channel 流式 IPC | 已实现 | 端到端链路（Channel→sink→WebviewSession），`core:channel|stream-echo` 验证 |
 | 测试 | 25 套控制台式自测试 | `tests/Tarui.*.Tests`（含 `Tarui.Http.Tests`、`Tarui.ShellPlugin.Tests`） |
 
@@ -70,7 +70,7 @@
 
 | Tauri v2 官方能力 | Tarui 状态 | 说明 |
 | --- | --- | --- |
-| Autostart | ✅ (Windows) | 等价；非 Windows no-op |
+| Autostart | ✅ (Windows/macOS/Linux) | Windows registry / macOS LaunchAgents plist / Linux `.desktop` 均已实现；平台感知 DI 选择 |
 | Clipboard Manager | 🟡 | 仅 readText/writeText；缺图片、HTML、文件列表、clear |
 | CLI（结构化参数解析） | ❌ | 只有原始 process args |
 | Deep Linking | 🟡 | Windows 全链路；macOS delegate / Linux .desktop 未验收 |
@@ -143,7 +143,7 @@
 | 11 | DevTools 开关 | 双方均有 | CEF `ShowDevTools`，需权限门控 |
 | 12 | 窗口增强：setIcon、setTheme、transparent/acrylic、modal、父子窗口 | Tauri window / Wails v3 | Avalonia 原语均支持，逐项封装 |
 | 13 | Positioner（托盘图标旁定位等预设位置） | Tauri positioner / Wails tray attach | 托盘应用标准场景 |
-| 14 | macOS/Linux 平台补齐（notification、global-shortcut、autostart、deep-link 真机验收） | 双方均跨平台 | 优先级随跨平台需求提升 |
+| 14 | macOS/Linux 平台补齐（notification、global-shortcut、autostart、deep-link 真机验收） | 双方均跨平台 | 🟡 进展：autostart 已三平台落地；`core:platform|capabilities` 能力矩阵已暴露；notification / global-shortcut / macOS deep-link 仍待真机验收 |
 | 15 | 结构化 CLI 参数解析插件 | Tauri cli | 可先以 System 插件扩展 |
 | 16 | Web 侧可取消窗口事件钩子（onCloseRequested 拦截） | Tauri / Wails v3 RegisterHook | 事件系统已有，补回执通道 |
 
@@ -166,7 +166,7 @@
 
 1. **通知载体升级（高价值）**：`WindowsNotificationService` 当前为 `Shell_NotifyIcon` balloon tips；升级为 Windows Toast 通知可获得操作按钮、驻留通知中心、与已有 `notification://activated/dismissed` 事件真正联动。balloon 载体下 activated 语义基本不可用。
 2. **fs 大文件上限解耦**：8 MiB 文本单次上限已通过 Channel 流式读/分片写解耦（P0-4 落地时同步完成）；`read-text-file` 保留小文件便利上限，大文件走 `read-file-stream`/`write-begin|chunk|commit|cancel`。
-3. **平台可用性元数据**：notification/global-shortcut/autostart 非 Windows 为 no-op，但对齐计划原则要求"不允许静默伪装跨平台可用"；建议在 capability/权限元数据与前端 API 层标注平台支持矩阵（编译期或握手期可查询），而非仅靠运行时返回值。
+3. **平台可用性元数据**（高价值）✅：`core:platform|capabilities` + `@lytree/api/platform` 已在握手期暴露 notification/global-shortcut/autostart/deep-link 的真实可用性矩阵，前端据此禁用不可用 UI；通知与全局快捷键的非 Windows 平台能力仍为诚实降级并由该矩阵如实反映。
 4. **TS API 代码生成**：24 个手写模块与 C# 契约存在双维护成本；扩展现有 Roslyn 生成器或 CLI（`tarui plugin pack` 流程）从 `TaruiJsonContext` DTO 生成 TS 类型和 invoke 封装，对齐 Wails bindings 开发体验，消除漂移风险。
 5. **菜单局部更新**：Menu 插件目前仅整树 set + 单项 update-item；可补充 append/insert/remove 级增量操作，避免大菜单整树重建（Avalonia `NativeMenu` 支持增量子项操作）。
 6. **事件广播扇出**：`EventRouter` 定向/广播按窗口遍历投递；多窗口高频事件（如日志流 `log://entry`）下建议评估批量编码或共享序列化快照，避免逐窗口重复序列化。
@@ -183,7 +183,7 @@
 2. **HTTP 客户端 + Shell 子进程插件**（P0-1/2）——HTTP 客户端已完成（URL scope + 流式响应）；Shell 子进程已完成（程序白名单作用域默认拒绝 + stdio 流式 + 退出码 + kill）。
 3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——✅ 已完成（`plugin:menu|show-context-menu` + `plugin:dialog|ask`）。
 4. **Updater apply + 打包分发**（P0-5/6）——✅ 已完成（apply 落地 MSIX 安装 + 状态事件；打包分发为现有 `tarui build` zip/MSIX/签名 latest.json，重启由调用方衔接 process relaunch，与 OIDC 发布工作流衔接）。
-5. **平台补齐（macOS/Linux）**——按产品跨平台节奏推进，优先 notification/global-shortcut/autostart/deep-link 验收。
+5. **平台补齐（macOS/Linux）**——🟡 进展：autostart 已三平台落地，`core:platform|capabilities` 能力矩阵已暴露；notification / global-shortcut / macOS deep-link 需 macOS/Linux 真机验收后补齐。
 6. **P2 项按产品需求排期**（fs watch、upload、positioner 等）。
 
 每项仍须遵循既有模板：`Contracts DTO → 显式插件注册 → Shell/平台实现 → Capability 授权 → @lytree/api 模块 → 控制台式自测试 → 文档同步`。

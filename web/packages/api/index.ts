@@ -77,6 +77,9 @@ export type { AskOptions } from './dialog'
 export { info as getOsInfo } from './os'
 export type { OsInfo } from './os'
 
+export { platform, capabilities as platformCapabilities } from './platform'
+export type { PlatformCapabilities } from './platform'
+
 export { resolve as resolvePath } from './path'
 export type { PathKind } from './path'
 
