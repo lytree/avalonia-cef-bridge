@@ -21,6 +21,13 @@ public sealed class UpdaterPlugin(IUpdaterService service) : ITaruiPlugin
             TaruiJsonContext.Default.UpdateDownloadResult,
             (options, _, ct) => service.DownloadAsync(options, ct),
             "plugin:updater|download");
+
+        commands.Add(
+            "plugin:updater|apply",
+            TaruiJsonContext.Default.UpdateApplyOptions,
+            TaruiJsonContext.Default.UpdateApplyResult,
+            (options, _, ct) => service.ApplyAsync(options, ct),
+            "plugin:updater|apply");
     }
 }
 

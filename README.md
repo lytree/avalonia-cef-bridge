@@ -26,6 +26,9 @@
   默认拒绝、stdout/stderr 经 Channel 流式回传、退出码 terminated 帧、进程树终止；前端经 `@lytree/api/shell`。
 - **上下文菜单 + Dialog ask**：`plugin:menu|show-context-menu` 任意坐标弹出（复用声明式 items + `menu://item-clicked`
   点击路由）；`plugin:dialog|ask` Yes/No 三态询问（可选显式取消）；前端经 `@lytree/api/menu`、`@lytree/api/dialog`。
+- **Updater apply + 打包分发**：`plugin:updater|apply` 对已校验暂存的 MSIX 执行安装（Windows `Add-AppxPackage`）
+  并广播 apply 状态事件；`tarui build` 产出 zip / 自研 MSIX 打包器 / 签名 `latest.json`；重启由前端经
+  `@lytree/api/updater` 衔接 `process.relaunch`。
 
 逐项能力与安装/打包细节见 [docs/wails-tauri-gap-analysis.md](docs/wails-tauri-gap-analysis.md) 与
 [examples/demo](examples/demo)。

@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Tarui.Contracts;
@@ -88,11 +88,15 @@ public static class TaruiShellServiceCollectionExtensions
         .AddSingleton<ISecondActivationSink>(sp => sp.GetRequiredService<DeepLinkService>())
         .AddHostedService<DeepLinkRegistrarHostedService>()
         .AddSingleton<HttpClient>()
+        .AddSingleton<IUpdateApplier>(_ => OperatingSystem.IsWindows()
+            ? new WindowsMsixUpdateApplier()
+            : new NoOpUpdateApplier())
         .AddSingleton<IUpdaterService>(sp => new UpdaterService(
             sp.GetRequiredService<HttpClient>(),
             UpdaterConfiguration.ReadSettings(sp.GetService<IConfiguration>()),
             sp.GetService<EventRouter>(),
-            sp.GetService<ILogger<UpdaterService>>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<UpdaterService>.Instance))
+            sp.GetService<ILogger<UpdaterService>>() ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<UpdaterService>.Instance,
+            sp.GetRequiredService<IUpdateApplier>()))
         .AddSingleton<IMainWindowLauncher, MainWindowLauncher>()
         .AddSingleton<IRemoteLogSink, RemoteLogSink>()
         .AddSingleton<ILoggerProvider, RemoteLoggerProvider>();

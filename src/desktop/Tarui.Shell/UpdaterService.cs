@@ -39,18 +39,21 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
     private readonly UpdaterSettings? _settings;
     private readonly EventRouter? _events;
     private readonly ILogger<UpdaterService> _logger;
+    private readonly IUpdateApplier _applier;
     private readonly SemaphoreSlim _downloadGate = new(1, 1);
 
     public UpdaterService(
         HttpClient http,
         UpdaterSettings? settings,
         EventRouter? events,
-        ILogger<UpdaterService> logger)
+        ILogger<UpdaterService> logger,
+        IUpdateApplier? updateApplier = null)
     {
         _http = http;
         _settings = settings;
         _events = events;
         _logger = logger;
+        _applier = updateApplier ?? new NoOpUpdateApplier();
     }
 
     public async ValueTask<UpdateCheckResult> CheckAsync(EmptyArgs options, CancellationToken cancellationToken)
@@ -198,6 +201,70 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
         finally
         {
             _downloadGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Applies a previously-staged, verified bundle. The staging path must sit under the configured staging root;
+    /// the applier owns the actual install mechanism (bundle selection + apply). Any apply failure is surfaced as
+    /// <c>apply-failed</c> status and a non-succeeded result; an unsupported bundle/platform surfaces an explicit
+    /// error rather than a silent no-op. Restart is intentionally left to the caller so the host can exit cleanly.
+    /// </summary>
+    public async ValueTask<UpdateApplyResult> ApplyAsync(
+        UpdateApplyOptions options,
+        CancellationToken cancellationToken)
+    {
+        var restart = options.Restart;
+        if (_settings is null)
+        {
+            return new UpdateApplyResult(false, "updater-not-configured", restart);
+        }
+
+        // Confine the staging path to the configured staging root; only a DownloadAsync result is valid input.
+        if (string.IsNullOrWhiteSpace(options.StagingPath))
+        {
+            return new UpdateApplyResult(false, "invalid-staging-path", restart);
+        }
+
+        var stagingRoot = Path.GetFullPath(_settings.StagingDir);
+        var stagingPath = Path.GetFullPath(options.StagingPath);
+        if (!stagingPath.StartsWith(stagingRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+            !Directory.Exists(stagingPath))
+        {
+            return new UpdateApplyResult(false, "invalid-staging-path", restart);
+        }
+
+        var bundle = Directory.GetFiles(stagingPath, "*.msix", SearchOption.TopDirectoryOnly)
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (bundle is null)
+        {
+            await EmitStatusAsync("apply-failed", error: "no-bundle-staged", cancellationToken: cancellationToken);
+            return new UpdateApplyResult(false, "no-bundle-staged", restart);
+        }
+
+        await EmitStatusAsync("apply-start", file: Path.GetFileName(bundle), cancellationToken: cancellationToken);
+        try
+        {
+            var applied = await _applier.ApplyAsync(stagingPath, cancellationToken).ConfigureAwait(false);
+            if (!applied)
+            {
+                await EmitStatusAsync("apply-failed", error: "update-apply-unsupported", cancellationToken: cancellationToken);
+                return new UpdateApplyResult(false, "update-apply-unsupported", restart);
+            }
+
+            await EmitStatusAsync("apply-success", file: Path.GetFileName(bundle), cancellationToken: cancellationToken);
+            return new UpdateApplyResult(true, null, restart);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            LogApplyFailure(exception);
+            await EmitStatusAsync("apply-failed", error: "apply-failed", cancellationToken: cancellationToken);
+            return new UpdateApplyResult(false, "apply-failed", restart);
         }
     }
 
@@ -423,4 +490,7 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
 
     [LoggerMessage(LogLevel.Warning, EventId = 102, Message = "Update '{Phase}' rejected for size limit.")]
     private partial void LogSizeLimit(string phase, Exception exception);
+
+    [LoggerMessage(LogLevel.Warning, EventId = 103, Message = "Update apply failed.")]
+    private partial void LogApplyFailure(Exception exception);
 }

@@ -33,6 +33,12 @@ internal static class Program
             await ManifestExceedingLimitIsRejectedAsync();
             await DownloadsAreSerializedAsync();
             await StagingSubdirectoryIsUniquePerTransactionAsync();
+            await ApplyNotConfiguredFailsAsync();
+            await ApplyRejectsInvalidStagingPathAsync();
+            await ApplyRejectsStagingWithoutBundleAsync();
+            await ApplyAppliesStagedMsixAsync();
+            await ApplyReportsUnsupportedWhenApplierDeclinesAsync();
+            await ApplySurfacesApplierFailureAsync();
         }
         catch (Exception exception)
         {
@@ -385,6 +391,152 @@ internal static class Program
         }
     }
 
+    private static async Task ApplyNotConfiguredFailsAsync()
+    {
+        using var http = new HttpClient();
+        var service = new UpdaterService(http, null, null, NullLogger<UpdaterService>.Instance, new NoOpUpdateApplier());
+        var result = await service.ApplyAsync(new UpdateApplyOptions("C:/staged"), default);
+        Assert(!result.Succeeded && result.Error == "updater-not-configured", "An unconfigured updater must not apply.");
+    }
+
+    private static async Task ApplyRejectsInvalidStagingPathAsync()
+    {
+        var root = TempStaging();
+        Directory.CreateDirectory(root);
+        var service = BuildApplyService(root, new RecordingApplier(), out var http);
+        try
+        {
+            var outside = await service.ApplyAsync(
+                new UpdateApplyOptions(Path.Combine(Path.GetTempPath(), "unrelated-" + Guid.NewGuid().ToString("N"))), default);
+            Assert(!outside.Succeeded && outside.Error == "invalid-staging-path", "A staging path outside the root must be rejected.");
+
+            var missing = await service.ApplyAsync(new UpdateApplyOptions(Path.Combine(root, "missing")), default);
+            Assert(!missing.Succeeded && missing.Error == "invalid-staging-path", "A missing staged directory under the root must be rejected.");
+        }
+        finally
+        {
+            http.Dispose();
+            TryDeleteDir(root);
+        }
+    }
+
+    private static async Task ApplyRejectsStagingWithoutBundleAsync()
+    {
+        var root = TempStaging();
+        Directory.CreateDirectory(root);
+        var staged = Directory.CreateDirectory(Path.Combine(root, "txn")).FullName;
+        var service = BuildApplyService(root, new RecordingApplier(), out var http);
+        try
+        {
+            var result = await service.ApplyAsync(new UpdateApplyOptions(staged), default);
+            Assert(!result.Succeeded && result.Error == "no-bundle-staged", "A staged set without an MSIX must surface no-bundle-staged.");
+        }
+        finally
+        {
+            http.Dispose();
+            TryDeleteDir(root);
+        }
+    }
+
+    private static async Task ApplyAppliesStagedMsixAsync()
+    {
+        var root = TempStaging();
+        Directory.CreateDirectory(root);
+        var staged = Directory.CreateDirectory(Path.Combine(root, "txn")).FullName;
+        File.WriteAllText(Path.Combine(staged, "app-1.0.1-win-x64.msix"), "pkg");
+        var applier = new RecordingApplier { Result = true };
+        var service = BuildApplyService(root, applier, out var http);
+        try
+        {
+            var result = await service.ApplyAsync(new UpdateApplyOptions(staged, Restart: true), default);
+            Assert(result.Succeeded, "An MSIX staged bundle the applier accepts must apply.");
+            Assert(result.Restart, "The restart request must be echoed.");
+            Assert(applier.Calls.Count == 1 &&
+                   Path.GetFullPath(applier.Calls[0]).TrimEnd('\\').Equals(Path.GetFullPath(staged).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase),
+                "The applier must be invoked with the staged path.");
+        }
+        finally
+        {
+            http.Dispose();
+            TryDeleteDir(root);
+        }
+    }
+
+    private static async Task ApplyReportsUnsupportedWhenApplierDeclinesAsync()
+    {
+        var root = TempStaging();
+        Directory.CreateDirectory(root);
+        var staged = Directory.CreateDirectory(Path.Combine(root, "txn")).FullName;
+        File.WriteAllText(Path.Combine(staged, "app.msix"), "pkg");
+        var service = BuildApplyService(root, new RecordingApplier { Result = false }, out var http);
+        try
+        {
+            var result = await service.ApplyAsync(new UpdateApplyOptions(staged), default);
+            Assert(!result.Succeeded && result.Error == "update-apply-unsupported", "A declining applier must surface update-apply-unsupported.");
+        }
+        finally
+        {
+            http.Dispose();
+            TryDeleteDir(root);
+        }
+    }
+
+    private static async Task ApplySurfacesApplierFailureAsync()
+    {
+        var root = TempStaging();
+        Directory.CreateDirectory(root);
+        var staged = Directory.CreateDirectory(Path.Combine(root, "txn")).FullName;
+        File.WriteAllText(Path.Combine(staged, "app.msix"), "pkg");
+        var applier = new RecordingApplier { ThrowOnApply = new InvalidOperationException("boom") };
+        var service = BuildApplyService(root, applier, out var http);
+        try
+        {
+            var result = await service.ApplyAsync(new UpdateApplyOptions(staged), default);
+            Assert(!result.Succeeded && result.Error == "apply-failed", "An applier failure must surface as apply-failed.");
+        }
+        finally
+        {
+            http.Dispose();
+            TryDeleteDir(root);
+        }
+    }
+
+    private static void TryDeleteDir(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    /// <summary>A configurable fake applier that records the staged paths it was asked to apply.</summary>
+    private sealed class RecordingApplier : IUpdateApplier
+    {
+        public List<string> Calls { get; } = [];
+        public bool Result { get; set; } = true;
+        public Exception? ThrowOnApply { get; set; }
+
+        public ValueTask<bool> ApplyAsync(string stagingPath, CancellationToken cancellationToken)
+        {
+            Calls.Add(stagingPath);
+            if (ThrowOnApply is not null)
+            {
+                throw ThrowOnApply;
+            }
+
+            return ValueTask.FromResult(Result);
+        }
+    }
+
     private static UpdaterService BuildService(UpdaterSettings settings, out HttpClient http)
     {
         http = new HttpClient();
@@ -405,7 +557,18 @@ internal static class Program
             currentVersion,
             staging ?? TempStaging(),
             AllowInsecureHttp: true);
-        return new UpdaterService(http, settings, null, NullLogger<UpdaterService>.Instance);
+        return new UpdaterService(http, settings, null, NullLogger<UpdaterService>.Instance, new NoOpUpdateApplier());
+    }
+
+    private static UpdaterService BuildApplyService(string stagingDir, IUpdateApplier applier, out HttpClient http)
+    {
+        http = new HttpClient();
+        var settings = new UpdaterSettings(
+            new Uri("https://example.test/latest.json"),
+            PublicKeyB64: string.Empty,
+            CurrentVersion: "1.0.0",
+            StagingDir: stagingDir);
+        return new UpdaterService(http, settings, null, NullLogger<UpdaterService>.Instance, applier);
     }
 
     /// <summary>Builds a manifest for the target version with the supplied files/hash and a live test server.</summary>

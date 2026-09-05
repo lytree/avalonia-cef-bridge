@@ -10,6 +10,7 @@ import { fs, readFileStream, writeFileChunked } from '@lytree/api/fs'
 import { store } from '@lytree/api/store'
 import { http } from '@lytree/api/http'
 import { shell } from '@lytree/api/shell'
+import { checkUpdate, downloadUpdate, applyUpdate } from '@lytree/api/updater'
 import { Channel, invoke } from '@lytree/api/ipc'
 
 type StreamProgress = { step: number; total: number }
@@ -49,6 +50,7 @@ function App() {
   const [shellLines, setShellLines] = useState<string[]>([])
   const [shellRunning, setShellRunning] = useState(false)
   const [lastAsk, setLastAsk] = useState<boolean | null>(null)
+  const [updaterStatus, setUpdaterStatus] = useState('')
 
   const logRef = useRef<LogEntry[]>([])
   const pushLog = (entry: Omit<LogEntry, 'at' | 'kind'> & { kind?: LogEntry['kind'] }) => {
@@ -351,6 +353,40 @@ function App() {
     }
   }
 
+  async function doUpdateFlow() {
+    setUpdaterStatus('checking...')
+    pushLog({ kind: 'info', text: 'updater: check' })
+    try {
+      const check = await checkUpdate()
+      if (check.error) {
+        setUpdaterStatus(`check 失败: ${check.error}`)
+        pushLog({ kind: 'err', text: `updater.check: ${check.error}` })
+        return
+      }
+      if (!check.updateAvailable || !check.version) {
+        setUpdaterStatus('无可用更新')
+        pushLog({ kind: 'ok', text: 'updater: no update available' })
+        return
+      }
+
+      pushLog({ kind: 'info', text: `updater: downloading v${check.version}` })
+      const download = await downloadUpdate()
+      if (!download.succeeded || !download.stagingPath) {
+        setUpdaterStatus(`download 失败: ${download.error ?? 'unknown'}`)
+        pushLog({ kind: 'err', text: `updater.download: ${download.error ?? 'unknown'}` })
+        return
+      }
+
+      pushLog({ kind: 'info', text: 'updater: applying staged bundle' })
+      const apply = await applyUpdate(download.stagingPath, true)
+      setUpdaterStatus(apply.succeeded ? `已应用（重启=${apply.restart}）` : `apply 失败: ${apply.error}`)
+      pushLog({ kind: apply.succeeded ? 'ok' : 'err', text: `updater.apply -> ${apply.succeeded ? 'ok' : apply.error ?? 'failed'}` })
+    } catch (err) {
+      setUpdaterStatus(`异常: ${String(err)}`)
+      pushLog({ kind: 'err', text: `updater: ${String(err)}` })
+    }
+  }
+
   return (
     <main className="app">
       <h1>Tarui Demo</h1>
@@ -464,6 +500,17 @@ function App() {
         {lastAsk !== null && <p className="muted">上次 ask 结果：{lastAsk === null ? 'cancel' : lastAsk ? 'Yes' : 'No'}</p>}
         <p className="muted">
           ask 是三态询问（Yes/No/关闭即取消）；上下文菜单项点击经 <code>menu://item-clicked</code> 路由到本页日志。
+        </p>
+      </section>
+
+      <section>
+        <h2>Updater 更新流（check → download → apply）</h2>
+        <div className="row">
+          <button onClick={doUpdateFlow}>运行更新流</button>
+        </div>
+        {updaterStatus && <p className="muted">updater: {updaterStatus}</p>}
+        <p className="muted">
+          演示串联校验、暂存与 apply 编排；真实发布需更新服务器 + 签名 + 已签名的 MSIX，apply 成功后会自动重启。
         </p>
       </section>
 

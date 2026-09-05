@@ -46,9 +46,24 @@ public sealed record UpdateDownloadResult(
     string? StagingPath = null);
 
 /// <summary>
+/// Request for <c>plugin:updater|apply</c>. <see cref="StagingPath"/> is the staging directory returned by a
+/// successful <c>download</c>; the caller must pass it through so apply touches only the verified blobs. When
+/// <see cref="Restart"/> is set the caller (web layer) relaunches the app after a successful apply via the normal
+/// process relaunch — the apply step itself returns before any restart so the host can exit cleanly.
+/// </summary>
+public sealed record UpdateApplyOptions(string StagingPath, bool Restart = true);
+
+/// <summary>
+/// Outcome of <c>plugin:updater|apply</c>. <see cref="Succeeded"/> is true only when the bundle was actually
+/// applied. <see cref="Restart"/> echoes the request so the web layer knows whether to relaunch on success.
+/// </summary>
+public sealed record UpdateApplyResult(bool Succeeded, string? Error, bool Restart);
+
+/// <summary>
 /// Payload of the reserved <c>updater://status</c> event. <see cref="Phase"/> is a machine-readable
 /// stage (<c>check-success</c>, <c>download-start</c>, <c>download-progress</c>, <c>download-success</c>,
-/// <c>verification-failed</c>, <c>check-failed</c>, <c>download-failed</c>); <see cref="Version"/>, <see cref="File"/>
+/// <c>verification-failed</c>, <c>check-failed</c>, <c>download-failed</c>, <c>apply-start</c>,
+/// <c>apply-success</c>, <c>apply-failed</c>); <see cref="Version"/>, <see cref="File"/>
 /// and <see cref="Error"/> carry optional context. Delivery is gated by per-window receive capability.
 /// </summary>
 public sealed record UpdaterStatus(string Phase, string? Version = null, string? File = null, string? Error = null);

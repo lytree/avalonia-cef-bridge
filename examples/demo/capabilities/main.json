@@ -312,6 +312,7 @@
     "plugin:shell|stdin",
     "plugin:shell|kill",
     "plugin:updater|check",
-    "plugin:updater|download"
+    "plugin:updater|download",
+    "plugin:updater|apply"
   ]
 }

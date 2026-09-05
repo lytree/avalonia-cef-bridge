@@ -11,7 +11,7 @@
 - Tarui 已完成桌面壳层核心：无反射 IPC、多窗口、CEF 150 WebView（自定义协议/导航与下载策略/文件拖放）、Capability v2 权限模型、Channel 端到端流式 IPC（含 fs 大文件流式读写与 HTTP 流式响应、Shell 子进程 stdio 流）、24+1 套自测试、24 个前端 API 模块。
 - Tauri v2 桌面相关 25 个官方能力中：已对齐约 18 个（多为 Windows 验证）、部分对齐 5 个、缺失 3 个（sql、stronghold、persisted-scope 等）。
 - Wails v3 桌面能力（多窗口/托盘/菜单/事件/对话框/拖放/frameless）基本具备等价实现；显著差距在开发体验（bindings 自动生成、可取消窗口事件钩子）与托盘窗口附着定位。
-- **最高优先缺口（P0）**：Updater apply 与安装包分发（Channel 流式 IPC、fs 大文件、HTTP 客户端、Shell 子进程、上下文菜单、Dialog ask 均已落地）。
+- **最高优先缺口（P0）**：已全部落地（Channel 流式 IPC、fs 大文件、HTTP 客户端、Shell 子进程、上下文菜单、Dialog ask、Updater apply + 打包分发）。剩余聚焦**平台补齐（macOS/Linux）**与 P2 按需增强。
 - 平台现实：所有原生能力当前仅 Windows 完成验证；notification/global-shortcut/autostart 在非 Windows 为诚实降级 no-op。
 
 ## 2. Tarui 当前能力基线（2026-09-04 快照）
@@ -39,7 +39,7 @@
 | WindowState（save/restore/clear + 显示器拟合） | 已实现 | `Tarui.Plugins.WindowState`、`WindowStateFit.ClampToMonitors` |
 | SingleInstance（Mutex + 命名管道/Unix socket 转发、`app://second-instance`） | 已实现(Windows 验证) | `Tarui.SingleInstance/SingleInstanceGuard.cs` |
 | DeepLink（get-current + 事件；Windows cold/warm） | 部分实现 | `Tarui.Plugins.DeepLink`、`Tarui.Shell/DeepLinkService.cs`（macOS/Linux 待真机验收） |
-| Updater（check/download、签名验证、SHA-256、staging、`updater://status`；apply 默认关闭） | 部分实现 | `Tarui.Shell/UpdaterService.cs` |
+| Updater（check/download + 签名验证 + SHA-256 + staging、apply、`updater://status`） | 已实现 | `Tarui.Shell/UpdaterService.cs`、`Tarui.Shell/UpdateApplier.cs` |
 | CLI（init / plugin init+pack / info / dev / build） | 已实现 | `src/tarui-cli/Program.cs` |
 | 前端 API（24 模块：ipc/app/window/webview/event/dialog/os/path/process/shell/clipboard/fs/menu/tray/window-state/single-instance/notification/autostart/global-shortcut/store/log/deep-link/updater/http） | 已实现 | `web/packages/api/index.ts` |
 | Channel 流式 IPC | 已实现 | 端到端链路（Channel→sink→WebviewSession），`core:channel|stream-echo` 验证 |
@@ -91,7 +91,7 @@
 | SQL | ❌ | 未实现（按产品需求延后） |
 | Store | ✅ | 等价（JSON KV + scope + 原子写） |
 | Stronghold | ❌ | 未实现（加密存储，延后） |
-| Updater | 🟡 | check/download + 签名 + 哈希 + staging 完整；apply（安装/替换/重启）默认关闭 |
+| Updater | ✅ | check/download + 签名 + 哈希 + staging 完整；apply（MSIX 安装 + staging 定位）已落地 |
 | Upload | ❌ | 依赖 http 插件 |
 | Websocket | ❌ | 未实现 |
 | Window State | ✅ | 等价（含显示器拟合） |
@@ -129,8 +129,8 @@
 | 2 | Shell 子进程执行（spawn + stdio + 退出码 + sidecar） | Tauri shell | ✅ 已完成（`Tarui.Plugins.Shell`：程序白名单作用域默认拒绝 + Channel 流式 stdio + 退出码 + 进程树终止） |
 | 3 | 上下文菜单（context menu popup，任意坐标弹出） | Tauri Menu::popup / Wails menus | ✅ 已完成（`plugin:menu|show-context-menu`，Popup + Menu 复用声明式 items + 点击路由） |
 | 4 | Channel 端到端流式 IPC | Tauri ipc::Channel | ✅ 已完成（解锁 fs 大文件与 http 流式响应） |
-| 5 | Updater apply（安装、替换、重启） | Tauri updater | 已有 staging + 签名验证，补安装器与重启流程 |
-| 6 | 打包分发（安装包 NSIS/MSI、图标与版本资源嵌入） | Tauri bundler / wails3 build | CLI `tarui build` 扩展 |
+| 5 | Updater apply（安装、替换、重启） | Tauri updater | ✅ 已完成（`plugin:updater|apply`：staged 定位 + Windows MSIX Add-AppxPackage + apply 状态事件；重启交由调用方） |
+| 6 | 打包分发（安装包 NSIS/MSI、图标与版本资源嵌入） | Tauri bundler / wails3 build | ✅ 已完成（`tarui build` 产出 zip + 自研 MSIX 打包器 + 签名 latest.json，MSIX 即安装器分发形态） |
 
 ### P1 — 重要能力（常见应用需要，或有明确对标语义）
 
@@ -182,7 +182,7 @@
 1. **Channel 端到端流式 IPC**（P0-4）——✅ 已完成（`core:channel|stream-echo` 全链路验证）。
 2. **HTTP 客户端 + Shell 子进程插件**（P0-1/2）——HTTP 客户端已完成（URL scope + 流式响应）；Shell 子进程已完成（程序白名单作用域默认拒绝 + stdio 流式 + 退出码 + kill）。
 3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——✅ 已完成（`plugin:menu|show-context-menu` + `plugin:dialog|ask`）。
-4. **Updater apply + 打包分发**（P0-5/6）——打通"发布闭环"，与既有 OIDC 发布工作流衔接。
+4. **Updater apply + 打包分发**（P0-5/6）——✅ 已完成（apply 落地 MSIX 安装 + 状态事件；打包分发为现有 `tarui build` zip/MSIX/签名 latest.json，重启由调用方衔接 process relaunch，与 OIDC 发布工作流衔接）。
 5. **平台补齐（macOS/Linux）**——按产品跨平台节奏推进，优先 notification/global-shortcut/autostart/deep-link 验收。
 6. **P2 项按产品需求排期**（fs watch、upload、positioner 等）。
 

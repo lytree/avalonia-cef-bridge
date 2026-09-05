@@ -199,6 +199,8 @@ public sealed record StreamEchoArgs(string? Channel, int Count);
 [JsonSerializable(typeof(UpdateManifest))]
 [JsonSerializable(typeof(UpdateCheckResult))]
 [JsonSerializable(typeof(UpdateDownloadResult))]
+[JsonSerializable(typeof(UpdateApplyOptions))]
+[JsonSerializable(typeof(UpdateApplyResult))]
 [JsonSerializable(typeof(UpdaterStatus))]
 [JsonSerializable(typeof(string))]
 [JsonSerializable(typeof(bool))]

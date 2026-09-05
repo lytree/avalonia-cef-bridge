@@ -197,8 +197,9 @@ export {
   updater,
   check as checkUpdate,
   download as downloadUpdate,
+  apply as applyUpdate,
   onStatus as onUpdaterStatus,
   updaterStatusPhases,
   UPDATER_STATUS_EVENT,
 } from './updater'
-export type { UpdateCheckResult, UpdateDownloadResult, UpdaterStatus, UpdaterStatusPhase } from './updater'
+export type { UpdateCheckResult, UpdateDownloadResult, UpdateApplyResult, UpdaterStatus, UpdaterStatusPhase } from './updater'
