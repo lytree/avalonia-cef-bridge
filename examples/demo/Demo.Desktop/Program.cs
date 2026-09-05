@@ -1,4 +1,5 @@
 using Tarui.Hosting;
+using Tarui.Ipc;
 using Tarui.Plugins.Autostart;
 using Tarui.Plugins.Core;
 using Tarui.Plugins.DeepLink;
@@ -6,6 +7,7 @@ using Tarui.Plugins.Dialog;
 using Tarui.Plugins.Events;
 using Tarui.Plugins.FileSystem;
 using Tarui.Plugins.GlobalShortcut;
+using Tarui.Plugins.Http;
 using Tarui.Plugins.Log;
 using Tarui.Plugins.Menu;
 using Tarui.Plugins.Notification;
@@ -76,8 +78,10 @@ internal static class Program
             .AddGlobalShortcutPlugin()
             .AddStorePlugin()
             .AddLogPlugin()
+            .AddHttpPlugin()
             .AddDeepLinkPlugin()
-            .AddUpdaterPlugin();
+            .AddUpdaterPlugin()
+            .AddPlugin<DemoChannelPlugin>();
 
         builder.Window.Configure(window =>
         {

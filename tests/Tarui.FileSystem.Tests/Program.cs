@@ -18,7 +18,7 @@ internal static class Program
             StatAndExistsReflectDiskState();
             CopyAndRenameMoveBytesWithinPolicy();
             ScopeAuthorizerRespectsAllowDenyAndWildcards();
-            PluginRegistersAllNineCommands();
+            PluginRegistersAllFourteenCommands();
             ScopeMatcherRejectsCaseDifferingDenyEntriesOnWindows();
             ScopeMatcherMatchesCaseDifferingCandidateOnWindows();
             FileSystemServiceRejectsSymlinkEscapeOnSupportedOs();
@@ -176,7 +176,7 @@ internal static class Program
         Assert(!AllowsRead("appConfig", "notes.txt", allow, deny), "Patterns without wildcards still require the extension match.");
     }
 
-    private static void PluginRegistersAllNineCommands()
+    private static void PluginRegistersAllFourteenCommands()
     {
         var builder = new CommandRouterBuilder();
         var service = new RecordingFileSystemService();
@@ -194,6 +194,11 @@ internal static class Program
             "plugin:fs|copy-file",
             "plugin:fs|rename",
             "plugin:fs|remove",
+            "plugin:fs|read-file-stream",
+            "plugin:fs|write-begin",
+            "plugin:fs|write-chunk",
+            "plugin:fs|write-commit",
+            "plugin:fs|write-cancel",
         };
 
         foreach (var command in expected)
@@ -563,5 +568,10 @@ internal static class Program
         public ValueTask<Unit> CopyAsync(FsCopyOptions options, CancellationToken cancellationToken) { Record("copy"); return ValueTask.FromResult(new Unit()); }
         public ValueTask<Unit> RenameAsync(FsRenameOptions options, CancellationToken cancellationToken) { Record("rename"); return ValueTask.FromResult(new Unit()); }
         public ValueTask<Unit> RemoveAsync(FsRemoveOptions options, CancellationToken cancellationToken) { Record("remove"); return ValueTask.FromResult(new Unit()); }
+        public ValueTask<FsStreamResult> ReadFileStreamAsync(FsReadStreamOptions options, CancellationToken cancellationToken) { Record("read-file-stream"); return ValueTask.FromResult(new FsStreamResult(0)); }
+        public ValueTask<FsWriteBeginResult> WriteBeginAsync(FsWriteBeginOptions options, string windowLabel, CancellationToken cancellationToken) { Record("write-begin"); return ValueTask.FromResult(new FsWriteBeginResult("sess-1")); }
+        public ValueTask<Unit> WriteChunkAsync(FsWriteChunkOptions options, CancellationToken cancellationToken) { Record("write-chunk"); return ValueTask.FromResult(new Unit()); }
+        public ValueTask<Unit> WriteCommitAsync(FsWriteCommitOptions options, CancellationToken cancellationToken) { Record("write-commit"); return ValueTask.FromResult(new Unit()); }
+        public ValueTask<Unit> WriteCancelAsync(FsWriteCancelOptions options, CancellationToken cancellationToken) { Record("write-cancel"); return ValueTask.FromResult(new Unit()); }
     }
 }

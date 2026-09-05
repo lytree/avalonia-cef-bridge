@@ -1,4 +1,4 @@
-import { invoke } from './ipc'
+import { Channel, invoke } from './ipc'
 
 // File-system base identifiers exposed to the web layer. These are the exact strings the desktop
 // IFileAccessPolicy resolves via TryGetBaseDirectory; any value listed here MUST have a matching
@@ -82,12 +82,106 @@ export interface FsReadTextResult {
   contents: string
 }
 
+export type FsStreamEvent =
+  | { kind: 'meta'; meta: { size: number; modifiedAtMs: number | null } }
+  | { kind: 'chunk'; data: Uint8Array }
+
+export interface FsReadStreamOptions extends FsPathOptions {
+  chunkBytes?: number
+  onEvent?: (event: FsStreamEvent) => void
+}
+
+export interface FsReadStreamResult {
+  size: number
+}
+
+export interface FsWriteBeginResult {
+  writeId: string
+}
+
 export async function readTextFile(options: FsPathOptions): Promise<FsReadTextResult> {
   return invoke<FsReadTextResult>('plugin:fs|read-text-file', options)
 }
 
 export async function writeTextFile(options: FsWriteTextOptions): Promise<void> {
   await invoke('plugin:fs|write-text-file', options)
+}
+
+/**
+ * Streams a (potentially large) file back as frames: a leading `meta` frame with the total size, then any
+ * number of `chunk` frames. `onEvent` is invoked for each frame; the promise resolves when the stream ends.
+ * Because the host streams at its own pace, the invocation timeout is disabled here.
+ */
+export async function readFileStream(options: FsReadStreamOptions): Promise<FsReadStreamResult> {
+  const channel = new Channel<FsStreamEvent>()
+  channel.onmessage = toFsEvent(options.onEvent)
+  const { onEvent: _ignored, ...request } = options
+  return invoke<FsReadStreamResult>('plugin:fs|read-file-stream', { ...request, channel }, { timeoutMs: 0 })
+}
+
+/**
+ * Writes a large payload in chunks. The write is buffered to a temporary native file and only becomes visible
+ * on the final commit; on any error the pending session is cancelled so no partial file is left behind.
+ */
+export async function writeFileChunked(
+  base: FsBaseId,
+  path: string,
+  data: Uint8Array | Blob,
+  chunkBytes = 256 * 1024,
+): Promise<void> {
+  const bytes = data instanceof Blob ? new Uint8Array(await data.arrayBuffer()) : data
+  const begin = await invoke<FsWriteBeginResult>('plugin:fs|write-begin', {
+    base,
+    path,
+    totalBytes: bytes.length,
+  })
+  const { writeId } = begin
+  try {
+    for (let offset = 0; offset < bytes.length; offset += chunkBytes) {
+      const slice = bytes.subarray(offset, Math.min(offset + chunkBytes, bytes.length))
+      await invoke('plugin:fs|write-chunk', {
+        writeId,
+        data: base64Encode(slice),
+        sequence: offset / chunkBytes,
+      })
+    }
+    await invoke('plugin:fs|write-commit', { writeId })
+  } catch (error) {
+    await invoke('plugin:fs|write-cancel', { writeId }).catch(() => undefined)
+    throw error
+  }
+}
+
+function toFsEvent(onEvent?: (event: FsStreamEvent) => void): ((frame: unknown) => void) | undefined {
+  if (!onEvent) {
+    return undefined
+  }
+
+  return frame => {
+    const f = frame as { kind: 'meta' | 'chunk'; meta?: { size: number; modifiedAt?: number | null } | null; data?: string | null }
+    if (f.kind === 'meta') {
+      onEvent({ kind: 'meta', meta: { size: f.meta?.size ?? 0, modifiedAtMs: f.meta?.modifiedAt ?? null } })
+    } else {
+      onEvent({ kind: 'chunk', data: f.data ? base64ToBytes(f.data) : new Uint8Array(0) })
+    }
+  }
+}
+
+function base64Encode(bytes: Uint8Array): string {
+  let binary = ''
+  for (const value of bytes) {
+    binary += String.fromCharCode(value)
+  }
+  return btoa(binary)
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
 }
 
 export async function readDir(options: FsReadDirOptions): Promise<FsDirEntry[]> {
@@ -121,6 +215,8 @@ export async function remove(options: FsRemoveOptions): Promise<void> {
 export const fs = {
   readTextFile,
   writeTextFile,
+  readFileStream,
+  writeFileChunked,
   readDir,
   stat,
   exists,

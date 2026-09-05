@@ -36,6 +36,7 @@
     "core:shell|open",
     "core:clipboard|read-text",
     "core:clipboard|write-text",
+    "core:channel|stream-echo",
     {
       "identifier": "core:window|create",
       "allow": [{ "path": "editor" }]
@@ -264,6 +265,37 @@
       ],
       "deny": [
         { "base": "appConfig", "path": "settings/protected.json" }
+      ]
+    },
+    {
+      "identifier": "plugin:fs|read-file-stream",
+      "allow": [
+        { "base": "appData" },
+        { "base": "appConfig" },
+        { "base": "appCache" },
+        { "base": "appLog" },
+        { "base": "temp" },
+        { "base": "resources" }
+      ]
+    },
+    {
+      "identifier": "plugin:fs|write-begin",
+      "allow": [
+        { "base": "appData" },
+        { "base": "appConfig" },
+        { "base": "appCache" },
+        { "base": "appLog" },
+        { "base": "temp" }
+      ]
+    },
+    "plugin:fs|write-chunk",
+    "plugin:fs|write-commit",
+    "plugin:fs|write-cancel",
+    {
+      "identifier": "plugin:http|fetch",
+      "allow": [
+        { "path": "http://127.0.0.1:*/**" },
+        { "path": "https://api.github.com/**" }
       ]
     },
     "plugin:updater|check",

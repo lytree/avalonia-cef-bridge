@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DEFAULT_INVOKE_TIMEOUT_MS, IpcCommandError, invoke, listen, reset } from '../ipc'
+import { Channel, DEFAULT_INVOKE_TIMEOUT_MS, IpcCommandError, invoke, listen, reset } from '../ipc'
 
 type PendingEnvelope =
   | { protocol: number; id: string; success: boolean; payload?: unknown; error?: { code: string; message: string } }
   | { type: 'event'; event: string; payload: unknown }
+  | { type: 'channel'; channel: string; payload: unknown }
 
 let capturedDispatch: ((envelope: PendingEnvelope) => void) | null = null
 
@@ -114,6 +115,54 @@ describe('invoke', () => {
     const pending = invoke('plugin:demo|slow', {}, { signal: controller.signal, timeoutMs: 5_000 })
     setTimeout(() => controller.abort(), 5)
     await expect(pending).rejects.toMatchObject({ code: 'INVOKE_ABORTED' })
+  })
+})
+
+describe('Channel', () => {
+  it('serializes to its channel id string', () => {
+    const channel = new Channel<number>()
+    expect(channel.id).toMatch(/^chan-\d+$/)
+    expect(channel.toJSON()).toBe(channel.id)
+  })
+
+  it('embeds the channel id string in an invoke payload', async () => {
+    const channel = new Channel<number>()
+    let received: unknown = null
+    window.invokeCSharpAction = message => {
+      const parsed = JSON.parse(message) as { id: string; payload: { channel: unknown } }
+      received = parsed.payload.channel
+      sendResponse({ protocol: 1, id: parsed.id, success: true, payload: null })
+    }
+    await invoke('core:channel|stream-echo', { channel, count: 3 })
+    expect(received).toBe(channel.id)
+  })
+
+  it('streams channel frames to onmessage via dispatch', () => {
+    const channel = new Channel<number>()
+    const onmessage = vi.fn()
+    channel.onmessage = onmessage
+    sendResponse({ type: 'channel', channel: channel.id, payload: 42 })
+    sendResponse({ type: 'channel', channel: channel.id, payload: 43 })
+    expect(onmessage).toHaveBeenCalledTimes(2)
+    expect(onmessage).toHaveBeenNthCalledWith(1, 42)
+    expect(onmessage).toHaveBeenNthCalledWith(2, 43)
+  })
+
+  it('does not deliver to an unknown channel id', () => {
+    const channel = new Channel<number>()
+    const onmessage = vi.fn()
+    channel.onmessage = onmessage
+    sendResponse({ type: 'channel', channel: 'chan-missing', payload: 1 })
+    expect(onmessage).not.toHaveBeenCalled()
+  })
+
+  it('clears channels so stale frames no longer fire after reset', () => {
+    const channel = new Channel<number>()
+    const onmessage = vi.fn()
+    channel.onmessage = onmessage
+    reset()
+    sendResponse({ type: 'channel', channel: channel.id, payload: 1 })
+    expect(onmessage).not.toHaveBeenCalled()
   })
 })
 

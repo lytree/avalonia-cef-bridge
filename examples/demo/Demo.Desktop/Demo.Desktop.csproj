@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Event\Tarui.Plugins.Event.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.FileSystem\Tarui.Plugins.FileSystem.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.GlobalShortcut\Tarui.Plugins.GlobalShortcut.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Http\Tarui.Plugins.Http.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Log\Tarui.Plugins.Log.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Menu\Tarui.Plugins.Menu.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Notification\Tarui.Plugins.Notification.csproj" />

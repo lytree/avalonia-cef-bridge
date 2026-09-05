@@ -23,6 +23,18 @@ type EventEnvelope<T> = {
   payload: T
 }
 
+/** A frame delivering one streamed payload to a front-end channel identified by {@link channel}. */
+type ChannelEnvelope<TPayload> = {
+  type: 'channel'
+  channel: string
+  payload: TPayload
+}
+
+type DispatchMessage<TPayload = unknown> =
+  | InvokeResponse<TPayload>
+  | EventEnvelope<TPayload>
+  | ChannelEnvelope<TPayload>
+
 type TaruiHost = {
   invokeCSharpAction?: (message: string) => void
 }
@@ -66,8 +78,26 @@ export class IpcCommandError extends Error {
 
 /** Streaming channel mirrored from the native TaruiChannel contract. */
 export class Channel<TPayload> {
+  /** Uniquely identifies this channel within the current webview so native stream frames can be routed back. */
+  readonly id: string
+
   onmessage: ((payload: TPayload) => void) | undefined
 
+  constructor() {
+    channelSequence += 1
+    this.id = `chan-${channelSequence}`
+    channels.set(this.id, this as Channel<unknown>)
+  }
+
+  /**
+   * Serializes the channel into an invocation payload. Returning the channel id means a channel passed to
+   * {@link invoke} lands on the wire as a plain string token the native side binds into a typed channel.
+   */
+  toJSON(): string {
+    return this.id
+  }
+
+  /** Invokes the {@link onmessage} handler with a streamed payload. */
   push(payload: TPayload): void {
     this.onmessage?.(payload)
   }
@@ -75,7 +105,9 @@ export class Channel<TPayload> {
 
 const pending = new Map<string, Resolver>()
 const eventListeners = new Map<string, Set<(payload: unknown) => void>>()
+const channels = new Map<string, Channel<unknown>>()
 let sequence = 0
+let channelSequence = 0
 let resetInstalled = false
 
 /**
@@ -211,8 +243,13 @@ function decodeBase64(value: string): string {
   return new TextDecoder().decode(bytes)
 }
 
-function dispatch(message: InvokeResponse<unknown> | EventEnvelope<unknown>): void {
+function dispatch(message: DispatchMessage): void {
   if ('type' in message) {
+    if (message.type === 'channel') {
+      const channel = channels.get(message.channel)
+      channel?.push(message.payload)
+      return
+    }
     if (message.type === 'event') {
       for (const listener of eventListeners.get(message.event) ?? []) {
         listener(message.payload)
@@ -253,6 +290,7 @@ export function reset(): void {
   }
   pending.clear()
   eventListeners.clear()
+  channels.clear()
 }
 
 /**
@@ -277,6 +315,6 @@ function installResetOnce(): void {
 
 if (typeof window !== 'undefined') {
   window.__tarui_dispatchBase64 = message => {
-    dispatch(JSON.parse(decodeBase64(message)) as InvokeResponse<unknown> | EventEnvelope<unknown>)
+    dispatch(JSON.parse(decodeBase64(message)) as DispatchMessage)
   }
 }

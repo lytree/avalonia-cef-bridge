@@ -67,6 +67,7 @@
     <Project Path="tests/Tarui.FileSystem.Tests/Tarui.FileSystem.Tests.csproj" />
     <Project Path="tests/Tarui.GlobalShortcut.Tests/Tarui.GlobalShortcut.Tests.csproj" />
     <Project Path="tests/Tarui.Hosting.Tests/Tarui.Hosting.Tests.csproj" />
+    <Project Path="tests/Tarui.Http.Tests/Tarui.Http.Tests.csproj" />
     <Project Path="tests/Tarui.Ipc.Tests/Tarui.Ipc.Tests.csproj" />
     <Project Path="tests/Tarui.Log.Tests/Tarui.Log.Tests.csproj" />
     <Project Path="tests/Tarui.MenuTray.Tests/Tarui.MenuTray.Tests.csproj" />
@@ -81,4 +82,5 @@
     <Project Path="tests/Tarui.WindowState.Tests/Tarui.WindowState.Tests.csproj" />
   </Folder>
   <Project Path="src/plugins/Tarui.Plugins.FileSystem/Tarui.Plugins.FileSystem.csproj" />
+  <Project Path="src/plugins/Tarui.Plugins.Http/Tarui.Plugins.Http.csproj" />
 </Solution>

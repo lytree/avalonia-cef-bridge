@@ -9,8 +9,16 @@ namespace Tarui.Plugins.FileSystem;
 /// rooted paths, device paths, link escapes, size limits, and read-only bases are rejected before any
 /// disk call. Writes are durable via the atomic temporary-file replacement exposed by the policy.
 /// </summary>
-public sealed class FileSystemService(IFileAccessPolicy policy) : IFileSystemService
+public sealed class FileSystemService(IFileAccessPolicy policy) : IFileSystemService, IDisposable
 {
+    private const long DefaultChunkBytes = 256 * 1024;
+    private const long MinChunkBytes = 1;
+    private const long MaxChunkBytes = 8 * 1024 * 1024;
+    private static readonly TimeSpan WriteIdleTimeout = TimeSpan.FromMinutes(10);
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, PendingWrite> _pendingWrites = new();
+    private int _disposed;
+
     public async ValueTask<FsReadTextResult> ReadTextAsync(FsPathOptions options, CancellationToken cancellationToken)
     {
         var path = ResolveAuthorized(FileAccessKind.Read, options.Base, options.Path);
@@ -24,12 +32,285 @@ public sealed class FileSystemService(IFileAccessPolicy policy) : IFileSystemSer
         return new FsReadTextResult(await File.ReadAllTextAsync(path, cancellationToken));
     }
 
+    public async ValueTask<FsStreamResult> ReadFileStreamAsync(
+        FsReadStreamOptions options,
+        CancellationToken cancellationToken)
+    {
+        var path = ResolveAuthorized(FileAccessKind.Read, options.Base, options.Path);
+        var size = new FileInfo(path).Length;
+
+        // 流式读豁免 per-operation 8 MiB 上限（大文件按块推送），但保留累计预算以阻止
+        // 并发读掏空磁盘。预算按文件整体预定，一次性判定，与单文件单调递增一致。
+        if (!policy.TryReserveTotalBytes(size))
+        {
+            throw new PathAccessDeniedException(PathDenialReason.SizeLimit,
+                "The file exceeds the cumulative read size budget.");
+        }
+
+        var channel = ChannelContext.Bind<FsStreamEvent>(options.Channel);
+        try
+        {
+            var modifiedAt = EpochMs(File.GetLastWriteTimeUtc(path));
+            await channel.SendAsync(new FsStreamEvent("meta", new FsStreamMeta(size, modifiedAt)), cancellationToken);
+            if (size > 0)
+            {
+                var chunkBytes = Math.Clamp(options.ChunkBytes ?? DefaultChunkBytes, MinChunkBytes, MaxChunkBytes);
+                await using var stream = new FileStream(
+                    path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                    bufferSize: 81920, useAsync: true);
+                var buffer = new byte[chunkBytes];
+                int read;
+                while ((read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)) > 0)
+                {
+                    await channel.SendAsync(new FsStreamEvent("chunk", Data: buffer.AsMemory(0, read).ToArray()),
+                        cancellationToken);
+                }
+            }
+
+            // Handler 正常返回即 resolve，前端据此判定流成功结束。
+            return new FsStreamResult(size);
+        }
+        finally
+        {
+            policy.ReleaseTotalBytes(size);
+        }
+    }
+
     public async ValueTask<Unit> WriteTextAsync(FsWriteTextOptions options, CancellationToken cancellationToken)
     {
         var path = ResolveAuthorized(FileAccessKind.Write, options.Base, options.Path);
         var bytes = System.Text.Encoding.UTF8.GetBytes(options.Contents ?? string.Empty);
         await policy.WriteAllBytesAtomicAsync(path, bytes, cancellationToken);
         return new Unit();
+    }
+
+    public ValueTask<FsWriteBeginResult> WriteBeginAsync(
+        FsWriteBeginOptions options,
+        string windowLabel,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SweepExpired();
+
+        var target = ResolveAuthorized(FileAccessKind.Write, options.Base, options.Path);
+        var directory = Path.GetDirectoryName(target) ?? ".";
+        var fileName = Path.GetFileName(target);
+        var tmp = Path.Combine(directory, $".{fileName}.{Guid.NewGuid():N}.tmp");
+
+        // 可选：按声明的总字节一次性预定累积预算；未声明则保留为 0，随后逐 chunk 预定。
+        var reserved = options.TotalBytes ?? 0;
+        if (reserved > 0 && !policy.TryReserveTotalBytes(reserved))
+        {
+            throw new PathAccessDeniedException(PathDenialReason.SizeLimit,
+                "The write exceeds the cumulative size budget.");
+        }
+
+        try
+        {
+            var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                bufferSize: 81920, useAsync: true);
+            var session = new PendingWrite(
+                writeId: NewWriteId(),
+                windowLabel: windowLabel,
+                targetPath: target,
+                tmpPath: tmp,
+                stream: stream,
+                totalBytes: options.TotalBytes,
+                reservedBytes: reserved,
+                lastTouch: DateTimeOffset.UtcNow);
+            _pendingWrites[session.WriteId] = session;
+            return ValueTask.FromResult(new FsWriteBeginResult(session.WriteId));
+        }
+        catch
+        {
+            policy.ReleaseTotalBytes(reserved);
+            TryDeleteFile(tmp);
+            throw;
+        }
+    }
+
+    public ValueTask<Unit> WriteChunkAsync(FsWriteChunkOptions options, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        SweepExpired();
+
+        var stream = CreateStream(options.WriteId);
+
+        lock (stream)
+        {
+            if (options.Sequence != stream.NextSequence)
+            {
+                throw new PathAccessDeniedException(PathDenialReason.IllegalSegment,
+                    $"Chunk {options.Sequence} is out of order; expected {stream.NextSequence}.");
+            }
+
+            if (!policy.IsWithinOperationLimit(FileAccessKind.Write, options.Data.Length))
+            {
+                throw new PathAccessDeniedException(PathDenialReason.SizeLimit,
+                    "A single write chunk exceeds the per-operation size limit.");
+            }
+
+            if (stream.TotalBytes is not null && stream.ReceivedBytes + options.Data.Length > stream.TotalBytes)
+            {
+                throw new PathAccessDeniedException(PathDenialReason.SizeLimit,
+                    "The chunk exceeds the declared total byte count.");
+            }
+
+            if (stream.TotalBytes is null)
+            {
+                if (!policy.TryReserveTotalBytes(options.Data.Length))
+                {
+                    throw new PathAccessDeniedException(PathDenialReason.SizeLimit,
+                        "The write exceeds the cumulative size budget.");
+                }
+
+                stream.ReservedBytes += options.Data.Length;
+            }
+
+            stream.Stream.Write(options.Data.AsSpan());
+            stream.ReceivedBytes += options.Data.Length;
+            stream.NextSequence++;
+            stream.LastTouch = DateTimeOffset.UtcNow;
+        }
+
+        return ValueTask.FromResult(new Unit());
+    }
+
+    public ValueTask<Unit> WriteCommitAsync(FsWriteCommitOptions options, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_pendingWrites.TryRemove(options.WriteId, out var session))
+        {
+            throw new InvalidOperationException($"No open write session '{options.WriteId}'.");
+        }
+
+        try
+        {
+            session.Stream.Flush();
+            session.Stream.Dispose();
+            File.Move(session.TmpPath, session.TargetPath, overwrite: true);
+            return ValueTask.FromResult(new Unit());
+        }
+        catch
+        {
+            TryDeleteFile(session.TmpPath);
+            throw;
+        }
+        finally
+        {
+            policy.ReleaseTotalBytes(session.ReservedBytes);
+        }
+    }
+
+    public ValueTask<Unit> WriteCancelAsync(FsWriteCancelOptions options, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_pendingWrites.TryRemove(options.WriteId, out var session))
+        {
+            throw new InvalidOperationException($"No open write session '{options.WriteId}'.");
+        }
+
+        session.Stream.Dispose();
+        TryDeleteFile(session.TmpPath);
+        policy.ReleaseTotalBytes(session.ReservedBytes);
+        return ValueTask.FromResult(new Unit());
+    }
+
+    /// <summary>Abandons every open write session owned by <paramref name="windowLabel"/>, deleting temp files.</summary>
+    public void CleanupWindow(string windowLabel)
+    {
+        foreach (var (id, session) in _pendingWrites)
+        {
+            if (string.Equals(session.WindowLabel, windowLabel, StringComparison.Ordinal))
+            {
+                if (_pendingWrites.TryRemove(id, out var removed))
+                {
+                    Abandon(removed);
+                }
+            }
+        }
+    }
+
+    /// <summary>Disposes open streams, removes temp files, and releases reserved budget on process/host teardown.</summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        foreach (var (id, session) in _pendingWrites)
+        {
+            if (_pendingWrites.TryRemove(id, out var removed))
+            {
+                Abandon(removed);
+            }
+        }
+    }
+
+    private PendingWrite CreateStream(string writeId) =>
+        _pendingWrites.TryGetValue(writeId, out var stream)
+            ? stream
+            : throw new InvalidOperationException($"No open write session '{writeId}'.");
+
+    /// <summary>Reclaims sessions whose last activity predates the idle timeout (opportunistic, lock-free under clear).</summary>
+    private void SweepExpired()
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var (id, session) in _pendingWrites)
+        {
+            if (now - session.LastTouch > WriteIdleTimeout && _pendingWrites.TryRemove(id, out var removed))
+            {
+                Abandon(removed);
+            }
+        }
+    }
+
+    private void Abandon(PendingWrite session)
+    {
+        session.Stream.Dispose();
+        TryDeleteFile(session.TmpPath);
+        policy.ReleaseTotalBytes(session.ReservedBytes);
+    }
+
+    private static string NewWriteId() => "fw-" + Guid.NewGuid().ToString("N");
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception)
+        {
+            // 删除暂存文件尽力而为：失败时无非托管泄漏，剩余 tmp 由后续 sweep/清理接管。
+        }
+    }
+
+    /// <summary>A single, serialized chunked-write session buffered to a temporary file.</summary>
+    private sealed class PendingWrite(
+        string writeId,
+        string windowLabel,
+        string targetPath,
+        string tmpPath,
+        FileStream stream,
+        long? totalBytes,
+        long reservedBytes,
+        DateTimeOffset lastTouch)
+    {
+        public string WriteId { get; } = writeId;
+        public string WindowLabel { get; } = windowLabel;
+        public string TargetPath { get; } = targetPath;
+        public string TmpPath { get; } = tmpPath;
+        public FileStream Stream { get; } = stream;
+        public long? TotalBytes { get; } = totalBytes;
+        public DateTimeOffset LastTouch { get; set; } = lastTouch;
+        public long NextSequence { get; set; }
+        public long ReceivedBytes { get; set; }
+        public long ReservedBytes { get; set; } = reservedBytes;
     }
 
     public ValueTask<FsDirEntry[]> ReadDirAsync(FsReadDirOptions options, CancellationToken cancellationToken)

@@ -23,6 +23,16 @@ public interface IFileSystemService
     ValueTask<Unit> RenameAsync(FsRenameOptions options, CancellationToken cancellationToken);
 
     ValueTask<Unit> RemoveAsync(FsRemoveOptions options, CancellationToken cancellationToken);
+
+    ValueTask<FsStreamResult> ReadFileStreamAsync(FsReadStreamOptions options, CancellationToken cancellationToken);
+
+    ValueTask<FsWriteBeginResult> WriteBeginAsync(FsWriteBeginOptions options, string windowLabel, CancellationToken cancellationToken);
+
+    ValueTask<Unit> WriteChunkAsync(FsWriteChunkOptions options, CancellationToken cancellationToken);
+
+    ValueTask<Unit> WriteCommitAsync(FsWriteCommitOptions options, CancellationToken cancellationToken);
+
+    ValueTask<Unit> WriteCancelAsync(FsWriteCancelOptions options, CancellationToken cancellationToken);
 }
 
 public sealed class FileSystemPlugin(IFileSystemService service) : ITaruiPlugin
@@ -102,6 +112,47 @@ public sealed class FileSystemPlugin(IFileSystemService service) : ITaruiPlugin
             handlers.RemoveAsync,
             "plugin:fs|remove",
             FsScopeAuthorizer.AllowsPathWrite);
+
+        commands.Add(
+            "plugin:fs|read-file-stream",
+            TaruiJsonContext.Default.FsReadStreamOptions,
+            TaruiJsonContext.Default.FsStreamResult,
+            handlers.ReadFileStreamAsync,
+            "plugin:fs|read-file-stream",
+            FsScopeAuthorizer.AllowsPath);
+
+        ConfigureWriteSessions(commands, handlers);
+    }
+
+    private static void ConfigureWriteSessions(CommandRouterBuilder commands, FileSystemCommands handlers)
+    {
+        // 分片写四命令：begin 按 (Base, Path) 授权；chunk/commit/cancel 只操作已授权句柄，
+        // 走权限门（CapabilitySet），无需再次校验路径。
+        commands.Add(
+            "plugin:fs|write-begin",
+            TaruiJsonContext.Default.FsWriteBeginOptions,
+            TaruiJsonContext.Default.FsWriteBeginResult,
+            handlers.WriteBeginAsync,
+            "plugin:fs|write-begin",
+            FsScopeAuthorizer.AllowsPathWrite);
+        commands.Add(
+            "plugin:fs|write-chunk",
+            TaruiJsonContext.Default.FsWriteChunkOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.WriteChunkAsync,
+            "plugin:fs|write-chunk");
+        commands.Add(
+            "plugin:fs|write-commit",
+            TaruiJsonContext.Default.FsWriteCommitOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.WriteCommitAsync,
+            "plugin:fs|write-commit");
+        commands.Add(
+            "plugin:fs|write-cancel",
+            TaruiJsonContext.Default.FsWriteCancelOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.WriteCancelAsync,
+            "plugin:fs|write-cancel");
     }
 
     private sealed class FileSystemCommands(IFileSystemService service)
@@ -163,6 +214,36 @@ public sealed class FileSystemPlugin(IFileSystemService service) : ITaruiPlugin
             FsRemoveOptions options,
             CommandContext context,
             CancellationToken cancellationToken) => service.RemoveAsync(options, cancellationToken);
+
+        [TaruiCommand("plugin:fs|read-file-stream")]
+        public ValueTask<FsStreamResult> ReadFileStreamAsync(
+            FsReadStreamOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) => service.ReadFileStreamAsync(options, cancellationToken);
+
+        [TaruiCommand("plugin:fs|write-begin")]
+        public ValueTask<FsWriteBeginResult> WriteBeginAsync(
+            FsWriteBeginOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) => service.WriteBeginAsync(options, context.WindowLabel, cancellationToken);
+
+        [TaruiCommand("plugin:fs|write-chunk")]
+        public ValueTask<Unit> WriteChunkAsync(
+            FsWriteChunkOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) => service.WriteChunkAsync(options, cancellationToken);
+
+        [TaruiCommand("plugin:fs|write-commit")]
+        public ValueTask<Unit> WriteCommitAsync(
+            FsWriteCommitOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) => service.WriteCommitAsync(options, cancellationToken);
+
+        [TaruiCommand("plugin:fs|write-cancel")]
+        public ValueTask<Unit> WriteCancelAsync(
+            FsWriteCancelOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) => service.WriteCancelAsync(options, cancellationToken);
     }
 }
 
@@ -178,10 +259,16 @@ public static class FsScopeAuthorizer
     public static bool AllowsPath(FsPathOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
         FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
 
+    public static bool AllowsPath(FsReadStreamOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
+        FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
+
     public static bool AllowsPath(FsReadDirOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
         FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
 
     public static bool AllowsPathWrite(FsWriteTextOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
+        !IsReadOnlyBase(options.Base) && FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
+
+    public static bool AllowsPathWrite(FsWriteBeginOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
         !IsReadOnlyBase(options.Base) && FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
 
     public static bool AllowsPathWrite(FsMkdirOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>

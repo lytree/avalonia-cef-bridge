@@ -52,6 +52,18 @@ public sealed record EventEnvelope(
     string Event,
     JsonElement Payload);
 
+/// <summary>A frame that streams one channel payload to the front-end channel identified by <see cref="Channel"/>.</summary>
+public sealed record ChannelEnvelope(
+    string Type,
+    string Channel,
+    JsonElement Payload);
+
+/// <summary>A single progress tick emitted by the <c>core:channel|stream-echo</c> demonstration command.</summary>
+public sealed record StreamProgress(int Step, int Total);
+
+/// <summary>Arguments for the streaming echo command: a channel token plus an iteration count.</summary>
+public sealed record StreamEchoArgs(string? Channel, int Count);
+
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -66,6 +78,9 @@ public sealed record EventEnvelope(
 [JsonSerializable(typeof(EmptyArgs))]
 [JsonSerializable(typeof(Unit))]
 [JsonSerializable(typeof(EventEnvelope))]
+[JsonSerializable(typeof(ChannelEnvelope))]
+[JsonSerializable(typeof(StreamProgress))]
+[JsonSerializable(typeof(StreamEchoArgs))]
 [JsonSerializable(typeof(string[]))]
 [JsonSerializable(typeof(LogicalPosition))]
 [JsonSerializable(typeof(LogicalSize))]
@@ -113,6 +128,15 @@ public sealed record EventEnvelope(
 [JsonSerializable(typeof(FsCopyOptions))]
 [JsonSerializable(typeof(FsRenameOptions))]
 [JsonSerializable(typeof(FsRemoveOptions))]
+[JsonSerializable(typeof(FsReadStreamOptions))]
+[JsonSerializable(typeof(FsStreamMeta))]
+[JsonSerializable(typeof(FsStreamEvent))]
+[JsonSerializable(typeof(FsStreamResult))]
+[JsonSerializable(typeof(FsWriteBeginOptions))]
+[JsonSerializable(typeof(FsWriteBeginResult))]
+[JsonSerializable(typeof(FsWriteChunkOptions))]
+[JsonSerializable(typeof(FsWriteCommitOptions))]
+[JsonSerializable(typeof(FsWriteCancelOptions))]
 [JsonSerializable(typeof(MenuItemDefinition))]
 [JsonSerializable(typeof(MenuItemDefinition[]))]
 [JsonSerializable(typeof(SetWindowMenuOptions))]
@@ -154,6 +178,12 @@ public sealed record EventEnvelope(
 [JsonSerializable(typeof(StoreGetResult))]
 [JsonSerializable(typeof(StoreHasResult))]
 [JsonSerializable(typeof(StoreKeysResult))]
+[JsonSerializable(typeof(HttpHeader))]
+[JsonSerializable(typeof(HttpHeader[]))]
+[JsonSerializable(typeof(HttpRequestOptions))]
+[JsonSerializable(typeof(HttpResponseResult))]
+[JsonSerializable(typeof(HttpStreamMeta))]
+[JsonSerializable(typeof(HttpStreamEvent))]
 [JsonSerializable(typeof(LogRecordOptions))]
 [JsonSerializable(typeof(LogEntry))]
 [JsonSerializable(typeof(DeepLinkCurrentResult))]

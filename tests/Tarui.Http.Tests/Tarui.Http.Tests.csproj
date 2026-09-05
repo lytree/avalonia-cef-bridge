@@ -10,6 +10,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\core\Tarui.Contracts\Tarui.Contracts.csproj" />
     <ProjectReference Include="..\..\src\core\Tarui.Ipc\Tarui.Ipc.csproj" />
-    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.FileSystem\Tarui.Plugins.FileSystem.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Http\Tarui.Plugins.Http.csproj" />
   </ItemGroup>
 </Project>

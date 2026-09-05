@@ -4,8 +4,12 @@ import type { AppInfo } from '@lytree/api/app'
 import { getCurrentWindow } from '@lytree/api/window'
 import type { WindowState } from '@lytree/api/window'
 import { emit, on } from '@lytree/api/event'
-import { fs } from '@lytree/api/fs'
+import { fs, readFileStream, writeFileChunked } from '@lytree/api/fs'
 import { store } from '@lytree/api/store'
+import { http } from '@lytree/api/http'
+import { Channel, invoke } from '@lytree/api/ipc'
+
+type StreamProgress = { step: number; total: number }
 
 type LogEntry = { at: string; text: string; kind: 'info' | 'ok' | 'err' }
 
@@ -34,6 +38,11 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [unknownUi, setUnknownUi] = useState('')
   const [nativeClicks, setNativeClicks] = useState(0)
+  const [streamFrames, setStreamFrames] = useState<StreamProgress[]>([])
+  const [streaming, setStreaming] = useState(false)
+  const [bigFileStatus, setBigFileStatus] = useState('')
+  const [httpReads, setHttpReads] = useState(0)
+  const [lastHttp, setLastHttp] = useState('')
 
   const logRef = useRef<LogEntry[]>([])
   const pushLog = (entry: Omit<LogEntry, 'at' | 'kind'> & { kind?: LogEntry['kind'] }) => {
@@ -194,6 +203,77 @@ function App() {
     }
   }
 
+  async function doStreamEcho() {
+    const channel = new Channel<StreamProgress>()
+    const frames: StreamProgress[] = []
+    channel.onmessage = frame => {
+      frames.push(frame)
+      setStreamFrames([...frames])
+    }
+    try {
+      setStreaming(true)
+      await invoke('core:channel|stream-echo', { channel, count: 10 })
+      pushLog({ kind: 'ok', text: `core:channel|stream-echo completed (${frames.length} frames)` })
+    } catch (err) {
+      pushLog({ kind: 'err', text: `stream-echo: ${String(err)}` })
+    } finally {
+      setStreaming(false)
+    }
+  }
+
+  async function doChunkedWrite() {
+    // 写入 ~5 MiB 临时文件，验证分片写（256 KiB/块。
+    const payload = new Uint8Array(5 * 1024 * 1024)
+    for (let index = 0; index < payload.length; index++) {
+      payload[index] = (index * 31 + 7) % 251
+    }
+    try {
+      await writeFileChunked('temp', 'stream-demo.bin', payload)
+      setBigFileStatus(`写 5 MiB 完成（${Math.ceil(payload.length / (256 * 1024))} 块）`)
+      pushLog({ kind: 'ok', text: `writeFileChunked temp/stream-demo.bin -> ${payload.length} bytes` })
+    } catch (err) {
+      pushLog({ kind: 'err', text: `writeFileChunked: ${String(err)}` })
+      setBigFileStatus('写失败')
+    }
+  }
+
+  async function doStreamRead() {
+    setBigFileStatus('')
+    let frames = 0
+    let total = 0
+    try {
+      const result = await readFileStream({
+        base: 'temp',
+        path: 'stream-demo.bin',
+        chunkBytes: 512 * 1024,
+        onEvent: event => {
+          frames += 1
+          if (event.kind === 'chunk') {
+            total += event.data.byteLength
+          }
+          setBigFileStatus(`读取中… ${frames} 帧 / ${total} 字节`)
+        },
+      })
+      setBigFileStatus(`读取完成：${result.size} 字节，${frames} 帧`)
+      pushLog({ kind: 'ok', text: `readFileStream temp/stream-demo.bin -> ${result.size} bytes over ${frames} frames` })
+    } catch (err) {
+      pushLog({ kind: 'err', text: `readFileStream: ${String(err)}` })
+      setBigFileStatus('读取失败')
+    }
+  }
+
+  async function doHttpFetch() {
+    try {
+      const res = await http.fetch('https://api.github.com/zen')
+      setHttpReads(count => count + 1)
+      setLastHttp(`${res.status} ${res.ok ? 'OK' : 'ERR'}: ${(res.body ?? '').trim().slice(0, 120)}`)
+      pushLog({ kind: 'ok', text: `http.fetch(zen) -> ${res.status}` })
+    } catch (err) {
+      pushLog({ kind: 'err', text: `http.fetch: ${String(err)}` })
+      setLastHttp(`失败: ${String(err)}`)
+    }
+  }
+
   return (
     <main className="app">
       <h1>Tarui Demo</h1>
@@ -266,11 +346,41 @@ function App() {
       </section>
 
       <section>
+        <h2>大文件流式 + HTTP</h2>
+        <div className="row">
+          <button onClick={doChunkedWrite}>分片写 5 MiB</button>
+          <button onClick={doStreamRead}>流式读回</button>
+          <button onClick={doHttpFetch}>HTTP 探测 ({httpReads})</button>
+        </div>
+        {bigFileStatus && <p className="muted">{bigFileStatus}</p>}
+        {lastHttp && <p className="muted">http.fetch: {lastHttp}</p>}
+        <p className="muted">
+          分片写走 native 临时文件原子提交；流式读逐帧回调呈现进度；HTTP 探测受能力作用域（github API）约束。
+        </p>
+      </section>
+
+      <section>
         <h2>事件</h2>
         <div className="row">
           <input value={unknownUi} onChange={e => setUnknownUi(e.target.value)} placeholder="事件文本（可选）" />
           <button onClick={doEmit}>emit user://demo/echo</button>
         </div>
+      </section>
+
+      <section>
+        <h2>Channel 流式 IPC</h2>
+        <div className="row">
+          <button onClick={doStreamEcho} disabled={streaming}>
+            {streaming ? '流式传输中…' : '运行 core:channel|stream-echo'}
+          </button>
+        </div>
+        {streamFrames.length > 0 ? (
+          <p className="muted">
+            已收到 {streamFrames.length} 帧：{streamFrames.map(f => `${f.step}/${f.total}`).join(', ')}
+          </p>
+        ) : (
+          <p className="muted">点击按钮后，原生 handler 会经 Channel 逐帧推回进度。</p>
+        )}
       </section>
 
       <section>

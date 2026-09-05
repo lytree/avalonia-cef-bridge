@@ -13,7 +13,8 @@
  * - process   : exit and relaunch
  * - shell     : OS default handler for URLs and files
  * - clipboard : system clipboard text access
- * - fs        : scoped restricted file system operations
+ * - fs        : scoped restricted file system operations (incl. streaming read / chunked write)
+ * - http      : capability-scoped HTTP fetch with streaming responses
  * - menu      : native window menu
  * - tray      : system tray icon and menu
  * - window-state : window geometry and state persistence
@@ -88,6 +89,8 @@ export {
   fs,
   readTextFile,
   writeTextFile,
+  readFileStream,
+  writeFileChunked,
   readDir,
   stat,
   exists,
@@ -108,7 +111,14 @@ export type {
   FsDirEntry,
   FsStatResult,
   FsReadTextResult,
+  FsStreamEvent,
+  FsReadStreamOptions,
+  FsReadStreamResult,
+  FsWriteBeginResult,
 } from './fs'
+
+export { http, fetch as httpFetch } from './http'
+export type { HttpStreamEvent, HttpHeaders, HttpFetchOptions, HttpResponse } from './http'
 
 export { menu, setWindowMenu, updateItem, removeWindowMenu, menuItemKinds } from './menu'
 export type { MenuItemDefinition, MenuItemKind, SetWindowMenuOptions, MenuUpdateItemOptions, MenuItemClicked } from './menu'

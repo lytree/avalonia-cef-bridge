@@ -17,7 +17,7 @@ namespace Tarui.Shell;
 /// (<see cref="WebviewPresenter"/>) only binds the session's <see cref="ITaruiWebView"/> control.
 /// </para>
 /// </summary>
-public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
+public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsyncDisposable
 {
     private const string FileDropEnteredEvent = "window://file-drop-entered";
     private const string FileDropLeftEvent = "window://file-drop-left";
@@ -66,7 +66,11 @@ public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
         string json,
         CancellationToken cancellationToken = default)
     {
-        var response = await _dispatcher.DispatchJsonAsync(json, Context, cancellationToken);
+        var response = await _dispatcher.DispatchJsonAsync(
+            json,
+            Context,
+            channelSink: this,
+            cancellationToken: cancellationToken);
         var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(response));
         await _webView.ExecuteScriptAsync($"window.__tarui_dispatchBase64?.('{encoded}')", cancellationToken);
         return response;
@@ -80,6 +84,18 @@ public sealed class WebviewSession : IEventSink, IDisposable, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         var envelope = new EventEnvelope("event", eventName, payload);
         var json = JsonSerializer.Serialize(envelope, TaruiJsonContext.Default.EventEnvelope);
+        var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+        await _webView.ExecuteScriptAsync($"window.__tarui_dispatchBase64?.('{encoded}')", cancellationToken);
+    }
+
+    public async ValueTask SendAsync(
+        string channelId,
+        JsonElement payload,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var envelope = new ChannelEnvelope("channel", channelId, payload);
+        var json = JsonSerializer.Serialize(envelope, TaruiJsonContext.Default.ChannelEnvelope);
         var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
         await _webView.ExecuteScriptAsync($"window.__tarui_dispatchBase64?.('{encoded}')", cancellationToken);
     }
