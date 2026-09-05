@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\..\src\webview\CefGlue.Next.Avalonia\CefGlue.Next.Avalonia.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Core\Tarui.Plugins.Core.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Autostart\Tarui.Plugins.Autostart.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Cookie\Tarui.Plugins.Cookie.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.DeepLink\Tarui.Plugins.DeepLink.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Dialog\Tarui.Plugins.Dialog.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Event\Tarui.Plugins.Event.csproj" />

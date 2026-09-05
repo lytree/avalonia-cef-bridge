@@ -11,6 +11,7 @@ import { store } from '@lytree/api/store'
 import { http } from '@lytree/api/http'
 import { shell } from '@lytree/api/shell'
 import { checkUpdate, downloadUpdate, applyUpdate } from '@lytree/api/updater'
+import { cookie as cookieApi } from '@lytree/api/cookie'
 import { platform } from '@lytree/api/platform'
 import type { PlatformCapabilities } from '@lytree/api/platform'
 import { Channel, invoke } from '@lytree/api/ipc'
@@ -56,6 +57,8 @@ function App() {
   const [updaterStatus, setUpdaterStatus] = useState('')
   const [platformCaps, setPlatformCaps] = useState<PlatformCapabilities | null>(null)
   const [watchId, setWatchId] = useState<string | null>(null)
+  const [cookieUrl, setCookieUrl] = useState('https://example.com')
+  const [cookieLines, setCookieLines] = useState<string[]>([])
 
   const logRef = useRef<LogEntry[]>([])
   const pushLog = (entry: Omit<LogEntry, 'at' | 'kind'> & { kind?: LogEntry['kind'] }) => {
@@ -233,6 +236,54 @@ function App() {
       pushLog({ kind: 'ok', text: `fs.watch(temp) -> ${result.watchId}` })
     } catch (err) {
       pushLog({ kind: 'err', text: `fs.watch: ${String(err)}` })
+    }
+  }
+
+  function showCookies(lines: string[]) {
+    setCookieLines(lines)
+    pushLog({ kind: 'ok', text: `cookie: listed ${lines.length} cookies for ${cookieUrl}` })
+  }
+
+  async function doCookieList() {
+    try {
+      const result = await cookieApi.list(cookieUrl)
+      if (!result.supported) {
+        setCookieLines([`平台不支持 Cookie 存储：${result.error ?? 'n/a'}`])
+        pushLog({ kind: 'err', text: 'cookie.list: unsupported' })
+        return
+      }
+      showCookies(result.cookies.map(c => `${c.name}=${c.value}${c.httpOnly ? ' [HttpOnly]' : ''}`))
+    } catch (err) {
+      pushLog({ kind: 'err', text: `cookie.list: ${String(err)}` })
+    }
+  }
+
+  async function doCookieSet() {
+    try {
+      const result = await cookieApi.set(cookieUrl, {
+        name: 'demo_theme',
+        value: 'dark',
+        path: '/',
+        secure: cookieUrl.startsWith('https://'),
+      })
+      pushLog({
+        kind: result.succeeded ? 'ok' : 'err',
+        text: result.succeeded ? 'cookie.set(demo_theme) -> ok' : `cookie.set 失败：${result.error ?? 'unknown'}`,
+      })
+    } catch (err) {
+      pushLog({ kind: 'err', text: `cookie.set: ${String(err)}` })
+    }
+  }
+
+  async function doCookieRemove() {
+    try {
+      const result = await cookieApi.remove(cookieUrl, 'demo_theme')
+      pushLog({
+        kind: result.succeeded ? 'ok' : 'err',
+        text: result.succeeded ? 'cookie.remove(demo_theme) -> ok' : `cookie.remove 失败：${result.error ?? 'unknown'}`,
+      })
+    } catch (err) {
+      pushLog({ kind: 'err', text: `cookie.remove: ${String(err)}` })
     }
   }
 
@@ -543,6 +594,26 @@ function App() {
         )}
         <p className="muted">
           仅允许能力作用域内显式白名单的程序；stdout/stderr 经 Channel 逐行流式回传，退出后回调 terminated。
+        </p>
+      </section>
+
+      <section>
+        <h2>Cookie</h2>
+        <div className="row">
+          <input value={cookieUrl} onChange={e => setCookieUrl(e.target.value)} placeholder="URL" />
+          <button onClick={doCookieList}>列出</button>
+          <button onClick={doCookieSet}>设置 demo_theme=dark</button>
+          <button onClick={doCookieRemove}>删除 demo_theme</button>
+        </div>
+        {cookieLines.length > 0 && (
+          <pre className="muted">
+            {cookieLines.map((line, index) => (
+              <div key={index}>{line}</div>
+            ))}
+          </pre>
+        )}
+        <p className="muted">
+          经浏览器全局 Cookie 存储（CEF）。宿主无 Cookie 存储时诚实降级并报告原因，而不是伪造空列表。
         </p>
       </section>
 

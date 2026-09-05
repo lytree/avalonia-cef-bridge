@@ -215,3 +215,12 @@ export {
   UPDATER_STATUS_EVENT,
 } from './updater'
 export type { UpdateCheckResult, UpdateDownloadResult, UpdateApplyResult, UpdaterStatus, UpdaterStatusPhase } from './updater'
+
+export {
+  cookie,
+  list as listCookies,
+  set as setCookie,
+  remove as removeCookie,
+  flush as flushCookies,
+} from './cookie'
+export type { Cookie, CookieListOptions, CookieListResult, CookieSetOptions, CookieSetResult, CookieDeleteOptions, CookieDeleteResult } from './cookie'

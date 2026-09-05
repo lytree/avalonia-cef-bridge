@@ -36,6 +36,9 @@
   前端经 `@lytree/api/platform`、`@lytree/api/autostart` 调用。
 - **WebView 网络配置**：CEF 运行时支持自定义 User-Agent 与代理，经 `TARUI_WEB_USER_AGENT` / `TARUI_WEB_PROXY_SERVER`
   在初始化期配置（CEF 不支持运行时修改）。
+- **Cookie 管理**：`plugin:cookie|list|set|remove|flush`（`src/plugins/Tarui.Plugins.Cookie`）——`IWebViewCookieManager`
+  抽象 + `CefGlueCookieStore` 组件（CEF 全局 cookie 存储）；无浏览器宿主时各命令诚实降级并说明原因，
+  前端经 `@lytree/api/cookie` 调用。
 
 逐项能力与安装/打包细节见 [docs/wails-tauri-gap-analysis.md](docs/wails-tauri-gap-analysis.md) 与
 [examples/demo](examples/demo)。

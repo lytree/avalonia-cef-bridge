@@ -31,6 +31,7 @@
   <Folder Name="/src/generators/" />
   <Folder Name="/src/plugins/">
     <Project Path="src/plugins/Tarui.Plugins.Autostart/Tarui.Plugins.Autostart.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Cookie/Tarui.Plugins.Cookie.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.DeepLink/Tarui.Plugins.DeepLink.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Event/Tarui.Plugins.Event.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.GlobalShortcut/Tarui.Plugins.GlobalShortcut.csproj" />
@@ -60,6 +61,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/CefGlue.Next.Avalonia.Tests/CefGlue.Next.Avalonia.Tests.csproj" />
+    <Project Path="tests/Tarui.Cookie.Tests/Tarui.Cookie.Tests.csproj" />
     <Project Path="tests/Tarui.Architecture.Tests/Tarui.Architecture.Tests.csproj" />
     <Project Path="tests/Tarui.Autostart.Tests/Tarui.Autostart.Tests.csproj" />
     <Project Path="tests/Tarui.Capabilities.Tests/Tarui.Capabilities.Tests.csproj" />

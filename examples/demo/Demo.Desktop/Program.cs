@@ -1,6 +1,7 @@
 using Tarui.Hosting;
 using Tarui.Ipc;
 using Tarui.Plugins.Autostart;
+using Tarui.Plugins.Cookie;
 using Tarui.Plugins.Core;
 using Tarui.Plugins.DeepLink;
 using Tarui.Plugins.Dialog;
@@ -83,6 +84,7 @@ internal static class Program
             .AddHttpPlugin()
             .AddDeepLinkPlugin()
             .AddUpdaterPlugin()
+            .AddCookiePlugin()
             .AddPlugin<DemoChannelPlugin>();
 
         builder.Window.Configure(window =>

@@ -333,6 +333,10 @@
     "plugin:shell|kill",
     "plugin:updater|check",
     "plugin:updater|download",
-    "plugin:updater|apply"
+    "plugin:updater|apply",
+    "plugin:cookie|list",
+    "plugin:cookie|set",
+    "plugin:cookie|remove",
+    "plugin:cookie|flush"
   ]
 }

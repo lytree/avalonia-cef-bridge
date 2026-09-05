@@ -13,14 +13,16 @@ public static class CefGlueWebViewServiceCollectionExtensions
             new CefGlueNextWebViewFactory(sp.GetRequiredService<CefGlueNextWebAppOptions>()))
         .AddSingleton<ITaruiAvaloniaWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
         .AddSingleton<ITaruiWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
-        .AddSingleton(sp => CreateAppOrigin(sp.GetRequiredService<CefGlueNextWebAppOptions>()));
+        .AddSingleton(sp => CreateAppOrigin(sp.GetRequiredService<CefGlueNextWebAppOptions>()))
+        .AddSingleton<IWebViewCookieManager, CefGlueCookieManager>();
 
     public static IServiceCollection AddCefGlueWebView(this IServiceCollection services, CefGlueNextWebAppOptions options) => services
         .AddSingleton(options)
         .AddSingleton<CefGlueNextWebViewFactory>(_ => new CefGlueNextWebViewFactory(options))
         .AddSingleton<ITaruiAvaloniaWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
         .AddSingleton<ITaruiWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
-        .AddSingleton(_ => CreateAppOrigin(options));
+        .AddSingleton(_ => CreateAppOrigin(options))
+        .AddSingleton<IWebViewCookieManager, CefGlueCookieManager>();
 
     private static TaruiAppOrigin CreateAppOrigin(CefGlueNextWebAppOptions options) => new(
         options.StartUri,
