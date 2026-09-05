@@ -81,3 +81,36 @@ public sealed record FsWriteCommitOptions(string WriteId);
 
 /// <summary>Abandons the open write session, deleting the buffered temporary file.</summary>
 public sealed record FsWriteCancelOptions(string WriteId);
+
+/// <summary>Watch event kinds reported on <c>fs://watch-change</c>.</summary>
+public static class FsWatchEventKinds
+{
+    public const string Created = "created";
+    public const string Changed = "changed";
+    public const string Renamed = "renamed";
+    public const string Deleted = "deleted";
+    public const string Error = "error";
+}
+
+/// <summary>
+/// Request for <c>plugin:fs|watch</c>: watch <see cref="Base"/>/<see cref="Path"/> (a directory). Changes are
+/// delivered as <c>fs://watch-change</c> events to the requesting window. The target is authorized against the
+/// caller's read scopes like any other fs command.
+/// </summary>
+public sealed record FsWatchOptions(string Base, string? Path = null, bool Recursive = false);
+
+/// <summary>Handle returned by watch; pass it to <c>plugin:fs|unwatch</c> to stop watching.</summary>
+public sealed record FsWatchResult(string WatchId);
+
+/// <summary>Stops the watch identified by <see cref="WatchId"/>.</summary>
+public sealed record FsUnwatchOptions(string WatchId);
+
+/// <summary>
+/// Payload of the <c>fs://watch-change</c> event. <see cref="EventKind"/> is one of the
+/// <see cref="FsWatchEventKinds"/> values; <see cref="OutputPaths"/> carries the affected path(s) relative to the
+/// watched root (source then destination for <c>renamed</c>).
+/// </summary>
+public sealed record FsWatchEvent(
+    string WatchId,
+    string EventKind,
+    string[] OutputPaths);

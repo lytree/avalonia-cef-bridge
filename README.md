@@ -18,8 +18,9 @@
 **已落地的近期能力**
 - **Channel 端到端流式 IPC**：`Channel` 令牌下沉到原生命令，`SendAsync` 逐帧回传，背压由
   `WebviewSession` 的 `ExecuteScriptAsync` await 天然提供。
-- **fs 大文件**：`plugin:fs|read-file-stream`（流式读，突破 8 MiB 单次上限）与
-  `write-begin|write-chunk|write-commit|write-cancel`（分片写 + 原子提交 + 窗口级清理）。
+- **fs 大文件 + 目录监听**：`plugin:fs|read-file-stream`（流式读，突破 8 MiB 单次上限）与
+  `write-begin|write-chunk|write-commit|write-cancel`（分片写 + 原子提交 + 窗口级清理）；`plugin:fs|watch|unwatch`
+  目录监听并以 `fs://watch-change` 定向事件投递。
 - **HTTP 客户端**：`plugin:http|fetch`（`src/plugins/Tarui.Plugins.Http`）——URL 作用域默认拒绝、
   重定向逐跳复检、内联与流式响应双模式，另有 `plugin:http|upload`（multipart/form-data 上传，同安全模型）；
   前端经 `@lytree/api/http` 调用。

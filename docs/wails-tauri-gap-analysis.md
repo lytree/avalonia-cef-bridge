@@ -26,7 +26,7 @@
 | 文件拖放 + 拖拽区域（NoDrag 覆盖、差异比较） | 已实现 | `DraggableRegion.cs`、`CefGlueNextNativeHandlers.cs`、`webview://*`、`window://file-drop-*` 事件 |
 | 事件系统（emit 定向/广播、`user://` 前缀保护、原生前缀保留） | 已实现 | `Tarui.Shell/EventRouter.cs`、`Tarui.Plugins.Event` |
 | Dialog（open/save/message/confirm） | 已实现 | `Tarui.Plugins.Dialog`、`Tarui.Shell/AvaloniaDialogService.cs` |
-| FileSystem（14 条命令、scoped glob、原子写、流式读/分片写、大文件按块推送） | 已实现 | `Tarui.Plugins.FileSystem/FileSystemService.cs`、`FsScopeAuthorizer` |
+| FileSystem（16 条命令、scoped glob、原子写、流式读/分片写、目录 watch、`fs://watch-change`） | 已实现 | `Tarui.Plugins.FileSystem/FileSystemService.cs`、`FsScopeAuthorizer` |
 | Store（JSON KV、scope、原子写） | 已实现 | `Tarui.Plugins.Store/JsonStoreService.cs` |
 | HTTP 客户端（URL scope 默认拒绝、重定向逐跳复检、内联/流式响应） | 已实现 | `Tarui.Plugins.Http/HttpService.cs`、`UrlScopeMatcher` |
 | Log（renderer→MEL、`log://entry` 授权广播） | 已实现 | `Tarui.Plugins.Log`、`Tarui.Shell/RemoteLogSink.cs` |
@@ -75,7 +75,7 @@
 | CLI（结构化参数解析） | ❌ | 只有原始 process args |
 | Deep Linking | 🟡 | Windows 全链路；macOS delegate / Linux .desktop 未验收 |
 | Dialog | ✅ | open/save/message/confirm + ask（Yes/No 三态语义） |
-| File System | 🟡 | 14 条命令 + scope + 流式读/分片写；缺目录监听 watch |
+| FileSystem | ✅ | 16 条命令 + scope + 流式读/分片写 + 大文件按块推送 + 目录 watch |
 | Global Shortcut | ✅ (Windows) | 含 accelerator 归一化与 scope，语义对齐 |
 | HTTP Client | ✅ | URL scope 默认拒绝、重定向逐跳复检、内联/流式响应；`Tarui.Plugins.Http` |
 | Localhost server | ✅ | WebAppOptions HTTP 模式等价 |
@@ -138,7 +138,7 @@
 | --- | --- | --- | --- |
 | 7 | Dialog `ask`（Yes/No 语义） | Tauri dialog | ✅ 已完成（`plugin:dialog|ask`，Yes/No 三态，显式 cancel 可选） |
 | 8 | 剪贴板扩展（图片、HTML、clear） | Tauri clipboard-manager | Avalonia/CEF 均可承载 |
-| 9 | fs watch 目录监听 | Tauri fs | `FileSystemWatcher` + 事件投递 |
+| 9 | fs watch 目录监听 | Tauri fs | ✅ 已完成（`plugin:fs|watch`/`unwatch`：`FileSystemWatcher` + `fs://watch-change` 定向事件） |
 | 10 | Cookie 管理 API | CEF 原生 | `CefGlue.Core/CefCookieManager` 已有底层封装，仅缺插件暴露 |
 | 11 | DevTools 开关 | 双方均有 | CEF `ShowDevTools`，需权限门控 |
 | 12 | 窗口增强：setIcon、setTheme、transparent/acrylic、modal、父子窗口 | Tauri window / Wails v3 | Avalonia 原语均支持，逐项封装 |
@@ -184,7 +184,7 @@
 3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——✅ 已完成（`plugin:menu|show-context-menu` + `plugin:dialog|ask`）。
 4. **Updater apply + 打包分发**（P0-5/6）——✅ 已完成（apply 落地 MSIX 安装 + 状态事件；打包分发为现有 `tarui build` zip/MSIX/签名 latest.json，重启由调用方衔接 process relaunch，与 OIDC 发布工作流衔接）。
 5. **平台补齐（macOS/Linux）**——🟡 进展：autostart 已三平台落地，`core:platform|capabilities` 能力矩阵已暴露；notification / global-shortcut / macOS deep-link 需 macOS/Linux 真机验收后补齐。
-6. **P2 项按产品需求排期**（fs watch、Cookie API、DevTools 开关、剪贴板扩展、结构化 CLI 解析等）——Upload（multipart）与 WebView 运行时配置（UserAgent/Proxy）已落地。
+6. **P2 项按产品需求排期**（Cookie API、DevTools 开关、剪贴板扩展、结构化 CLI 解析等）——Upload（multipart）、WebView 运行时配置（UserAgent/Proxy）与 fs watch 已落地。
 
 每项仍须遵循既有模板：`Contracts DTO → 显式插件注册 → Shell/平台实现 → Capability 授权 → @lytree/api 模块 → 控制台式自测试 → 文档同步`。
 

@@ -103,7 +103,12 @@ export {
   mkdir,
   copyFile,
   rename,
+  watch,
+  unwatch,
+  onWatchEvent,
   fsBaseIdentifiers,
+  fsWatchEventKinds,
+  FS_WATCH_EVENT,
 } from './fs'
 export type {
   FsBaseId,
@@ -121,6 +126,10 @@ export type {
   FsReadStreamOptions,
   FsReadStreamResult,
   FsWriteBeginResult,
+  FsWatchOptions,
+  FsWatchResult,
+  FsWatchEvent,
+  FsWatchEventKind,
 } from './fs'
 
 export { http, fetch as httpFetch, upload as httpUpload } from './http'

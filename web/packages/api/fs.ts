@@ -1,4 +1,5 @@
-import { Channel, invoke } from './ipc'
+import { Channel, invoke, listen } from './ipc'
+import type { Unlisten } from './ipc'
 
 // File-system base identifiers exposed to the web layer. These are the exact strings the desktop
 // IFileAccessPolicy resolves via TryGetBaseDirectory; any value listed here MUST have a matching
@@ -98,6 +99,35 @@ export interface FsReadStreamResult {
 export interface FsWriteBeginResult {
   writeId: string
 }
+
+export const fsWatchEventKinds = {
+  created: 'created',
+  changed: 'changed',
+  renamed: 'renamed',
+  deleted: 'deleted',
+  error: 'error',
+} as const
+
+export type FsWatchEventKind = (typeof fsWatchEventKinds)[keyof typeof fsWatchEventKinds]
+
+/** Payload of the `fs://watch-change` event produced by `watch`. */
+export interface FsWatchEvent {
+  watchId: string
+  eventKind: FsWatchEventKind
+  /** Affected path(s) relative to the watched root; source then destination for `renamed`. */
+  outputPaths: string[]
+}
+
+export interface FsWatchOptions extends FsPathOptions {
+  recursive?: boolean
+}
+
+export interface FsWatchResult {
+  watchId: string
+}
+
+/** Event carrying directory-change notifications to windows that declare receive authorization. */
+export const FS_WATCH_EVENT = 'fs://watch-change'
 
 export async function readTextFile(options: FsPathOptions): Promise<FsReadTextResult> {
   return invoke<FsReadTextResult>('plugin:fs|read-text-file', options)
@@ -212,6 +242,25 @@ export async function remove(options: FsRemoveOptions): Promise<void> {
   await invoke('plugin:fs|remove', options)
 }
 
+/**
+ * Watches a directory and delivers `fs://watch-change` events to this window. The target must be covered by the
+ * caller's read scopes. Requires `plugin:fs|watch`; consuming events requires the `fs://watch-change` receive
+ * capability. Pass the returned `watchId` to `unwatch` to stop.
+ */
+export async function watch(options: FsWatchOptions): Promise<FsWatchResult> {
+  return invoke<FsWatchResult>('plugin:fs|watch', options)
+}
+
+/** Stops the watch identified by `watchId`. Requires `plugin:fs|unwatch`. */
+export async function unwatch(watchId: string): Promise<void> {
+  await invoke('plugin:fs|unwatch', { watchId })
+}
+
+/** Subscribes to directory-change events for windows that declare `fs://watch-change` receive authorization. */
+export function onWatchEvent(callback: (event: FsWatchEvent) => void): Unlisten {
+  return listen<FsWatchEvent>(FS_WATCH_EVENT, received => callback(received.payload))
+}
+
 export const fs = {
   readTextFile,
   writeTextFile,
@@ -224,4 +273,7 @@ export const fs = {
   copyFile,
   rename,
   remove,
+  watch,
+  unwatch,
+  onWatchEvent,
 } as const

@@ -1,6 +1,8 @@
 using System.Globalization;
+using System.Text.Json;
 using Tarui.Contracts;
 using Tarui.Ipc;
+using Tarui.Plugins.Events;
 
 namespace Tarui.Plugins.FileSystem;
 
@@ -9,14 +11,17 @@ namespace Tarui.Plugins.FileSystem;
 /// rooted paths, device paths, link escapes, size limits, and read-only bases are rejected before any
 /// disk call. Writes are durable via the atomic temporary-file replacement exposed by the policy.
 /// </summary>
-public sealed class FileSystemService(IFileAccessPolicy policy) : IFileSystemService, IDisposable
+public sealed class FileSystemService(IFileAccessPolicy policy, IEventSender? events = null) : IFileSystemService, IDisposable
 {
     private const long DefaultChunkBytes = 256 * 1024;
     private const long MinChunkBytes = 1;
     private const long MaxChunkBytes = 8 * 1024 * 1024;
     private static readonly TimeSpan WriteIdleTimeout = TimeSpan.FromMinutes(10);
+    private const string WatchChangeEvent = "fs://watch-change";
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, PendingWrite> _pendingWrites = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, WatcherSession> _watchers = new(StringComparer.Ordinal);
+    private readonly IEventSender? _events = events;
     private int _disposed;
 
     public async ValueTask<FsReadTextResult> ReadTextAsync(FsPathOptions options, CancellationToken cancellationToken)
@@ -216,6 +221,59 @@ public sealed class FileSystemService(IFileAccessPolicy policy) : IFileSystemSer
         return ValueTask.FromResult(new Unit());
     }
 
+    public ValueTask<FsWatchResult> WatchAsync(
+        string windowLabel,
+        FsWatchOptions options,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfDisposed();
+
+        var root = ResolveAuthorized(FileAccessKind.Read, options.Base, options.Path);
+        if (!Directory.Exists(root))
+        {
+            root = Path.GetDirectoryName(root) ?? root;
+        }
+
+        var watcher = new FileSystemWatcher
+        {
+            Path = root,
+            IncludeSubdirectories = options.Recursive,
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.CreationTime,
+        };
+        var session = new WatcherSession(NewWatchId(), windowLabel, watcher, _events);
+        watcher.Created += (_, e) => session.Emit(FsWatchEventKinds.Created, [Relative(root, e.FullPath)]);
+        watcher.Changed += (_, e) => session.Emit(FsWatchEventKinds.Changed, [Relative(root, e.FullPath)]);
+        watcher.Deleted += (_, e) => session.Emit(FsWatchEventKinds.Deleted, [Relative(root, e.FullPath)]);
+        watcher.Renamed += (_, e) => session.Emit(FsWatchEventKinds.Renamed, [Relative(root, e.OldFullPath), Relative(root, e.FullPath)]);
+        watcher.Error += (_, e) => session.Emit(FsWatchEventKinds.Error, [e.GetException().Message]);
+        _watchers[session.WatchId] = session;
+        watcher.EnableRaisingEvents = true;
+        return ValueTask.FromResult(new FsWatchResult(session.WatchId));
+    }
+
+    public ValueTask<Unit> UnwatchAsync(FsUnwatchOptions options, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_watchers.TryRemove(options.WatchId, out var session))
+        {
+            session.Dispose();
+        }
+
+        return ValueTask.FromResult(new Unit());
+    }
+
+    private static void DisposeWatchers(System.Collections.Concurrent.ConcurrentDictionary<string, WatcherSession> watchers)
+    {
+        foreach (var (id, session) in watchers)
+        {
+            if (watchers.TryRemove(id, out var removed))
+            {
+                removed.Dispose();
+            }
+        }
+    }
+
     /// <summary>Abandons every open write session owned by <paramref name="windowLabel"/>, deleting temp files.</summary>
     public void CleanupWindow(string windowLabel)
     {
@@ -229,9 +287,18 @@ public sealed class FileSystemService(IFileAccessPolicy policy) : IFileSystemSer
                 }
             }
         }
+
+        foreach (var (id, session) in _watchers)
+        {
+            if (string.Equals(session.WindowLabel, windowLabel, StringComparison.Ordinal) &&
+                _watchers.TryRemove(id, out var removed))
+            {
+                removed.Dispose();
+            }
+        }
     }
 
-    /// <summary>Disposes open streams, removes temp files, and releases reserved budget on process/host teardown.</summary>
+    /// <summary>Disposes open streams and watchers, removes temp files, and releases reserved budget on teardown.</summary>
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -246,7 +313,11 @@ public sealed class FileSystemService(IFileAccessPolicy policy) : IFileSystemSer
                 Abandon(removed);
             }
         }
+
+        DisposeWatchers(_watchers);
     }
+
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed != 0, this);
 
     private PendingWrite CreateStream(string writeId) =>
         _pendingWrites.TryGetValue(writeId, out var stream)
@@ -274,6 +345,14 @@ public sealed class FileSystemService(IFileAccessPolicy policy) : IFileSystemSer
     }
 
     private static string NewWriteId() => "fw-" + Guid.NewGuid().ToString("N");
+
+    private static string NewWatchId() => "fsw-" + Guid.NewGuid().ToString("N");
+
+    private static string Relative(string root, string fullPath)
+    {
+        var relative = Path.GetRelativePath(root, fullPath);
+        return relative == "." ? string.Empty : relative.Replace('\\', '/');
+    }
 
     private static void TryDeleteFile(string path)
     {
@@ -311,6 +390,49 @@ public sealed class FileSystemService(IFileAccessPolicy policy) : IFileSystemSer
         public long NextSequence { get; set; }
         public long ReceivedBytes { get; set; }
         public long ReservedBytes { get; set; } = reservedBytes;
+    }
+
+    /// <summary>
+    /// A single active directory watch. Binds the watcher's change events to <c>fs://watch-change</c> delivery,
+    /// scoped to the owning window, for the lifetime of the watch. Dispose stops the native watcher.
+    /// </summary>
+    private sealed class WatcherSession : IDisposable
+    {
+        private readonly string _watchId;
+        private readonly string _windowLabel;
+        private readonly FileSystemWatcher _watcher;
+        private readonly IEventSender? _events;
+
+        public WatcherSession(
+            string watchId,
+            string windowLabel,
+            FileSystemWatcher watcher,
+            IEventSender? events)
+        {
+            _watchId = watchId;
+            _windowLabel = windowLabel;
+            _watcher = watcher;
+            _events = events;
+        }
+
+        public string WatchId => _watchId;
+
+        public string WindowLabel => _windowLabel;
+
+        public void Emit(string kind, string[] outputPaths)
+        {
+            if (_events is null)
+            {
+                return;
+            }
+
+            var payload = JsonSerializer.SerializeToElement(
+                new FsWatchEvent(_watchId, kind, outputPaths),
+                TaruiJsonContext.Default.FsWatchEvent);
+            FireAndForget.Run(_events.EmitAsync("fs://watch-change", payload, _windowLabel, CancellationToken.None).AsTask());
+        }
+
+        public void Dispose() => _watcher.Dispose();
     }
 
     public ValueTask<FsDirEntry[]> ReadDirAsync(FsReadDirOptions options, CancellationToken cancellationToken)

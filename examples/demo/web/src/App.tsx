@@ -55,6 +55,7 @@ function App() {
   const [lastAsk, setLastAsk] = useState<boolean | null>(null)
   const [updaterStatus, setUpdaterStatus] = useState('')
   const [platformCaps, setPlatformCaps] = useState<PlatformCapabilities | null>(null)
+  const [watchId, setWatchId] = useState<string | null>(null)
 
   const logRef = useRef<LogEntry[]>([])
   const pushLog = (entry: Omit<LogEntry, 'at' | 'kind'> & { kind?: LogEntry['kind'] }) => {
@@ -81,6 +82,13 @@ function App() {
   // Surface which OS-coupled features are genuinely available on this platform.
   useEffect(() => {
     platform.capabilities().then(setPlatformCaps).catch(() => setPlatformCaps(null))
+  }, [])
+
+  // Log any fs watch change delivered while a watch is active.
+  useEffect(() => {
+    return fs.onWatchEvent(event => {
+      pushLog({ kind: 'ok', text: `fs watch[${event.watchId}] -> ${event.eventKind} ${event.outputPaths.join(', ')}` })
+    })
   }, [])
 
   // The native sidebar (demo window extension) emits this event when its button is clicked.
@@ -205,6 +213,26 @@ function App() {
       pushLog({ kind: 'ok', text: `fs.read appData/${filePath} -> ${contents}` })
     } catch (err) {
       pushLog({ kind: 'err', text: `fs.read: ${String(err)}` })
+    }
+  }
+
+  async function doToggleWatch() {
+    if (watchId) {
+      try {
+        await fs.unwatch(watchId)
+        setWatchId(null)
+        pushLog({ kind: 'ok', text: `fs.unwatch(${watchId})` })
+      } catch (err) {
+        pushLog({ kind: 'err', text: `fs.unwatch: ${String(err)}` })
+      }
+      return
+    }
+    try {
+      const result = await fs.watch({ base: 'temp' })
+      setWatchId(result.watchId)
+      pushLog({ kind: 'ok', text: `fs.watch(temp) -> ${result.watchId}` })
+    } catch (err) {
+      pushLog({ kind: 'err', text: `fs.watch: ${String(err)}` })
     }
   }
 
@@ -466,6 +494,7 @@ function App() {
           <button onClick={doFileWrite}>写入</button>
           <button onClick={doFileRead}>读取</button>
           <button onClick={doListDir}>列出目录</button>
+          <button onClick={doToggleWatch}>{watchId ? '停止监视 temp' : '监视 temp 目录'}</button>
         </div>
         <textarea
           rows={3}

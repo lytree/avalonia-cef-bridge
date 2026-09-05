@@ -25,6 +25,7 @@
     "log://entry",
     "deeplink://tarui",
     "updater://status",
+    "fs://watch-change",
   ],
   "permissions": [
     "core:app|get-info",
@@ -294,6 +295,18 @@
     "plugin:fs|write-chunk",
     "plugin:fs|write-commit",
     "plugin:fs|write-cancel",
+    {
+      "identifier": "plugin:fs|watch",
+      "allow": [
+        { "base": "appData" },
+        { "base": "appConfig" },
+        { "base": "appCache" },
+        { "base": "appLog" },
+        { "base": "temp" },
+        { "base": "resources" }
+      ]
+    },
+    "plugin:fs|unwatch",
     {
       "identifier": "plugin:http|fetch",
       "allow": [

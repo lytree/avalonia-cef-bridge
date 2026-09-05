@@ -1,6 +1,8 @@
+using System.Text.Json;
 using Tarui.Contracts;
 using Tarui.Ipc;
 using Tarui.Plugins.FileSystem;
+using Tarui.Plugins.Events;
 
 namespace Tarui.FileSystem.Tests;
 
@@ -22,6 +24,7 @@ internal static class Program
             ScopeMatcherRejectsCaseDifferingDenyEntriesOnWindows();
             ScopeMatcherMatchesCaseDifferingCandidateOnWindows();
             FileSystemServiceRejectsSymlinkEscapeOnSupportedOs();
+            WatchReportsCreationsUntilUnwatched();
         }
         catch (Exception exception)
         {
@@ -199,6 +202,8 @@ internal static class Program
             "plugin:fs|write-chunk",
             "plugin:fs|write-commit",
             "plugin:fs|write-cancel",
+            "plugin:fs|watch",
+            "plugin:fs|unwatch",
         };
 
         foreach (var command in expected)
@@ -446,6 +451,85 @@ internal static class Program
         }
     }
 
+    private static void WatchReportsCreationsUntilUnwatched()
+    {
+        using var root = CreateTempRoot();
+        var events = new FakeEventSender();
+        var service = new FileSystemService(new ScopedPolicy(new FileAccessPolicy(), root), events);
+        try
+        {
+            var result = service.WatchAsync("main", new FsWatchOptions(BaseName(root)), default).AsTask().GetAwaiter().GetResult();
+            Assert(!string.IsNullOrWhiteSpace(result.WatchId), "A watch must return a stable handle.");
+
+            File.WriteAllText(Path.Combine(root.Dir, "new.txt"), "hello");
+            Assert(
+                WaitUntil(() => events.HasCreated("new.txt"), timeoutMs: 8000),
+                "Creating a file under the watched directory must emit a created fs://watch-change event.");
+
+            var payload = events.FirstCreated("new.txt");
+            Assert(payload.WatchId == result.WatchId, "The event must carry the watch handle.");
+            Assert(payload.EventKind == FsWatchEventKinds.Created, "The event must be reported as created.");
+            Assert(payload.OutputPaths.Contains("new.txt", StringComparer.Ordinal), "The event must carry the relative path.");
+        }
+        finally
+        {
+            service.Dispose();
+        }
+    }
+
+    private static bool WaitUntil(Func<bool> condition, int timeoutMs)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+            {
+                return true;
+            }
+
+            Thread.Sleep(50);
+        }
+
+        return condition();
+    }
+
+    private sealed class FakeEventSender : IEventSender
+    {
+        private readonly object _gate = new();
+        public List<(string Name, FsWatchEvent Event)> Events { get; } = [];
+
+        public ValueTask<Unit> EmitAsync(string eventName, JsonElement payload, string? targetWindow, CancellationToken cancellationToken)
+        {
+            var watchEvent = payload.Deserialize(TaruiJsonContext.Default.FsWatchEvent)!;
+            lock (_gate)
+            {
+                Events.Add((eventName, watchEvent));
+            }
+
+            return ValueTask.FromResult(new Unit());
+        }
+
+        public bool HasCreated(string path)
+        {
+            lock (_gate)
+            {
+                return Events.Any(e => e.Name == "fs://watch-change" &&
+                                       e.Event.EventKind == FsWatchEventKinds.Created &&
+                                       e.Event.OutputPaths.Contains(path, StringComparer.Ordinal));
+            }
+        }
+
+        public FsWatchEvent FirstCreated(string path)
+        {
+            lock (_gate)
+            {
+                return Events.First(e => e.Name == "fs://watch-change" &&
+                                         e.Event.EventKind == FsWatchEventKinds.Created &&
+                                         e.Event.OutputPaths.Contains(path, StringComparer.Ordinal)).Event;
+            }
+        }
+    }
+
     private static FileSystemService CreateService(TestRoot root, string? resourcesDir = null)
     {
         var policy = new FileAccessPolicy();
@@ -573,5 +657,7 @@ internal static class Program
         public ValueTask<Unit> WriteChunkAsync(FsWriteChunkOptions options, CancellationToken cancellationToken) { Record("write-chunk"); return ValueTask.FromResult(new Unit()); }
         public ValueTask<Unit> WriteCommitAsync(FsWriteCommitOptions options, CancellationToken cancellationToken) { Record("write-commit"); return ValueTask.FromResult(new Unit()); }
         public ValueTask<Unit> WriteCancelAsync(FsWriteCancelOptions options, CancellationToken cancellationToken) { Record("write-cancel"); return ValueTask.FromResult(new Unit()); }
+        public ValueTask<FsWatchResult> WatchAsync(string windowLabel, FsWatchOptions options, CancellationToken cancellationToken) { Record("watch"); return ValueTask.FromResult(new FsWatchResult("fsw-watch")); }
+        public ValueTask<Unit> UnwatchAsync(FsUnwatchOptions options, CancellationToken cancellationToken) { Record("unwatch"); return ValueTask.FromResult(new Unit()); }
     }
 }

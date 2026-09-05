@@ -33,6 +33,10 @@ public interface IFileSystemService
     ValueTask<Unit> WriteCommitAsync(FsWriteCommitOptions options, CancellationToken cancellationToken);
 
     ValueTask<Unit> WriteCancelAsync(FsWriteCancelOptions options, CancellationToken cancellationToken);
+
+    ValueTask<FsWatchResult> WatchAsync(string windowLabel, FsWatchOptions options, CancellationToken cancellationToken);
+
+    ValueTask<Unit> UnwatchAsync(FsUnwatchOptions options, CancellationToken cancellationToken);
 }
 
 public sealed class FileSystemPlugin(IFileSystemService service) : ITaruiPlugin
@@ -122,6 +126,20 @@ public sealed class FileSystemPlugin(IFileSystemService service) : ITaruiPlugin
             FsScopeAuthorizer.AllowsPath);
 
         ConfigureWriteSessions(commands, handlers);
+
+        commands.Add(
+            "plugin:fs|watch",
+            TaruiJsonContext.Default.FsWatchOptions,
+            TaruiJsonContext.Default.FsWatchResult,
+            handlers.WatchAsync,
+            "plugin:fs|watch",
+            FsScopeAuthorizer.AllowsPath);
+        commands.Add(
+            "plugin:fs|unwatch",
+            TaruiJsonContext.Default.FsUnwatchOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.UnwatchAsync,
+            "plugin:fs|unwatch");
     }
 
     private static void ConfigureWriteSessions(CommandRouterBuilder commands, FileSystemCommands handlers)
@@ -244,6 +262,18 @@ public sealed class FileSystemPlugin(IFileSystemService service) : ITaruiPlugin
             FsWriteCancelOptions options,
             CommandContext context,
             CancellationToken cancellationToken) => service.WriteCancelAsync(options, cancellationToken);
+
+        [TaruiCommand("plugin:fs|watch")]
+        public ValueTask<FsWatchResult> WatchAsync(
+            FsWatchOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) => service.WatchAsync(context.WindowLabel, options, cancellationToken);
+
+        [TaruiCommand("plugin:fs|unwatch")]
+        public ValueTask<Unit> UnwatchAsync(
+            FsUnwatchOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) => service.UnwatchAsync(options, cancellationToken);
     }
 }
 
@@ -263,6 +293,9 @@ public static class FsScopeAuthorizer
         FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
 
     public static bool AllowsPath(FsReadDirOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
+        FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
+
+    public static bool AllowsPath(FsWatchOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
         FileScopeMatcher.MatchesScope(allow, deny, options.Base, options.Path);
 
     public static bool AllowsPathWrite(FsWriteTextOptions options, IReadOnlyList<PathScope> allow, IReadOnlyList<PathScope> deny) =>
