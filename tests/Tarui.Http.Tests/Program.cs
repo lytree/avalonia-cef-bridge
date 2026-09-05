@@ -23,6 +23,8 @@ internal static class Program
         await EnforcesSchemeWhitelistAsync();
         await StreamsLargeResponseThroughChannelAsync();
         await StreamsPreserveRedirectScopeAsync();
+        await UploadsMultipartBodyToScopedUrlAsync();
+        await DeniesUploadWithoutScopeAsync();
         Console.WriteLine("Tarui.Http self-tests passed.");
         return 0;
     }
@@ -207,6 +209,51 @@ internal static class Program
         Assert(ReassembleStream(frames.Frames, out _) == payload, "The streamed bytes must round-trip exactly.");
     }
 
+    private static async Task UploadsMultipartBodyToScopedUrlAsync()
+    {
+        HttpRequest? received = null;
+        await using var server = new FakeHttpServer(request =>
+        {
+            received = request;
+            return new HttpResponse(200, [new HttpHeader("Content-Type", "text/plain")], "uploaded");
+        });
+        var dispatcher = NewDispatcher(new HttpService(new HttpServiceOptions()));
+        var options = new HttpUploadOptions(
+            server.BaseUrl + "/inbox",
+            Fields: [new HttpField("note", "hello-tarui")],
+            Files: [new HttpFilePart("file", "readme.txt", System.Text.Encoding.UTF8.GetBytes("file-contents"))]);
+
+        var response = await DispatchUpload(dispatcher, server, options, [$"http://127.0.0.1:{server.Port}/**"]);
+        Assert(response!.Success, "A scoped upload must succeed.");
+        var result = response.Payload!.Value.Deserialize(TaruiJsonContext.Default.HttpUploadResult)!;
+        Assert(result.Status == 200 && result.Body == "uploaded", "The upload response must round-trip.");
+        Assert(received?.Method == "POST", "The upload must be sent as a POST.");
+        Assert(
+            received is { Body: not null } &&
+            received.Body.Contains("hello-tarui", StringComparison.Ordinal) &&
+            received.Body.Contains("file-contents", StringComparison.Ordinal) &&
+            received.Body.Contains("Content-Disposition", StringComparison.Ordinal),
+            "The multipart body must carry the text field and the file bytes.");
+    }
+
+    private static async Task DeniesUploadWithoutScopeAsync()
+    {
+        await using var server = new FakeHttpServer(_ => new HttpResponse(200, [], "ok"));
+        var dispatcher = NewDispatcher(new HttpService(new HttpServiceOptions()));
+        var caps = new CapabilitySet([HttpPlugin.UploadCommand]); // 裸权限，无 URL 作用域
+        var request = new InvokeRequest(1, "u-deny", HttpPlugin.UploadCommand,
+            JsonSerializer.SerializeToElement(
+                new HttpUploadOptions(server.BaseUrl + "/x", Files: [new HttpFilePart("f", "a.txt", [1])]),
+                TaruiJsonContext.Default.HttpUploadOptions));
+        var response = JsonSerializer.Deserialize(
+            await dispatcher.DispatchJsonAsync(
+                JsonSerializer.Serialize(request, TaruiJsonContext.Default.InvokeRequest),
+                new CommandContext("main", "main", caps)),
+            TaruiJsonContext.Default.InvokeResponse);
+        Assert(!response!.Success, "A bare upload permission with no URL scope must be denied.");
+        Assert(response.Error?.Code == "SCOPE_DENIED", "A scopeless upload must surface as SCOPE_DENIED.");
+    }
+
     private static string ReassembleStream(IReadOnlyList<JsonElement> frames, out int status)
     {
         status = 0;
@@ -287,6 +334,26 @@ internal static class Program
             scopedPermissions: [new KeyValuePair<string, PermissionScope>(HttpPlugin.FetchCommand, scope)]);
     }
 
+    private static async Task<InvokeResponse?> DispatchUpload(
+        IpcDispatcher dispatcher, FakeHttpServer server, HttpUploadOptions options, string[] allow)
+    {
+        var caps = HttpUploadCapability(allow);
+        var request = new InvokeRequest(1, "up-" + DateTime.UtcNow.Ticks, HttpPlugin.UploadCommand,
+            JsonSerializer.SerializeToElement(options, TaruiJsonContext.Default.HttpUploadOptions));
+        var json = JsonSerializer.Serialize(request, TaruiJsonContext.Default.InvokeRequest);
+        var responseText = await dispatcher.DispatchJsonAsync(json, new CommandContext("main", "main", caps));
+        return JsonSerializer.Deserialize(responseText, TaruiJsonContext.Default.InvokeResponse);
+    }
+
+    private static CapabilitySet HttpUploadCapability(string[] allow)
+    {
+        var scope = new PermissionScope([.. allow.Select(pattern => new PathScope(Path: pattern))], []);
+        return new CapabilitySet(
+            [HttpPlugin.UploadCommand],
+            events: [],
+            scopedPermissions: [new KeyValuePair<string, PermissionScope>(HttpPlugin.UploadCommand, scope)]);
+    }
+
     private static bool Allows(string urlPattern, string url) =>
         UrlScopeMatcher.AllowsUrl([new PathScope(Path: urlPattern)], [], url);
 
@@ -358,6 +425,7 @@ internal static class Program
                 }
 
                 var parts = line.Split(' ');
+                var method = parts.Length > 0 ? parts[0] : "GET";
                 var path = parts.Length > 1 ? parts[1] : "/";
 
                 var headers = new List<(string, string)>();
@@ -378,7 +446,7 @@ internal static class Program
                     body = await ReadBodyAsync(stream, contentLength);
                 }
 
-                var response = _responder(new HttpRequest("GET", path, headers.ToArray(), body));
+                var response = _responder(new HttpRequest(method, path, headers.ToArray(), body));
                 await WriteResponseAsync(stream, response);
             }
         }

@@ -11,6 +11,7 @@ internal static class Program
         RuntimeOptionsExposeStableDefaults();
         RuntimeOptionsDefaultCacheUsesProcessTempDirectory();
         RuntimeOptionsPreserveExplicitConfiguration();
+        RuntimeOptionsWithProxyAddsCommandLineFlag();
         RuntimeRejectsMissingSubprocessBeforeNativeStartup();
         RuntimeRejectsInvalidSchemeOptionsBeforeNativeStartup();
         RunSubProcessIgnoresNormalApplicationArguments();
@@ -94,6 +95,29 @@ internal static class Program
         Assert(
             !cacheDirectory.StartsWith(Path.GetFullPath(AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase),
             "The default CEF cache must not be created below AppContext.BaseDirectory.");
+    }
+
+    private static void RuntimeOptionsWithProxyAddsCommandLineFlag()
+    {
+        var options = new CefGlueNextAvaloniaRuntimeOptions { ProxyServer = "http://127.0.0.1:8080" };
+        var flags = options.WithNetworkFlags();
+        Assert(
+            flags.Any(static flag => flag.Key == "proxy-server" && flag.Value == "http://127.0.0.1:8080"),
+            "The proxy must be added as a CEF proxy-server command-line flag.");
+
+        var replaces = new CefGlueNextAvaloniaRuntimeOptions
+        {
+            ProxyServer = "http://127.0.0.1:9",
+            CommandLineFlags = [new KeyValuePair<string, string>("proxy-server", "old")],
+        };
+        var merged = replaces.WithNetworkFlags();
+        Assert(merged.Count(static flag => flag.Key == "proxy-server") == 1, "A configured proxy must replace an existing proxy-server flag.");
+        Assert(
+            merged.First(static flag => flag.Key == "proxy-server").Value == "http://127.0.0.1:9",
+            "The replaced proxy value must win.");
+
+        var noProxy = new CefGlueNextAvaloniaRuntimeOptions();
+        Assert(ReferenceEquals(noProxy.WithNetworkFlags(), noProxy.CommandLineFlags), "Without a proxy the original flags must pass through unchanged.");
     }
 
     private static void RuntimeRejectsMissingSubprocessBeforeNativeStartup()

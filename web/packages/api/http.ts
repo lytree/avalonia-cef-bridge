@@ -34,6 +34,37 @@ export interface HttpResponse {
   body: string | null
 }
 
+export interface HttpField {
+  name: string
+  value: string
+}
+
+export interface HttpFilePart {
+  /** Form field name for the file part. */
+  name: string
+  /** Client filename sent as the part's filename. */
+  fileName: string
+  /** Raw file bytes. */
+  data: Uint8Array
+  /** Optional MIME type; defaults to octet-stream. */
+  contentType?: string
+}
+
+export interface HttpUploadOptions {
+  headers?: HttpHeaders
+  fields?: HttpField[]
+  files?: HttpFilePart[]
+  timeoutMs?: number
+  signal?: AbortSignal
+}
+
+export interface HttpUploadResult {
+  status: number
+  headers: HttpHeaders
+  ok: boolean
+  body: string | null
+}
+
 /**
  * Issues a capability-scoped HTTP request through the native shell (bypassing CORS / CSP network limits).
  * Every request and each redirect hop must be covered by the caller's URL scopes; permission is default-deny.
@@ -100,4 +131,51 @@ function toHttpEvent(frame: unknown): HttpStreamEvent {
   return { kind: 'chunk', data: bytes }
 }
 
-export const http = { fetch } as const
+/**
+ * Sends a capability-scoped multipart/form-data POST. File bytes and text fields are carried as parts and the
+ * URL (plus every redirect hop) must be covered by the caller's URL scopes; permission is default-deny. Returns
+ * the inline response body, capped at the native inline limit like `fetch`.
+ */
+export async function upload(url: string, options: HttpUploadOptions = {}): Promise<HttpUploadResult> {
+  const headers = Object.entries(options.headers ?? {}).map(([name, value]) => ({ name, value }))
+  const files = (options.files ?? []).map(file => ({
+    name: file.name,
+    fileName: file.fileName,
+    data: base64Encode(file.data),
+    contentType: file.contentType,
+  }))
+
+  const result = await invoke<{
+    status: number
+    headers: { name: string; value: string }[]
+    body: string | null
+  }>('plugin:http|upload', {
+    url,
+    headers: headers.length > 0 ? headers : undefined,
+    fields: options.fields && options.fields.length > 0 ? options.fields : undefined,
+    files: files.length > 0 ? files : undefined,
+    timeoutMs: options.timeoutMs,
+  }, { signal: options.signal })
+
+  const headerMap: HttpHeaders = {}
+  for (const header of result.headers) {
+    headerMap[header.name] = header.value
+  }
+
+  return {
+    status: result.status,
+    headers: headerMap,
+    ok: result.status >= 200 && result.status < 300,
+    body: result.body,
+  }
+}
+
+function base64Encode(bytes: Uint8Array): string {
+  let binary = ''
+  for (const value of bytes) {
+    binary += String.fromCharCode(value)
+  }
+  return btoa(binary)
+}
+
+export const http = { fetch, upload } as const

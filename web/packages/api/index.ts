@@ -123,8 +123,8 @@ export type {
   FsWriteBeginResult,
 } from './fs'
 
-export { http, fetch as httpFetch } from './http'
-export type { HttpStreamEvent, HttpHeaders, HttpFetchOptions, HttpResponse } from './http'
+export { http, fetch as httpFetch, upload as httpUpload } from './http'
+export type { HttpStreamEvent, HttpHeaders, HttpFetchOptions, HttpResponse, HttpField, HttpFilePart, HttpUploadOptions, HttpUploadResult } from './http'
 
 export { menu, setWindowMenu, updateItem, removeWindowMenu, showContextMenu, menuItemKinds } from './menu'
 export type { MenuItemDefinition, MenuItemKind, SetWindowMenuOptions, MenuUpdateItemOptions, MenuItemClicked, ContextMenuOptions } from './menu'

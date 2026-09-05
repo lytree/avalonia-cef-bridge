@@ -1,4 +1,4 @@
-﻿﻿using System.Diagnostics;
+﻿using System.Diagnostics;
 using Avalonia.Controls;
 using CefGlue.Next.Avalonia;
 using Tarui.WebView.Abstractions;
@@ -22,6 +22,8 @@ public static class CefGlueRuntimeBootstrap
             {
                 RuntimeDirectory = ResolveRuntimeRoot(),
                 CacheDirectory = ResolveCacheDirectory(),
+                UserAgent = ReadEnvironmentVariable("TARUI_WEB_USER_AGENT"),
+                ProxyServer = ReadEnvironmentVariable("TARUI_WEB_PROXY_SERVER"),
                 // The custom scheme is served whenever local assets exist — in scheme mode and in
                 // HTTP mode configured with a content root — so both schemes stay usable at once.
                 Schemes = webAppOptions.ContentRoot is null
@@ -48,6 +50,12 @@ public static class CefGlueRuntimeBootstrap
                         }
                     ]
             });
+    }
+
+    private static string? ReadEnvironmentVariable(string name)
+    {
+        var value = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
     private static string? ResolveRuntimeRoot()

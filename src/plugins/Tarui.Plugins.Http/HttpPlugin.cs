@@ -35,6 +35,16 @@ public interface IHttpService
         IReadOnlyList<PathScope> allow,
         IReadOnlyList<PathScope> deny,
         CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Sends a scoped multipart/form-data <c>POST</c>. The URL and every redirect hop are authorized against the
+    /// URL scopes (default deny); the response body is capped at the inline limit like <see cref="FetchAsync"/>.
+    /// </summary>
+    ValueTask<HttpUploadResult> UploadAsync(
+        HttpUploadOptions options,
+        IReadOnlyList<PathScope> allow,
+        IReadOnlyList<PathScope> deny,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -83,6 +93,125 @@ public sealed class HttpService(HttpServiceOptions serviceOptions) : IHttpServic
         }
 
         return new HttpResponseResult((int)response.StatusCode, headers, null);
+    }
+
+    public async ValueTask<HttpUploadResult> UploadAsync(
+        HttpUploadOptions options,
+        IReadOnlyList<PathScope> allow,
+        IReadOnlyList<PathScope> deny,
+        CancellationToken cancellationToken)
+    {
+        using var response = await SendUploadAsync(options, allow, deny, cancellationToken);
+        var headers = CollectHeaders(response);
+        var text = await ReadInlineBodyAsync(response, serviceOptions.MaxInlineBytes, cancellationToken);
+        return new HttpUploadResult((int)response.StatusCode, headers, text);
+    }
+
+    /// <summary>
+    /// Sends a multipart POST, manually following redirects while re-checking each hop against the URL scopes.
+    /// The multipart body is rebuilt per hop (redirects preserve the POST method and body). Returns the final,
+    /// caller-disposed response. Scope is checked here defensively too, though the handler requires a scope.
+    /// </summary>
+    private async Task<HttpResponseMessage> SendUploadAsync(
+        HttpUploadOptions options,
+        IReadOnlyList<PathScope> allow,
+        IReadOnlyList<PathScope> deny,
+        CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(options.Url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException("Only http:// and https:// URLs are supported.");
+        }
+
+        if (!UrlScopeMatcher.AllowsUrl(allow, deny, options.Url))
+        {
+            throw new ScopeDeniedException(HttpPlugin.UploadCommand);
+        }
+
+        using var cts = new CancellationTokenSource();
+        var timeout = options.TimeoutMs ?? serviceOptions.DefaultTimeoutMs;
+        if (timeout > 0)
+        {
+            cts.CancelAfter(timeout);
+        }
+
+        using var link = cancellationToken.Register(cts.Cancel);
+        var token = cts.Token;
+        var currentUri = uri;
+
+        for (var hop = 0; ; hop++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, currentUri)
+            {
+                Content = BuildMultipart(options),
+            };
+            ApplyHeaders(request, options.Headers);
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await Client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException("The HTTP upload exceeded its timeout.");
+            }
+
+            if (!IsRedirect(response, currentUri, out var next))
+            {
+                return response;
+            }
+
+            using (response)
+            {
+                if (hop >= serviceOptions.MaxRedirectCount)
+                {
+                    throw new InvalidOperationException("The HTTP upload exceeded the redirect limit.");
+                }
+
+                if (!UrlScopeMatcher.AllowsUrl(allow, deny, next.AbsoluteUri))
+                {
+                    throw new ScopeDeniedException(HttpPlugin.UploadCommand);
+                }
+
+                currentUri = next;
+            }
+        }
+    }
+
+    private static MultipartFormDataContent BuildMultipart(HttpUploadOptions options)
+    {
+        var content = new MultipartFormDataContent();
+        foreach (var field in options.Fields ?? [])
+        {
+            content.Add(new StringContent(field.Value ?? string.Empty), field.Name);
+        }
+
+        foreach (var file in options.Files ?? [])
+        {
+            var part = new ByteArrayContent(file.Data);
+            if (!string.IsNullOrWhiteSpace(file.ContentType) &&
+                System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(file.ContentType, out var mediaType))
+            {
+                part.Headers.ContentType = mediaType;
+            }
+
+            content.Add(part, file.Name, file.FileName);
+        }
+
+        return content;
+    }
+
+    private static void ApplyHeaders(HttpRequestMessage request, HttpHeader[]? headers)
+    {
+        foreach (var header in headers ?? [])
+        {
+            if (!request.Headers.TryAddWithoutValidation(header.Name, header.Value) && request.Content is not null)
+            {
+                request.Content.Headers.TryAddWithoutValidation(header.Name, header.Value);
+            }
+        }
     }
 
     /// <summary>
@@ -244,6 +373,7 @@ public sealed class HttpService(HttpServiceOptions serviceOptions) : IHttpServic
 public sealed class HttpPlugin(IHttpService service) : ITaruiPlugin
 {
     public const string FetchCommand = "plugin:http|fetch";
+    public const string UploadCommand = "plugin:http|upload";
 
     public void ConfigureCommands(CommandRouterBuilder commands)
     {
@@ -265,6 +395,22 @@ public sealed class HttpPlugin(IHttpService service) : ITaruiPlugin
             },
             FetchCommand,
             HttpScopeAuthorizer.AllowsUrl);
+
+        commands.Add(
+            UploadCommand,
+            TaruiJsonContext.Default.HttpUploadOptions,
+            TaruiJsonContext.Default.HttpUploadResult,
+            (options, context, ct) =>
+            {
+                // HTTP 默认拒绝：未带 URL 作用域的裸权限不得静默放开全部 URL。
+                if (!context.Capabilities.TryGetScope(UploadCommand, out var scope))
+                {
+                    throw new ScopeDeniedException(UploadCommand);
+                }
+
+                return service.UploadAsync(options, scope.Allow, scope.Deny, ct);
+            },
+            UploadCommand);
     }
 }
 

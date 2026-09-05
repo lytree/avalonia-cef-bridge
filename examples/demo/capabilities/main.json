@@ -302,6 +302,12 @@
       ]
     },
     {
+      "identifier": "plugin:http|upload",
+      "allow": [
+        { "path": "http://127.0.0.1:*/**" }
+      ]
+    },
+    {
       "identifier": "plugin:shell|spawn",
       "allow": [
         { "path": "cmd.exe" },

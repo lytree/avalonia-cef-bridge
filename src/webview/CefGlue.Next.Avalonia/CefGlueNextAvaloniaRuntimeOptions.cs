@@ -34,6 +34,15 @@ public sealed class CefGlueNextAvaloniaRuntimeOptions
 
     public CefGlueNextAvaloniaLogSeverity LogSeverity { get; init; } = CefGlueNextAvaloniaLogSeverity.Warning;
 
+    /// <summary>Overrides the effective CEF User-Agent header shown to servers; null uses the CEF default.</summary>
+    public string? UserAgent { get; init; }
+
+    /// <summary>
+    /// A proxy server URL applied as the CEF <c>proxy-server</c> command-line flag (for example
+    /// <c>http://127.0.0.1:8080</c>). Null uses the system proxy / no explicit proxy.
+    /// </summary>
+    public string? ProxyServer { get; init; }
+
     public IReadOnlyList<KeyValuePair<string, string>> CommandLineFlags { get; init; } =
         [new KeyValuePair<string, string>("do-not-de-elevate", string.Empty)];
 
@@ -109,6 +118,40 @@ public sealed class CefGlueNextAvaloniaRuntimeOptions
                     nameof(schemes));
             }
         }
+    }
+
+    /// <summary>Applies an effective User-Agent override to the native settings; null keeps the CEF default.</summary>
+    internal static void ApplyUserAgent(CefSettings settings, string? userAgent)
+    {
+        if (!string.IsNullOrWhiteSpace(userAgent))
+        {
+            settings.UserAgent = userAgent;
+        }
+    }
+
+    /// <summary>
+    /// Returns the command-line flags with the proxy applied. CEF has no <c>CefSettings</c> proxy field, so the
+    /// proxy travels as the <c>proxy-server</c> switch; an explicit proxy replaces any previously-set switch.
+    /// </summary>
+    internal IReadOnlyList<KeyValuePair<string, string>> WithNetworkFlags()
+    {
+        if (string.IsNullOrWhiteSpace(ProxyServer))
+        {
+            return CommandLineFlags;
+        }
+
+        var flags = new List<KeyValuePair<string, string>>(CommandLineFlags);
+        var index = flags.FindIndex(static flag => flag.Key == "proxy-server");
+        if (index >= 0)
+        {
+            flags[index] = new KeyValuePair<string, string>("proxy-server", ProxyServer);
+        }
+        else
+        {
+            flags.Add(new KeyValuePair<string, string>("proxy-server", ProxyServer));
+        }
+
+        return flags;
     }
 
     internal string? ResolveResourcesDirectory()

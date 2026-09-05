@@ -28,3 +28,25 @@ public sealed record HttpStreamMeta(int Status, string? StatusText, HttpHeader[]
 /// signals the end of the stream.
 /// </summary>
 public sealed record HttpStreamEvent(string Kind, HttpStreamMeta? Meta = null, byte[]? Data = null);
+
+/// <summary>A text form field for a multipart upload.</summary>
+public sealed record HttpField(string Name, string Value);
+
+/// <summary>A binary file part for a multipart upload. <see cref="Name"/> is the form field name, <see cref="FileName"/>
+/// the client filename, <see cref="Data"/> the raw bytes; <see cref="ContentType"/> defaults to octet-stream.</summary>
+public sealed record HttpFilePart(string Name, string FileName, byte[] Data, string? ContentType = null);
+
+/// <summary>
+/// Request for <c>plugin:http|upload</c>: a scoped multipart/form-data POST. <see cref="Url"/> is validated
+/// against the caller URL scopes (default deny) and every redirect hop is re-checked, mirroring
+/// <c>plugin:http|fetch</c>.
+/// </summary>
+public sealed record HttpUploadOptions(
+    string Url,
+    HttpHeader[]? Headers = null,
+    HttpField[]? Fields = null,
+    HttpFilePart[]? Files = null,
+    int? TimeoutMs = null);
+
+/// <summary>Non-streaming upload result: response status, headers, and the response body as text.</summary>
+public sealed record HttpUploadResult(int Status, HttpHeader[] Headers, string? Body);

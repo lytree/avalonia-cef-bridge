@@ -78,8 +78,7 @@ public static class CefGlueNextAvaloniaRuntime
             var cacheDirectory = options.ResolveCacheDirectory();
             var customSchemes = CefGlueNextAvaloniaSchemeMapper.Create(options.Schemes, out var schemeFactories);
 
-            CefRuntimeLoader.Initialize(
-                new CefSettings
+            var settings = new CefSettings
                 {
                     RootCachePath = cacheDirectory,
                     BrowserSubprocessPath = ResolveSubprocessPath(options),
@@ -89,8 +88,12 @@ public static class CefGlueNextAvaloniaRuntime
                     LogFile = options.LogFile ?? Path.Combine(cacheDirectory, "cef.log"),
                     ResourcesDirPath = resourcesDirectory,
                     LocalesDirPath = localesDirectory
-                },
-                options.CommandLineFlags.ToArray(),
+                };
+            CefGlueNextAvaloniaRuntimeOptions.ApplyUserAgent(settings, options.UserAgent);
+
+            CefRuntimeLoader.Initialize(
+                settings,
+                options.WithNetworkFlags().ToArray(),
                 customSchemes);
 
             try
@@ -146,6 +149,8 @@ public static class CefGlueNextAvaloniaRuntime
         builder.Append("ns=").Append(options.NoSandbox).Append('|');
         builder.Append("lf=").Append(options.LogFile ?? string.Empty).Append('|');
         builder.Append("ls=").Append(options.LogSeverity).Append('|');
+        builder.Append("ua=").Append(options.UserAgent ?? string.Empty).Append('|');
+        builder.Append("proxy=").Append(options.ProxyServer ?? string.Empty).Append('|');
         builder.Append("flags=");
         foreach (var flag in options.CommandLineFlags)
         {

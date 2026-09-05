@@ -92,7 +92,7 @@
 | Store | ✅ | 等价（JSON KV + scope + 原子写） |
 | Stronghold | ❌ | 未实现（加密存储，延后） |
 | Updater | ✅ | check/download + 签名 + 哈希 + staging 完整；apply（MSIX 安装 + staging 定位）已落地 |
-| Upload | ❌ | 依赖 http 插件 |
+| Upload | ✅ | multipart/form-data 上传（`plugin:http|upload`，URL 作用域默认拒绝 + 重定向复检） |
 | Websocket | ❌ | 未实现 |
 | Window State | ✅ | 等价（含显示器拟合） |
 | 移动端插件（barcode/biometric/geolocation/haptics/nfc） | — | 非目标（对齐计划 §1 明确排除） |
@@ -153,12 +153,12 @@
 | --- | --- | --- |
 | 17 | SQL 插件（SQLite） | Tauri sql |
 | 18 | WebSocket 插件 | Tauri websocket |
-| 19 | Upload（multipart） | Tauri upload（依赖 http） |
+| 19 | Upload（multipart） | Tauri upload（依赖 http） | ✅ 已完成（`plugin:http|upload`：multipart/form-data 上传，URL scope 默认拒绝 + 重定向逐跳复检 + inline 上限） |
 | 20 | Persisted Scope（运行时 scope 变更持久化） | Tauri persisted-scope |
 | 21 | Stronghold 类加密存储 | Tauri stronghold |
 | 22 | 单窗口多 webview | Tauri v2 |
 | 23 | 文件关联 | Tauri v2.11 |
-| 24 | UserAgent/Proxy 等 WebView 运行时配置暴露 | CEF 原生 |
+| 24 | UserAgent/Proxy 等 WebView 运行时配置暴露 | CEF 原生 | ✅ 已完成（`CefGlueNextAvaloniaRuntimeOptions.UserAgent/ProxyServer` → `CefSettings.UserAgent` + `proxy-server` 命令行开关，经 `TARUI_WEB_USER_AGENT`/`TARUI_WEB_PROXY_SERVER` 配置；CEF 仅支持初始化期配置） |
 
 ## 6. 现有实现可优化项
 
@@ -184,7 +184,7 @@
 3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——✅ 已完成（`plugin:menu|show-context-menu` + `plugin:dialog|ask`）。
 4. **Updater apply + 打包分发**（P0-5/6）——✅ 已完成（apply 落地 MSIX 安装 + 状态事件；打包分发为现有 `tarui build` zip/MSIX/签名 latest.json，重启由调用方衔接 process relaunch，与 OIDC 发布工作流衔接）。
 5. **平台补齐（macOS/Linux）**——🟡 进展：autostart 已三平台落地，`core:platform|capabilities` 能力矩阵已暴露；notification / global-shortcut / macOS deep-link 需 macOS/Linux 真机验收后补齐。
-6. **P2 项按产品需求排期**（fs watch、upload、positioner 等）。
+6. **P2 项按产品需求排期**（fs watch、Cookie API、DevTools 开关、剪贴板扩展、结构化 CLI 解析等）——Upload（multipart）与 WebView 运行时配置（UserAgent/Proxy）已落地。
 
 每项仍须遵循既有模板：`Contracts DTO → 显式插件注册 → Shell/平台实现 → Capability 授权 → @lytree/api 模块 → 控制台式自测试 → 文档同步`。
 

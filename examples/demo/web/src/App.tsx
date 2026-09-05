@@ -49,6 +49,7 @@ function App() {
   const [bigFileStatus, setBigFileStatus] = useState('')
   const [httpReads, setHttpReads] = useState(0)
   const [lastHttp, setLastHttp] = useState('')
+  const [lastUpload, setLastUpload] = useState('')
   const [shellLines, setShellLines] = useState<string[]>([])
   const [shellRunning, setShellRunning] = useState(false)
   const [lastAsk, setLastAsk] = useState<boolean | null>(null)
@@ -297,6 +298,21 @@ function App() {
     }
   }
 
+  async function doUpload() {
+    // 前端仅演示受作用域约束的 multipart 上传路径；本地无回显服务，通常以连接失败收尾并如实记录。
+    try {
+      const res = await http.upload('http://127.0.0.1:9/upload', {
+        fields: [{ name: 'note', value: 'hello-tarui' }],
+        files: [{ name: 'file', fileName: 'readme.txt', data: new TextEncoder().encode('file-contents'), contentType: 'text/plain' }],
+      })
+      setLastUpload(`上传 ${res.status}`)
+      pushLog({ kind: 'ok', text: `http.upload -> ${res.status}` })
+    } catch (err) {
+      setLastUpload(`失败: ${String(err)}`)
+      pushLog({ kind: 'err', text: `http.upload: ${String(err)}` })
+    }
+  }
+
   async function doShellRun() {
     setShellRunning(true)
     setShellLines([])
@@ -472,9 +488,11 @@ function App() {
           <button onClick={doChunkedWrite}>分片写 5 MiB</button>
           <button onClick={doStreamRead}>流式读回</button>
           <button onClick={doHttpFetch}>HTTP 探测 ({httpReads})</button>
+          <button onClick={doUpload}>multipart 上传</button>
         </div>
         {bigFileStatus && <p className="muted">{bigFileStatus}</p>}
         {lastHttp && <p className="muted">http.fetch: {lastHttp}</p>}
+        {lastUpload && <p className="muted">http.upload: {lastUpload}</p>}
         <p className="muted">
           分片写走 native 临时文件原子提交；流式读逐帧回调呈现进度；HTTP 探测受能力作用域（github API）约束。
         </p>

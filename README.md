@@ -21,7 +21,8 @@
 - **fs 大文件**：`plugin:fs|read-file-stream`（流式读，突破 8 MiB 单次上限）与
   `write-begin|write-chunk|write-commit|write-cancel`（分片写 + 原子提交 + 窗口级清理）。
 - **HTTP 客户端**：`plugin:http|fetch`（`src/plugins/Tarui.Plugins.Http`）——URL 作用域默认拒绝、
-  重定向逐跳复检、内联与流式响应双模式；前端经 `@lytree/api/http` 调用。
+  重定向逐跳复检、内联与流式响应双模式，另有 `plugin:http|upload`（multipart/form-data 上传，同安全模型）；
+  前端经 `@lytree/api/http` 调用。
 - **Shell 子进程**：`plugin:shell|spawn|stdin|kill`（`src/plugins/Tarui.Plugins.Shell`）——程序白名单作用域
   默认拒绝、stdout/stderr 经 Channel 流式回传、退出码 terminated 帧、进程树终止；前端经 `@lytree/api/shell`。
 - **上下文菜单 + Dialog ask**：`plugin:menu|show-context-menu` 任意坐标弹出（复用声明式 items + `menu://item-clicked`
@@ -32,6 +33,8 @@
 - **平台能力矩阵 + 跨平台自启**：`core:platform|capabilities` 暴露 notification/global-shortcut/autostart/deep-link
   的真实可用性，前端据此禁用不可用 UI；Autostart 覆盖三平台（Windows registry / macOS LaunchAgents / Linux `.desktop`），
   前端经 `@lytree/api/platform`、`@lytree/api/autostart` 调用。
+- **WebView 网络配置**：CEF 运行时支持自定义 User-Agent 与代理，经 `TARUI_WEB_USER_AGENT` / `TARUI_WEB_PROXY_SERVER`
+  在初始化期配置（CEF 不支持运行时修改）。
 
 逐项能力与安装/打包细节见 [docs/wails-tauri-gap-analysis.md](docs/wails-tauri-gap-analysis.md) 与
 [examples/demo](examples/demo)。
