@@ -446,34 +446,37 @@ jobs:
           name: nuget-packages
           path: nuget
 
-      - name: Create release (explicit file list)
+      - name: Publish GitHub Release (softprops/action-gh-release)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tarui-v${{ needs.validate.outputs.version }}
+          name: tarui ${{ needs.validate.outputs.version }}
+          generate_release_notes: false
+          draft: false
+          prerelease: false
+          files: |
+            dist/*.zip
+            dist/*.msix
+            dist-macos/*.app.tar.gz
+            nuget/*.nupkg
+          body: |
+            Tarui ${{ needs.validate.outputs.version }} 发布。
+
+            ## 改动
+
+            - **CefGlue.Next.Avalonia 并入 Tarui.WebView.CefGlueNext**：浏览器组件层不再独立成包；包名变化是破坏性变更，对应 NuGet 包名改为 `Tarui.WebView.CefGlueNext`。
+            - 同步版本号到 0.4.0（Directory.Build.props / @lytree/api / examples/demo/tarui.app.json / tarui-cli / Tarui.Templates）。
+
+            ## 附件
+
+            - Windows：`*.zip`、`*.msix`
+            - macOS (osx-arm64)：`*.app.tar.gz`
+            - NuGet 包：`*.nupkg`（含 `Tarui.WebView.CefGlueNext.0.4.0.nupkg`、`Tarui.Hosting.0.4.0.nupkg` 等）
+
+            ## 签名状态
+
+            - **MSIX**：未配置签名证书时为未签名包；如需 Authenticode 签名，在 GitHub `release` environment 注入 `WINDOWS_CERT_*` 密钥。
+            - **macOS .app**：未签名/未公证，分发前需 `codesign --deep --sign <identity>` 与 `xcrun notarytool submit --wait`（详见 `docs/adr/0002-macos-real-build-pipeline.md` §8）。
+            - **NuGet/npm**：均通过 OIDC Trusted Publishing 发布（无需长期 API key）。
         env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.validate.outputs.version }}
-        shell: pwsh
-        run: |
-          if (-not $env:VERSION) {
-            Write-Host "::error::version tag required for release"
-            exit 1
-          }
-          $installers = Get-ChildItem -Path dist -Recurse -File |
-            Where-Object -FilterScript { $_.PSIsContainer -eq $false } |
-            Where-Object { $_.Extension -in '.zip', '.msix' } |
-            Sort-Object FullName
-          $macosInstallers = Get-ChildItem -Path dist-macos -Recurse -File |
-            Where-Object -FilterScript { $_.PSIsContainer -eq $false } |
-            Where-Object { $_.Extension -eq '.gz' -or $_.Name -like '*.app.tar.gz*' } |
-            Sort-Object FullName
-          $nupkgs = Get-ChildItem -Path nuget -File -Filter '*.nupkg' |
-            Where-Object -FilterScript { $_.PSIsContainer -eq $false } |
-            Where-Object { $_.Name -notlike '*.symbols.nupkg' } |
-            Sort-Object FullName
-          $files = @($installers.FullName) + @($macosInstallers.FullName) + @($nupkgs.FullName)
-          if ($files.Count -eq 0) {
-            throw 'No artifacts to attach (dist/*.zip/*.msix + dist-macos/*.app.tar.gz + nuget/*.nupkg).'
-          }
-          Write-Host "Attaching $($files.Count) artifact(s) to tarui-v$env:VERSION:"
-          foreach ($f in $files) { Write-Host "  - $f" }
-          & gh release create "tarui-v$env:VERSION" @files `
-            --title "tarui $env:VERSION" `
-            --notes "Tarui $env:VERSION 发布。Windows zip/MSIX、macOS .app.tar.gz 与 NuGet 包见附件（未配置签名证书时 MSIX 未签名；macOS 包未签名/未公证，需在分发前 codesign + notarytool）。"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
