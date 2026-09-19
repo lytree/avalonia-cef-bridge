@@ -11,7 +11,7 @@
 `tarui.net` 是 .NET 生态下对齐 Tauri v2 工作流的桌面开发框架:
 
 - **壳**:Avalonia 12.1.1 原生窗口、标题栏、对话框、平台能力。
-- **浏览器**:`CefGlue.Next.Avalonia` 自带 CEF 150.x 渲染进程(仓库内嵌管理端 CefGlue 源码)。
+- **浏览器**:`Tarui.WebView.CefGlueNext` 自带 CEF 150.x 渲染进程(仓库内嵌管理端 CefGlue 源码)。
 - **WebView 适配层**:`Tarui.WebView.CefGlueNext` 把浏览器组件接入 Tarui 的 IPC、事件、资源策略。
 - **业务前端**:React + TypeScript + Vite,通过 `@lytree/api` 与宿主通信。
 - **IPC 模型**:Command(请求/响应)、Event(低频通知)、Channel(命令关联的有序进度)、Capability(命令/事件白名单)。
@@ -39,7 +39,6 @@ using Tarui.Plugins.Dialog;
 using Tarui.Plugins.System;
 using Tarui.Shell;
 using Tarui.WebView.CefGlueNext;
-using CefGlue.Next.Avalonia;
 
 if (CefGlueNextAvaloniaRuntime.RunSubProcess(args)) return; // CEF 子进程短路
 

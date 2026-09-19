@@ -26,8 +26,7 @@ src/
   webview/
     Tarui.WebView.Abstractions/  # UI 中立的导航/脚本/下载/拖放契约
     Tarui.WebView.Avalonia/      # Avalonia Control 承载契约
-    Tarui.WebView.CefGlueNext/   # Tarui 适配层:连接 IPC 与 CefGlue 组件
-    CefGlue.Next.Avalonia/       # 浏览器组件实现(组件包,内置 Xilium DLL)
+    Tarui.WebView.CefGlueNext/   # Tarui 适配层 + 浏览器组件(原 CefGlue.Next.Avalonia 已并入;包内嵌 5 个 Xilium DLL)
     cefglue/                     # 内置第三方源码,尽量少改动
   tarui-cli/                # CLI 工具项目(Tarui.Cli → tarui 命令)
   templates/Tarui.Templates/    # dotnet new tarui-app 模板
@@ -46,12 +45,12 @@ capabilities/               # Demo/编辑器用能力清单
 ```
 Hosting  →  Shell  →  (Ipc, Contracts, WebView.Abstractions, WebView.Avalonia, 插件接口)
                           ↑
-              CefGlueNext  →  (WebView.Abstractions, WebView.Avalonia, CefGlue.Next.Avalonia)
+              CefGlueNext  →  (WebView.Abstractions, WebView.Avalonia)
                           ↑
-                  CefGlue.Next.Avalonia(包内嵌 5 个 Xilium DLL)
+                  Tarui.WebView.CefGlueNext(包内嵌 5 个 Xilium DLL)
 ```
 
-`Hosting` 和 `Shell` 都不引用 Xilium CefGlue 程序集;`CefGlue.Next.Avalonia` 是唯一接触 CefGlue 实现类型的项目;`webview/cefglue/*` 只能被 `CefGlue.Next.Avalonia` 引用。
+`Hosting` 和 `Shell` 都不引用 Xilium CefGlue 程序集;`Tarui.WebView.CefGlueNext` 是唯一接触 CefGlue 实现类型的项目;`webview/cefglue/*` 只能被 `Tarui.WebView.CefGlueNext` 引用。
 
 ---
 
@@ -66,8 +65,7 @@ Hosting  →  Shell  →  (Ipc, Contracts, WebView.Abstractions, WebView.Avaloni
 | `Tarui.SingleInstance` | `SingleInstanceGuard`、`SingleInstanceIdentity`、`InstanceRole` | 二次启动参数转发到主进程 |
 | `Tarui.WebView.Abstractions` | `IWebViewHost`、`INavigationRequest`、`IDownloadRequest` | UI 中立契约,无 Avalonia/CefGlue |
 | `Tarui.WebView.Avalonia` | `TaruiWebView` (Avalonia Control) | Control 承载层 |
-| `Tarui.WebView.CefGlueNext` | `AddCefGlueWebView()`、`CefGlueNextWebAppOptions` | Tarui 事件/策略/Capability 适配 |
-| `CefGlue.Next.Avalonia` | `CefGlueNextAvaloniaWebView`、`CefGlueNextAvaloniaRuntime` | 浏览器组件实现,nupkg 内嵌 Xilium CefGlue DLL |
+| `Tarui.WebView.CefGlueNext` | `AddCefGlueWebView()`、`CefGlueNextWebAppOptions`、`CefGlueNextAvaloniaWebView`、`CefGlueNextAvaloniaRuntime` | Tarui 事件/策略/Capability 适配 + 浏览器组件实现,nupkg 内嵌 Xilium CefGlue DLL（原 `CefGlue.Next.Avalonia` 已并入） |
 | `Tarui.Ipc.Generators` | `IIncrementalGenerator` | 源生成 TaruiJsonContext 与强类型 invoker |
 
 ---
@@ -78,7 +76,7 @@ Hosting  →  Shell  →  (Ipc, Contracts, WebView.Abstractions, WebView.Avaloni
 
 1. **无反射**:`Tarui.*` 程序集不得引用 `System.Reflection.Emit`、`Activator`、`MethodInfo` 等;**严禁 `ActivatorUtilities`**(避免隐式反射 DI)。
 2. **显式插件注册**:插件只通过 `AddPlugin<T>()` / `Add*Plugin()` 编译期注入;禁止 `AppDomain.GetAssemblies()` 等扫描手段。
-3. **零运行时依赖 Xilium**:除 `CefGlue.Next.Avalonia` 自身及其下游 `Tarui.WebView.CefGlueNext`,其他 Tarui 项目不得引用 `Xilium.CefGlue*`。
+3. **零运行时依赖 Xilium**:除 `Tarui.WebView.CefGlueNext`(原 `CefGlue.Next.Avalonia` 已并入此包)自身,其他 Tarui 项目不得引用 `Xilium.CefGlue*`。
 4. **源生成 JSON**:跨进程 DTO 走 `JsonSerializerContext` 静态元数据,禁止反射回退的 `JsonSerializer.Serialize(obj)` 路径。
 5. **能力闸门强制**:每个命令进入路由器都需经 `CommandRouterComposer` 比对 `RegisteredPermissions` ∩ 窗口 capability。
 6. **生命周期顺序**:`RunSubProcess` → `Host.StartAsync`/`Avalonia lifetime` → CEF `Initialize` → 创建 WebView → 关闭窗口 → `WebView.CloseAsync` 全部完成 → Avalonia loop 退出 → `Host.StopAsync` + `Dispose` → `finally: CefGlueNextAvaloniaRuntime.Shutdown`。
@@ -255,7 +253,7 @@ dotnet run --project tests/Tarui.Architecture.Tests --no-build
 
 1. `dotnet restore` + `dotnet build -c Release` 0 warnings。
 2. `dotnet pack` 产出 `artifacts/nuget/*.nupkg` 与 `.snupkg`,校验存在。
-3. `Tarui.Architecture.Tests` 对 `CefGlue.Next.Avalonia` 包做组件包内容门禁(`--require-package`)。
+3. `Tarui.Architecture.Tests` 对 `Tarui.WebView.CefGlueNext` 包做组件包内容门禁(`--require-package`)。
 4. 外部 NuGet 消费者冒烟(还原 + 构建)。
 5. 版本一致性:`Directory.Build.props` == `@lytree/api/package.json`。
 6. `eng/test-all.ps1 -BaselineCount 21` 全量自测试。

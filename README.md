@@ -1,11 +1,11 @@
 # tarui.net
 
-`tarui.net` 将 Avalonia 原生壳、React/TypeScript 业务前端与独立的 `CefGlue.Next.Avalonia` 浏览器组件整合在一起。
+`tarui.net` 将 Avalonia 原生壳、React/TypeScript 业务前端与 `Tarui.WebView.CefGlueNext` 浏览器组件整合在一起。
 
 ## 架构
 
 - Avalonia 负责原生窗口外壳与平台组件。
-- `CefGlue.Next.Avalonia` 是 Tarui 侧接入内置 CefGlue 实现与 Avalonia 浏览器控件的唯一入口。
+- `Tarui.WebView.CefGlueNext` 是 Tarui 侧接入内置 CefGlue 实现与 Avalonia 浏览器控件的唯一入口(原 `CefGlue.Next.Avalonia` 已并入此包)。
 - `Tarui.WebView.CefGlueNext` 把该组件适配到 Tarui 的策略、IPC 与事件体系;Shell 与 Hosting 不引用任何 CefGlue 类型。
 - IPC 沿用 Tauri 形态:Command、Event、Channel、Capability。
 - 禁止运行时反射、程序集扫描、动态插件加载以及 JSON 反射回退。
@@ -76,8 +76,7 @@ src/
   plugins/                 显式注册的原语能力插件
   webview/
     cefglue/                内置 CefGlue 托管源码项目
-    CefGlue.Next.Avalonia/  独立 Avalonia 浏览器组件与运行时生命周期
-    Tarui.WebView.*         Tarui 浏览器契约与组件适配层
+    Tarui.WebView.*         Tarui 浏览器契约 + 浏览器组件 + 运行时生命周期(原 CefGlue.Next.Avalonia 已并入 CefGlueNext)
 examples/
   demo/                    仓库内演示应用(组合根 + 前端),基于运行时构建
 web/
@@ -106,7 +105,7 @@ dotnet run --project tests/Tarui.Hosting.Tests --no-build
 dotnet run --project tests/Tarui.Architecture.Tests --no-build
 
 dotnet pack tarui.net.slnx -c Release -o artifacts/nuget
-dotnet run --project tests/Tarui.Architecture.Tests --no-build -- --require-package --package artifacts/nuget/CefGlue.Next.Avalonia.0.3.0.nupkg
+dotnet run --project tests/Tarui.Architecture.Tests --no-build -- --require-package --package artifacts/nuget/Tarui.WebView.CefGlueNext.0.3.0.nupkg
 
 cd web
 pnpm install --frozen-lockfile
@@ -127,10 +126,10 @@ pnpm install --frozen-lockfile
 
 ## 托管与运行时配置
 
-`examples/demo`(`Demo` 应用)是仓库内的组合根。它通过 Tarui.Hosting builder 启动,后者封装 `Microsoft.Extensions.Hosting` 并暴露熟悉的 `Configuration` / `Logging` / `Services` / `Window` 成员。CEF 子进程派发由 `CefGlue.Next.Avalonia` 负责:
+`examples/demo`(`Demo` 应用)是仓库内的组合根。它通过 Tarui.Hosting builder 启动,后者封装 `Microsoft.Extensions.Hosting` 并暴露熟悉的 `Configuration` / `Logging` / `Services` / `Window` 成员。CEF 子进程派发由 `Tarui.WebView.CefGlueNext` 负责:
 
 ```csharp
-using CefGlue.Next.Avalonia;
+using Tarui.WebView.CefGlueNext;
 using Tarui.Hosting;
 using Tarui.Shell;
 
@@ -175,10 +174,9 @@ finally
 | --- | --- | --- |
 | `Tarui.WebView.Abstractions` | UI 中立的导航、脚本、下载、文件拖放与拖拽区域契约 | 无 Avalonia,无 CefGlue |
 | `Tarui.WebView.Avalonia` | 承载 Avalonia `Control` 的契约 | Avalonia + Tarui WebView 契约 |
-| `CefGlue.Next.Avalonia` | 直接的 Avalonia 浏览器控件、CefGlue handler、运行时与原生浏览器生命周期 | Avalonia + 内置 CefGlue |
-| `Tarui.WebView.CefGlueNext` | Tarui 配置、IPC、Capability 策略与事件翻译 | Tarui 契约 + `CefGlue.Next.Avalonia` |
+| `Tarui.WebView.CefGlueNext` | 直接的 Avalonia 浏览器控件、CefGlue handler、运行时与原生浏览器生命周期 + Tarui 适配 | Avalonia + 内置 CefGlue + Tarui 契约(原 `CefGlue.Next.Avalonia` 已并入) |
 
-直接使用 Avalonia 的应用:安装 `CefGlue.Next.Avalonia`,在 host 启动前调用 `CefGlueNextAvaloniaRuntime.RunSubProcess(args)`,初始化一份运行时配置,嵌入 `CefGlueNextAvaloniaWebView`,并在退出 Avalonia 消息循环前 await 所有 WebView 的关闭。随后应用停止并释放 Host,在 `Program` 的 `finally` 块中调用 `CefGlueNextAvaloniaRuntime.Shutdown()`。Tarui 应用通常使用 `Tarui.WebView.CefGlueNext`,以便 Shell 施加窗口 capability 与 IPC 策略。
+直接使用 Avalonia 的应用:安装 `Tarui.WebView.CefGlueNext`,在 host 启动前调用 `CefGlueNextAvaloniaRuntime.RunSubProcess(args)`,初始化一份运行时配置,嵌入 `CefGlueNextAvaloniaWebView`,并在退出 Avalonia 消息循环前 await 所有 WebView 的关闭。随后应用停止并释放 Host,在 `Program` 的 `finally` 块中调用 `CefGlueNextAvaloniaRuntime.Shutdown()`。Tarui 应用通常使用 `Tarui.WebView.CefGlueNext.AddCefGlueWebView()` 扩展,以便 Shell 施加窗口 capability 与 IPC 策略。
 
 运行时设置从可执行文件同目录的 `appsettings.json`、环境变量、命令行加载:
 
@@ -265,7 +263,7 @@ React 前端(`examples/demo/web`)演示窗口 + IPC 状态控制、路由事件�
 
 GitHub Actions 自动化集成与发布门禁(设计稿 §10):
 
-- `.github/workflows/ci.yml` —— PR / 分支门禁:`dotnet build` 0 警告、`CefGlue.Next.Avalonia` 的包/nuspec 校验、外部 NuGet 消费者 restore/build 冒烟、所有自测试、`Tarui.Architecture.Tests`、版本一致性(`Directory.Build.props` == `@lytree/api`)、`pnpm lint` + `pnpm build`。
+- `.github/workflows/ci.yml` —— PR / 分支门禁:`dotnet build` 0 警告、`Tarui.WebView.CefGlueNext` 的包/nuspec 校验、外部 NuGet 消费者 restore/build 冒烟、所有自测试、`Tarui.Architecture.Tests`、版本一致性(`Directory.Build.props` == `@lytree/api`)、`pnpm lint` + `pnpm build`。
 - `.github/workflows/release.yml` —— tag `tarui-v<version>`(或手动触发):在推送 NuGet 包之前执行同样的组件包与外部消费者门禁,发布 `@lytree/api`,在 Windows 上构建 `zip;msix` 安装器(可选 Authenticode),并创建带产物的 GitHub Release。
 
 发布密钥保存在 GitHub `release` 环境。NuGet 发布使用 [trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)(OIDC,无需长期 API key):在 nuget.org 上 allowlist `release` 环境与 `release.yml` 工作流文件名,然后添加 `NUGET_USER` 环境密钥(nuget.org profile 名,不是邮箱)。`@lytree/api` 通过 [provenance](https://docs.npmjs.com/generating-provenance-statements)(OIDC)发布到 npm —— 在 npmjs.com 上为该仓库添加 `NPM_USER` 关联的 trusted-publisher 条目,无需 `NPM_TOKEN`。可选:`NUGET_SOURCE`。MSIX 签名可选:`WINDOWS_CERT_BASE64`、`WINDOWS_CERT_PUBLISHER`、`WINDOWS_CERT_PASSWORD`、`WINDOWS_CERT_TIMESTAMP`;无证书时 MSIX 以未签名形式产出。
@@ -292,4 +290,4 @@ Shell 把窗口生命周期事件路由到所属 Webview(`window://moved`、`win
 
 源码移植基于上游 commit `e3389315dad795374be1a1e52c42d4e49cb6fe7b`,CEF `150.0.11`,目标 Avalonia `12.1.1`。已移除基于反射的 ObjectBinding、泛型 JavaScript 求值、ReactiveUI 与 System.Reactive。Tarui IPC 通过固定的 `window.invokeCSharpAction` CEF 进程消息桥进入。
 
-当前移植通过 `CefGlue.Next.Avalonia` 支持原生窗口渲染。OSR 与对应的 Avalonia 11 拖放层被刻意排除。托管组件包内嵌所有必需的 Xilium CefGlue 程序集,且刻意不依赖 Xilium 包;原生 CEF 文件仍由 `eng/cef/install-runtime.ps1` 或未来的 RID runtime 包安装。
+当前移植通过 `Tarui.WebView.CefGlueNext`(原 `CefGlue.Next.Avalonia` 已并入)支持原生窗口渲染。OSR 与对应的 Avalonia 11 拖放层被刻意排除。托管组件包内嵌所有必需的 Xilium CefGlue 程序集,且刻意不依赖 Xilium 包;原生 CEF 文件仍由 `eng/cef/install-runtime.ps1` 或未来的 RID runtime 包安装。

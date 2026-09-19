@@ -1,8 +1,8 @@
 # Tarui.WebView.CefGlueNext
 
-This project adapts `CefGlue.Next.Avalonia` to the Tarui WebView contracts. It owns Tarui configuration, capability-aware policy/event translation and conversion of component events into `TaruiWebMessage` and other Tarui events.
+This project is Tarui's sole entry point to the vendored CEF runtime: it owns the CefGlue composition (runtime loader, browser control, native handlers, scheme providers, cookie store) and adapts them to the Tarui WebView contracts. It owns Tarui configuration, capability-aware policy/event translation and conversion of component events into `TaruiWebMessage` and other Tarui events.
 
-The project references only `Tarui.WebView.Abstractions`, `Tarui.WebView.Avalonia` and `CefGlue.Next.Avalonia`. It does not reference vendored CefGlue projects or `Xilium.*` directly. CEF runtime initialization, browser controls, native handlers and scheme provider dispatch are owned by `CefGlue.Next.Avalonia`.
+The project references `Tarui.WebView.Abstractions`, `Tarui.WebView.Avalonia`, and the vendored `CefGlue.Avalonia` / `CefGlue.BrowserProcess.Core` / `CefGlue.Common` projects that live under `src/webview/cefglue/`. The browser control, scheme handlers, and CEF subprocess lifecycle are now part of this assembly rather than a sibling `CefGlue.Next.Avalonia` package.
 
 ## Composition
 
@@ -13,14 +13,11 @@ Tarui.WebView.Abstractions
 Tarui.WebView.Avalonia
   Control-bearing adapter contract for Avalonia hosts
 
-CefGlue.Next.Avalonia
-  standalone browser control, CefGlue managed assemblies and runtime lifecycle
-
 Tarui.WebView.CefGlueNext
-  Tarui configuration, IPC/policy translation and DI registration
+  CEF runtime + browser control + Tarui configuration + IPC/policy translation
 ```
 
-The application composition root registers `AddCefGlueWebView()`. A direct Avalonia application that does not use Tarui should consume `CefGlue.Next.Avalonia` instead of this adapter.
+The application composition root registers `AddCefGlueWebView()`. Direct Avalonia applications that need only the CEF control can take a `ProjectReference` to this project; vendored `Xilium.*` types remain internal to it.
 
 ## Lifecycle
 

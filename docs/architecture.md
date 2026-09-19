@@ -4,7 +4,7 @@
 
 Avalonia owns the window, native dialogs, platform services, WebView presentation lifecycle, and recovery UI. The Web application owns routes, forms, tables, and business state. The browser implementation is a replaceable component boundary rather than a Shell concern.
 
-The Shell depends on `Tarui.WebView.Abstractions` and the Avalonia-only `Tarui.WebView.Avalonia` hosting contract; it never references Xilium CefGlue. `examples/demo` (the `Demo` app) registers `Tarui.WebView.CefGlueNext` through `AddCefGlueWebView()`, and that adapter consumes `CefGlue.Next.Avalonia` as its only CefGlue component entry. Plugins are referenced and registered explicitly at the composition root through `AddPlugin<T>()` / `Add*Plugin()`; there is no plugin scan, runtime type lookup, or reflection-based dependency injection.
+The Shell depends on `Tarui.WebView.Abstractions` and the Avalonia-only `Tarui.WebView.Avalonia` hosting contract; it never references Xilium CefGlue. `examples/demo` (the `Demo` app) registers `Tarui.WebView.CefGlueNext` through `AddCefGlueWebView()`, and that adapter is the sole CefGlue component entry (the legacy `CefGlue.Next.Avalonia` package has been absorbed into `Tarui.WebView.CefGlueNext`). Plugins are referenced and registered explicitly at the composition root through `AddPlugin<T>()` / `Add*Plugin()`; there is no plugin scan, runtime type lookup, or reflection-based dependency injection.
 
 ## Browser package graph
 
@@ -17,12 +17,12 @@ Tarui.WebView.Avalonia
        |
 Tarui.Shell ----------------------+
                                   |
-Tarui.WebView.CefGlueNext --------+--> CefGlue.Next.Avalonia
-                                       Avalonia control + CefGlue handlers
-                                       runtime/subprocess lifecycle
+Tarui.WebView.CefGlueNext --------+--> CefGlueNext component layer
+                                       (Avalonia control + CefGlue handlers
+                                       + runtime/subprocess lifecycle)
 ```
 
-`Tarui.WebView.Abstractions` must not reference Avalonia or Xilium assemblies. `Tarui.Shell` and `Tarui.Hosting` may use Avalonia for native UI, but must not reference Xilium CefGlue. The vendored projects under `src/webview/cefglue` are implementation inputs consumed only by `CefGlue.Next.Avalonia`; they are not application-facing package dependencies.
+`Tarui.WebView.Abstractions` must not reference Avalonia or Xilium assemblies. `Tarui.Shell` and `Tarui.Hosting` may use Avalonia for native UI, but must not reference Xilium CefGlue. The vendored projects under `src/webview/cefglue` are implementation inputs consumed only by `Tarui.WebView.CefGlueNext`; they are not application-facing package dependencies.
 
 ## Hosting
 
@@ -32,7 +32,7 @@ Tarui.WebView.CefGlueNext --------+--> CefGlue.Next.Avalonia
 
 ## Managed browser stack
 
-The browser stack is compiled from projects under `src/webview/cefglue` and published through `CefGlue.Next.Avalonia`:
+The browser stack is compiled from projects under `src/webview/cefglue` and published through `Tarui.WebView.CefGlueNext`:
 
 - `CefGlue.Core`: generated CEF P/Invoke bindings and native API wrappers.
 - `CefGlue.Common.Shared`: process messages, pipes, and generated JSON metadata.
@@ -40,7 +40,7 @@ The browser stack is compiled from projects under `src/webview/cefglue` and publ
 - `CefGlue.BrowserProcess.Core`: same-executable CEF subprocess entry and renderer bridge.
 - `CefGlue.Avalonia`: Avalonia 12 native control host, embedded in the component package.
 
-The `CefGlue.Next.Avalonia` nupkg contains `CefGlue.Next.Avalonia.dll` plus all five required `Xilium.CefGlue*.dll` assemblies. Its nuspec declares Avalonia but no Xilium/CefGlue package dependency. No other Tarui project may reference the vendored CefGlue projects directly.
+The `Tarui.WebView.CefGlueNext` nupkg contains `Tarui.WebView.CefGlueNext.dll` plus all five required `Xilium.CefGlue*.dll` assemblies. Its nuspec declares Avalonia but no Xilium/CefGlue package dependency. No other Tarui project may reference the vendored CefGlue projects directly.
 
 ## IPC
 
@@ -96,7 +96,7 @@ Adding a command means: DTO record in `Tarui.Contracts` (plus `TaruiJsonContext`
 
 CEF native binaries are installed with `eng/cef/install-runtime.ps1` into `runtime/cef/<rid>`. They are downloaded from the official CEF automated build endpoint, checksum verified, and copied into application output when present. This keeps large binaries out of normal Git history without introducing a NuGet runtime dependency.
 
-The managed component and native runtime have separate distribution responsibilities: `CefGlue.Next.Avalonia` carries managed CefGlue assemblies, while the application supplies the matching native CEF distribution. A future RID runtime package can replace the repository installer without changing the Avalonia component API.
+The managed component and native runtime have separate distribution responsibilities: `Tarui.WebView.CefGlueNext` carries managed CefGlue assemblies, while the application supplies the matching native CEF distribution. A future RID runtime package can replace the repository installer without changing the Avalonia component API.
 
 ## Web resource transport
 

@@ -3,17 +3,38 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Tarui.WebView.CefGlueNext</RootNamespace>
     <AssemblyName>Tarui.WebView.CefGlueNext</AssemblyName>
+    <!-- CefGlueComponent: owns the CefGlue composition. Vendored CefGlue.* projects and
+         Tarui.WebView.Avalonia may not be referenced from anywhere else; the CEF runtime
+         loader, scheme/cookie adapters, and browser control live behind this assembly. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CA1716</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Avalonia" Version="12.1.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Tarui.WebView.Abstractions/Tarui.WebView.Abstractions.csproj" />
     <ProjectReference Include="../Tarui.WebView.Avalonia/Tarui.WebView.Avalonia.csproj" />
-    <ProjectReference Include="../CefGlue.Next.Avalonia/CefGlue.Next.Avalonia.csproj" />
+    <!-- Vendored CefGlue.* projects — the sole legal entry point to CEF inside the repo. -->
+    <ProjectReference Include="../cefglue/CefGlue.Avalonia/CefGlue.Avalonia.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../cefglue/CefGlue.BrowserProcess.Core/CefGlue.BrowserProcess.Core.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../cefglue/CefGlue.Common/CefGlue.Common.csproj" PrivateAssets="all" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Tarui.WebView.Tests" />
+    <InternalsVisibleTo Include="CefGlue.Next.Avalonia.Tests" />
   </ItemGroup>
+
+  <PropertyGroup>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeCefGlueAssembliesInPackage</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+
+  <Target Name="IncludeCefGlueAssembliesInPackage">
+    <ItemGroup>
+      <BuildOutputInPackage Include="$(OutputPath)Xilium.CefGlue*.dll" />
+      <BuildOutputInPackage Include="$(OutputPath)Xilium.CefGlue*.xml" />
+    </ItemGroup>
+  </Target>
 </Project>

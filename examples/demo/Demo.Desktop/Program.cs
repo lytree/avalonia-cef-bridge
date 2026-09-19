@@ -23,7 +23,6 @@ using Tarui.Plugins.WindowState;
 using Tarui.Shell;
 using Tarui.SingleInstance;
 using Tarui.WebView.CefGlueNext;
-using CefGlue.Next.Avalonia;
 
 namespace Demo;
 

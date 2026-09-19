@@ -1,8 +1,8 @@
 using System.Text;
 using Avalonia;
-using CefGlue.Next.Avalonia;
+using Tarui.WebView.CefGlueNext;
 
-namespace CefGlue.Next.Avalonia.Tests;
+namespace Tarui.WebView.Tests;
 
 internal static class Program
 {
@@ -24,7 +24,7 @@ internal static class Program
         RuntimeOptionsFingerprintStableForEquivalentOptions();
         RuntimeOptionsFingerprintDistinguishesSchemes();
         RuntimeOptionsFingerprintDistinguishesSubprocessAndCache();
-        Console.WriteLine("CefGlue.Next.Avalonia self-tests passed.");
+        Console.WriteLine("Tarui.WebView (CefGlue component) self-tests passed.");
         return 0;
     }
 

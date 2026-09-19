@@ -3,7 +3,7 @@ using Xilium.CefGlue.Avalonia;
 using Xilium.CefGlue.BrowserProcess;
 using Xilium.CefGlue.Common;
 
-namespace CefGlue.Next.Avalonia;
+namespace Tarui.WebView.CefGlueNext;
 
 public static class CefGlueNextAvaloniaRuntime
 {

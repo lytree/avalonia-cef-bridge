@@ -487,7 +487,6 @@ internal static class Program
               <ItemGroup>
                 <PackageReference Include="Tarui.Hosting" Version="0.1.0" />
                 <PackageReference Include="Tarui.WebView.CefGlueNext" Version="0.1.0" />
-                <PackageReference Include="CefGlue.Next.Avalonia" Version="0.1.0" />
                 <PackageReference Include="Tarui.WebView.Avalonia" Version="0.1.0" />
                 <PackageReference Include="NotInRepo" Version="0.1.0" />
                 <PackageReference Include="Tarui.Plugins.Window" Version="0.1.0" />
@@ -505,8 +504,6 @@ internal static class Program
             "Tarui.Hosting must resolve to its local project path.");
         Assert(rewritten.Contains($"<ProjectReference Include=\"{root}/src/webview/Tarui.WebView.CefGlueNext/Tarui.WebView.CefGlueNext.csproj\" />", StringComparison.Ordinal),
             "Tarui.WebView.CefGlueNext must resolve to its local project path.");
-        Assert(rewritten.Contains($"<ProjectReference Include=\"{root}/src/webview/CefGlue.Next.Avalonia/CefGlue.Next.Avalonia.csproj\" />", StringComparison.Ordinal),
-            "CefGlue.Next.Avalonia must resolve to its local project path.");
         Assert(rewritten.Contains($"<ProjectReference Include=\"{root}/src/webview/Tarui.WebView.Avalonia/Tarui.WebView.Avalonia.csproj\" />", StringComparison.Ordinal),
             "Tarui.WebView.Avalonia must resolve to its local project path.");
         Assert(rewritten.Contains($"<ProjectReference Include=\"{root}/src/plugins/Tarui.Plugins.Window/Tarui.Plugins.Window.csproj\" />", StringComparison.Ordinal),

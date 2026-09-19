@@ -1,6 +1,5 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using Avalonia.Controls;
-using CefGlue.Next.Avalonia;
 using Tarui.WebView.Abstractions;
 using Tarui.WebView.Avalonia;
 

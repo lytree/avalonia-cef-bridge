@@ -65,23 +65,23 @@ jobs:
       - name: Pack packages for release validation
         run: dotnet pack tarui.net.slnx -c Release --no-build --nologo -o artifacts/nuget
 
-      - name: CefGlue.Next.Avalonia package gate
+      - name: Tarui.WebView.CefGlueNext package gate
         run: |
-          $package = Get-ChildItem artifacts/nuget/CefGlue.Next.Avalonia.*.nupkg |
+          $package = Get-ChildItem artifacts/nuget/Tarui.WebView.CefGlueNext.*.nupkg |
             Where-Object { $_.Name -notlike '*.symbols.nupkg' } |
             Sort-Object LastWriteTimeUtc -Descending |
             Select-Object -First 1
-          if (-not $package) { throw 'CefGlue.Next.Avalonia package was not produced.' }
+          if (-not $package) { throw 'Tarui.WebView.CefGlueNext package was not produced.' }
           dotnet run --project tests/Tarui.Architecture.Tests/Tarui.Architecture.Tests.csproj -c Release --no-build -- --require-package --package $package.FullName
 
       - name: External NuGet consumer smoke
         run: |
-          $package = Get-ChildItem artifacts/nuget/CefGlue.Next.Avalonia.*.nupkg |
+          $package = Get-ChildItem artifacts/nuget/Tarui.WebView.CefGlueNext.*.nupkg |
             Where-Object { $_.Name -notlike '*.symbols.nupkg' } |
             Sort-Object LastWriteTimeUtc -Descending |
             Select-Object -First 1
-          $version = [regex]::Match($package.BaseName, '^CefGlue\.Next\.Avalonia\.(.+)$').Groups[1].Value
-          $consumer = Join-Path $env:RUNNER_TEMP 'cefglue-next-avalonia-consumer'
+          $version = [regex]::Match($package.BaseName, '^Tarui\.WebView\.CefGlueNext\.(.+)$').Groups[1].Value
+          $consumer = Join-Path $env:RUNNER_TEMP 'tarui-webview-cefglue-next-consumer'
           Remove-Item $consumer -Recurse -Force -ErrorAction SilentlyContinue
           dotnet new classlib --framework net10.0 --output $consumer --no-restore
           @"
@@ -92,13 +92,13 @@ jobs:
               <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
             </PropertyGroup>
             <ItemGroup>
-              <PackageReference Include="CefGlue.Next.Avalonia" Version="$version" />
+              <PackageReference Include="Tarui.WebView.CefGlueNext" Version="$version" />
             </ItemGroup>
           </Project>
-          "@ | Set-Content (Join-Path $consumer 'CefGlue.Next.Avalonia.Consumer.csproj')
+          "@ | Set-Content (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj')
           @"
           using Avalonia.Controls;
-          using CefGlue.Next.Avalonia;
+          using Tarui.WebView.CefGlueNext;
 
           public static class ConsumerSmoke
           {
@@ -106,8 +106,8 @@ jobs:
               public static bool DispatchSubprocess(string[] args) => CefGlueNextAvaloniaRuntime.RunSubProcess(args, false);
           }
           "@ | Set-Content (Join-Path $consumer 'Class1.cs')
-          dotnet restore (Join-Path $consumer 'CefGlue.Next.Avalonia.Consumer.csproj') --source (Join-Path (Get-Location) 'artifacts/nuget') --source https://api.nuget.org/v3/index.json
-          dotnet build (Join-Path $consumer 'CefGlue.Next.Avalonia.Consumer.csproj') -c Release --no-restore --nologo
+          dotnet restore (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj') --source (Join-Path (Get-Location) 'artifacts/nuget') --source https://api.nuget.org/v3/index.json
+          dotnet build (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj') -c Release --no-restore --nologo
 
       - name: Run self-tests (eng/test-all.ps1)
         run: ./eng/test-all.ps1 -BaselineCount 21

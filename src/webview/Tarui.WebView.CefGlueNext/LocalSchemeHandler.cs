@@ -1,6 +1,5 @@
-﻿using System.Collections.Frozen;
+using System.Collections.Frozen;
 using System.Text;
-using CefGlue.Next.Avalonia;
 
 namespace Tarui.WebView.CefGlueNext;
 

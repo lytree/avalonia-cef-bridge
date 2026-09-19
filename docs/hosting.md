@@ -1,6 +1,6 @@
 # Tarui Hosting — ASP.NET Core 风格开发体验
 
-Tarui.Hosting 把 .NET 生态最成熟的托管模式（`HostApplicationBuilder`、DI、Configuration、Logging、`IHostedService` 生命周期）直接引入桌面壳层。Avalonia 定位为原生组件库 + 窗口外壳，`CefGlue.Next.Avalonia` 承载浏览器页面；Tarui WebView 适配层负责 IPC、策略和静态资源加载，不把 CEF 实现类型泄漏到 Shell。
+Tarui.Hosting 把 .NET 生态最成熟的托管模式（`HostApplicationBuilder`、DI、Configuration、Logging、`IHostedService` 生命周期）直接引入桌面壳层。Avalonia 定位为原生组件库 + 窗口外壳，`Tarui.WebView.CefGlueNext` 承载浏览器页面；Tarui WebView 适配层负责 IPC、策略和静态资源加载，不把 CEF 实现类型泄漏到 Shell。
 
 ## 最终开发体验（examples/demo/Demo.Desktop/Program.cs）
 
@@ -51,12 +51,11 @@ builder.Build().Run();
 | `Tarui.WebView.Avalonia` | `Control` 承载契约 | Avalonia 12.1.1 + WebView.Abstractions |
 | `Tarui.Shell` | `AddTaruiShell()` 组合注册、`CommandRouterComposer`、`ShellWindowFactory`、`MainWindowLauncher`、`ICapabilityProvider`；删除 `ShellBootstrap` | `Microsoft.Extensions.DependencyInjection.Abstractions` 10.0.0 |
 | `Tarui.Plugins.*`（×5） | 实例化插件类实现 `ITaruiPlugin` + 各自 `Add*Plugin()` 扩展；删除静态 `Register` | `Microsoft.Extensions.DependencyInjection.Abstractions` 10.0.0 |
-| `CefGlue.Next.Avalonia` | Avalonia 浏览器控件、CEF handler、runtime/subprocess 和关闭完成信号 | Avalonia 12.1.1；包内嵌托管 CefGlue DLL |
-| `Tarui.WebView.CefGlueNext` | `AddCefGlueWebView()`、`CefGlueNextWebAppOptions.FromConfiguration(IConfiguration)`、Tarui 事件/策略适配 | DI.Abstractions + Configuration.Abstractions 10.0.0 + CefGlue.Next.Avalonia |
+| `Tarui.WebView.CefGlueNext` | Avalonia 浏览器控件、CEF handler、runtime/subprocess 和关闭完成信号 + Tarui 适配（`AddCefGlueWebView()`、`CefGlueNextWebAppOptions.FromConfiguration(IConfiguration)`） | Avalonia 12.1.1；包内嵌托管 CefGlue DLL；DI.Abstractions + Configuration.Abstractions 10.0.0（原 `CefGlue.Next.Avalonia` 已并入） |
 | `Tarui.Hosting`（新建） | `TaruiHost` / `TaruiApplicationBuilder` / `TaruiApplication` / `TaruiAvaloniaApp` / 生命周期桥 | `Microsoft.Extensions.Hosting` 10.0.0 + Avalonia 桌面包 |
 | `examples/demo/Demo.Desktop` | 组合根：builder UX + `appsettings.json` | 经由 Tarui.Hosting |
 
-依赖方向为：`Hosting → Shell → (Ipc, Contracts, WebView.Abstractions, WebView.Avalonia, 插件接口)`；`Tarui.WebView.CefGlueNext → (WebView.Abstractions, WebView.Avalonia, CefGlue.Next.Avalonia)`；插件仍只依赖 `Ipc + Contracts`。架构门禁（禁反射/扫描/动态加载 + ProjectReference 边界 + 组件包内容）继续成立：插件经 `AddPlugin<T>()` 编译期显式注册，与 ASP.NET Core `AddSingleton<TService,TImpl>` 同类，不做任何程序集扫描。
+依赖方向为：`Hosting → Shell → (Ipc, Contracts, WebView.Abstractions, WebView.Avalonia, 插件接口)`；`Tarui.WebView.CefGlueNext → (WebView.Abstractions, WebView.Avalonia)`；插件仍只依赖 `Ipc + Contracts`。架构门禁（禁反射/扫描/动态加载 + ProjectReference 边界 + 组件包内容）继续成立：插件经 `AddPlugin<T>()` 编译期显式注册，与 ASP.NET Core `AddSingleton<TService,TImpl>` 同类，不做任何程序集扫描。
 
 ## 类型设计
 
@@ -208,7 +207,7 @@ RunSubProcess(args)
   -> Program finally: CefGlueNextAvaloniaRuntime.Shutdown()
 ```
 
-直接使用 Avalonia 的应用可以跳过 Tarui 适配层，直接安装 `CefGlue.Next.Avalonia` 并把 `CefGlueNextAvaloniaWebView` 放入视觉树；Tarui 应用则通过 `Tarui.WebView.CefGlueNext` 将同一组件接入窗口 capability、IPC 和资源策略。
+直接使用 Avalonia 的应用可以跳过 Tarui 适配层，直接安装 `Tarui.WebView.CefGlueNext` 并把 `CefGlueNextAvaloniaWebView` 放入视觉树；Tarui 应用则通过 `AddCefGlueWebView()` 扩展将同一组件接入窗口 capability、IPC 和资源策略。
 
 ## 阶段划分
 

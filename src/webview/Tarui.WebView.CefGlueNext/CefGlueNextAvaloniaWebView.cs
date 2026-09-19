@@ -8,7 +8,7 @@ using Xilium.CefGlue.Avalonia;
 using Xilium.CefGlue.Common;
 using Xilium.CefGlue.Common.Handlers;
 
-namespace CefGlue.Next.Avalonia;
+namespace Tarui.WebView.CefGlueNext;
 
 public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposable
 {

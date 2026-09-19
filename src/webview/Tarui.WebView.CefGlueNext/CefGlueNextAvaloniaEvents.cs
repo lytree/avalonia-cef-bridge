@@ -1,6 +1,6 @@
 using Avalonia;
 
-namespace CefGlue.Next.Avalonia;
+namespace Tarui.WebView.CefGlueNext;
 
 public enum CefGlueNextAvaloniaNavigationDecision
 {

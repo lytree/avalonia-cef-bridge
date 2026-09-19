@@ -4,7 +4,6 @@ using Tarui.Plugins.Window;
 using Tarui.Shell;
 using Tarui.SingleInstance;
 using Tarui.WebView.CefGlueNext;
-using CefGlue.Next.Avalonia;
 
 namespace MyApp;
 

@@ -1,7 +1,7 @@
 using System.Net;
 using Xilium.CefGlue;
 
-namespace CefGlue.Next.Avalonia;
+namespace Tarui.WebView.CefGlueNext;
 
 /// <summary>
 /// Component-level access to the embedded CEF global cookie store. Operations resolve the global cookie manager

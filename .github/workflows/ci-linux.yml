@@ -8,7 +8,7 @@ name: ci-linux
 #     1. dotnet build -c Release（0 警告/0 错误，与 release validate 同配置）
 #     2. tarui info（manifest 完整性 sanity）
 #     3. ./eng/test-all.ps1 -BaselineCount 21（24 套自测试 + 基线数量回归门禁）
-# 注：不依赖 CEF runtime——全部套件为托管逻辑自测试（CefGlue.Next.Avalonia.Tests 只构造
+# 注：不依赖 CEF runtime——全部套件为托管逻辑自测试（Tarui.WebView (CefGlue component) 只构造
 # 选项对象与 fake，不加载原生 CEF）；也不跑 demo publish（Linux 桌面验证需要 GTK/Framebuffer
 # 依赖，不属于本 gate 范围）。
 

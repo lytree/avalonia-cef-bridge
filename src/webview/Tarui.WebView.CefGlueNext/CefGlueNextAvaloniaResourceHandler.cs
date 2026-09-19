@@ -3,7 +3,7 @@ using Xilium.CefGlue;
 using Xilium.CefGlue.Common.Handlers;
 using Xilium.CefGlue.Common.Shared;
 
-namespace CefGlue.Next.Avalonia;
+namespace Tarui.WebView.CefGlueNext;
 
 internal sealed class CefGlueNextAvaloniaSchemeHandlerFactory(
     CefGlueNextAvaloniaSchemeOptions options) : CefSchemeHandlerFactory

@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using Xilium.CefGlue;
 
-namespace CefGlue.Next.Avalonia;
+namespace Tarui.WebView.CefGlueNext;
 
 public enum CefGlueNextAvaloniaLogSeverity
 {
