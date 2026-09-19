@@ -38,7 +38,7 @@ if (-not (Test-Path -LiteralPath $TestsRoot)) {
 }
 
 $projects = Get-ChildItem -LiteralPath $TestsRoot -Filter '*.Tests.csproj' -Recurse -File |
-    Where-Object { $_.DirectoryName -like '*\*.Tests' } |
+    Where-Object { $_.DirectoryName -like '*.Tests' } |
     Sort-Object FullName
 
 $projects = @($projects)
