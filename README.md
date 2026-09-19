@@ -105,7 +105,7 @@ dotnet run --project tests/Tarui.Hosting.Tests --no-build
 dotnet run --project tests/Tarui.Architecture.Tests --no-build
 
 dotnet pack tarui.net.slnx -c Release -o artifacts/nuget
-dotnet run --project tests/Tarui.Architecture.Tests --no-build -- --require-package --package artifacts/nuget/Tarui.WebView.CefGlueNext.0.3.0.nupkg
+dotnet run --project tests/Tarui.Architecture.Tests --no-build -- --require-package --package artifacts/nuget/Tarui.WebView.CefGlueNext.0.4.0.nupkg
 
 cd web
 pnpm install --frozen-lockfile
@@ -238,7 +238,7 @@ tarui --help     # 完整命令面
 `tarui dev` 在 `build.frontend` 内启动 `build.beforeDevCommand`，等待 `build.devUrl` 可达，然后以 `TARUI_WEB_MODE=http` 与 `TARUI_WEB_URL=<devUrl>` 启动桌面项目。`tarui build` 会运行 `build.beforeBuildCommand`，校验 `build.frontendDist`，为当前 RID 自包含发布桌面项目，然后产出配置的 `bundle.targets`：可移植 `zip` + MSIX（`--bundle msix` 或 `bundle.targets: ["zip","msix"]`）+ macOS `.app` / `.app.tar.gz`（`--bundle app-bundle` 或 `bundle.targets: ["app-bundle"]`，需 `osx-x64`/`osx-arm64` RID 与 `bundle.macOS` 块），以及带 SHA-256 的升级器蓝图 `dist/latest.json`。MSIX 由托管实现的 `MsixPacker` 构建（OPC ZIP + `AppxManifest.xml` + SHA-256 `AppxBlockMap.xml`，不依赖 `makeappx`）；若配置了 `bundle.msix.certificate.{path,password,timeStamperUrl}`，将通过 `signtool.exe` 做 Authenticode 签名，否则产未签名包。macOS `.app` 由 `MacOsBundleBuilder` + `InfoPlistBuilder` 拼装（11 个 PLIST 必备键 + `CFBundleURLTypes`，与运行时 `DeepLinkService.Deliver` 同款 RFC 3986 scheme 校验），用 `System.Formats.Tar` 包成 `<name>-<version>-<rid>.app.tar.gz`，SHA-256 一并进 updater blueprint；macOS 真机构建管道见 [docs/adr/0002-macos-real-build-pipeline.md](docs/adr/0002-macos-real-build-pipeline.md)。macOS `.app.tar.gz` 解包与启动：
 
 ```bash
-tar -xzf demo-0.3.0-osx-arm64.app.tar.gz
+tar -xzf demo-0.4.0-osx-arm64.app.tar.gz
 xattr -dr com.apple.quarantine demo.app 2>/dev/null || true
 chmod +x demo.app/Contents/MacOS/demo
 open demo.app
