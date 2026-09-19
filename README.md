@@ -228,14 +228,20 @@ dotnet tool install -global Tarui.Cli
 
 tarui init       # 从 tarui-app 模板脚手架新应用(--local <repo> 用于仓库内开发)
 tarui dev        # 开发服务器(build.beforeDevCommand) + dotnet watch,Ctrl+C 同步拆除
-tarui build      # 前端构建、自包含发布、zip/msix 安装器 + latest.json
+tarui build      # 前端构建、自包含发布、zip/msix/.app.tar.gz 安装器 + latest.json
 tarui plugin init <name>   # 脚手架插件骨架(permissions/、guest-js/、tests/;--local <repo>)
 tarui plugin pack          # 插件预检:布局/权限/版本一致性、自测试、双包打包
 tarui info       # 环境 / 工具链 / 清单诊断
 tarui --help     # 完整命令面
 ```
 
-`tarui dev` 在 `build.frontend` 内启动 `build.beforeDevCommand`，等待 `build.devUrl` 可达，然后以 `TARUI_WEB_MODE=http` 与 `TARUI_WEB_URL=<devUrl>` 启动桌面项目。`tarui build` 会运行 `build.beforeBuildCommand`，校验 `build.frontendDist`，为当前 RID 自包含发布桌面项目，然后产出配置的 `bundle.targets`：可移植 `zip` + MSIX（`--bundle msix` 或 `bundle.targets: ["zip","msix"]`）+ macOS `.app` / `.app.tar.gz`（`--bundle app-bundle` 或 `bundle.targets: ["app-bundle"]`，需 `osx-x64`/`osx-arm64` RID 与 `bundle.macOS` 块），以及带 SHA-256 的升级器蓝图 `dist/latest.json`。MSIX 由托管实现的 `MsixPacker` 构建（OPC ZIP + `AppxManifest.xml` + SHA-256 `AppxBlockMap.xml`，不依赖 `makeappx`）；若配置了 `bundle.msix.certificate.{path,password,timeStamperUrl}`，将通过 `signtool.exe` 做 Authenticode 签名，否则产未签名包。macOS `.app` 由 `MacOsBundleBuilder` + `InfoPlistBuilder` 拼装（11 个 PLIST 必备键 + `CFBundleURLTypes`，与运行时 `DeepLinkService.Deliver` 同款 RFC 3986 scheme 校验），用 `System.Formats.Tar` 包成 `<name>-<version>-<rid>.app.tar.gz`，SHA-256 一并进 updater blueprint；macOS 真机构建管道见 [docs/adr/0002-macos-real-build-pipeline.md](docs/adr/0002-macos-real-build-pipeline.md)。macOS `.app.tar.gz` 解包与启动：
+`tarui dev` 在 `build.frontend` 内启动 `build.beforeDevCommand`，等待 `build.devUrl` 可达，然后以 `TARUI_WEB_MODE=http` 与 `TARUI_WEB_URL=<devUrl>` 启动桌面项目。`tarui build` 会运行 `build.beforeBuildCommand`，校验 `build.frontendDist`，为当前 RID 自包含发布桌面项目，然后产出配置的 `bundle.targets`：
+
+- **Windows**（`--rid win-x64`）：可移植 `zip` + MSIX（`--bundle msix` 或 `bundle.targets: ["zip","msix"]`）
+- **macOS**（`--rid osx-x64` / `osx-arm64`）：`.app` / `.app.tar.gz`（`--bundle app-bundle` 或 `bundle.targets: ["app-bundle"]`，需 `bundle.macOS` 块）
+- **Linux**（`--rid linux-x64` / `linux-arm64`）：self-contained `zip`（`--bundle zip` 或 `bundle.targets: ["zip"]`；需先 `./eng/cef/install-runtime.ps1 -RuntimeIdentifier linux-x64` 装原生 CEF）
+
+无论哪一平台，build 都会生成带 SHA-256 的升级器蓝图 `dist/latest.json`。MSIX 由托管实现的 `MsixPacker` 构建（OPC ZIP + `AppxManifest.xml` + SHA-256 `AppxBlockMap.xml`，不依赖 `makeappx`）；若配置了 `bundle.msix.certificate.{path,password,timeStamperUrl}`，将通过 `signtool.exe` 做 Authenticode 签名，否则产未签名包。macOS `.app` 由 `MacOsBundleBuilder` + `InfoPlistBuilder` 拼装（11 个 PLIST 必备键 + `CFBundleURLTypes`，与运行时 `DeepLinkService.Deliver` 同款 RFC 3986 scheme 校验），用 `System.Formats.Tar` 包成 `<name>-<version>-<rid>.app.tar.gz`，SHA-256 一并进 updater blueprint；macOS 真机构建管道见 [docs/adr/0002-macos-real-build-pipeline.md](docs/adr/0002-macos-real-build-pipeline.md)。macOS `.app.tar.gz` 解包与启动：
 
 ```bash
 tar -xzf demo-0.4.0-osx-arm64.app.tar.gz
@@ -243,6 +249,16 @@ xattr -dr com.apple.quarantine demo.app 2>/dev/null || true
 chmod +x demo.app/Contents/MacOS/demo
 open demo.app
 ```
+
+Linux `linux-x64` self-contained zip 解包与启动（产物体积较大约 400 MB，因为带 .NET 运行时 + 原生 CEF）：
+
+```bash
+unzip demo-0.4.0-linux-x64.zip
+chmod +x demo
+./demo
+```
+
+> Linux zip 未签名/未打包 deb/rpm/AppImage；首次启动若遇到 `libnss3.so` / `libgtk-3` 等系统库缺失，按发行版包管理器补齐即可（如 Debian/Ubuntu `apt install libnss3 libatk-bridge2.0-0 libgtk-3-0 libasound2 libxshmfence1`）。分发侧可考虑 fpm / electron-builder 等格式（暂未实现，详见 [docs/dev-workflow-design.md](docs/dev-workflow-design.md) §12 待办）。
 
 > macOS 产物未签名/未公证，分发前需 `codesign --deep --sign <identity> demo.app` 与 `xcrun notarytool submit --wait demo.zip`（公证票据 `stapler staple demo.app`），详见 ADR-0002 §8。
 
@@ -264,7 +280,7 @@ React 前端(`examples/demo/web`)演示窗口 + IPC 状态控制、路由事件�
 GitHub Actions 自动化集成与发布门禁(设计稿 §10):
 
 - `.github/workflows/ci.yml` —— PR / 分支门禁:`dotnet build` 0 警告、`Tarui.WebView.CefGlueNext` 的包/nuspec 校验、外部 NuGet 消费者 restore/build 冒烟、所有自测试、`Tarui.Architecture.Tests`、版本一致性(`Directory.Build.props` == `@lytree/api`)、`pnpm lint` + `pnpm build`。
-- `.github/workflows/release.yml` —— tag `tarui-v<version>`(或手动触发):在推送 NuGet 包之前执行同样的组件包与外部消费者门禁,发布 `@lytree/api`,在 Windows 上构建 `zip;msix` 安装器(可选 Authenticode),并创建带产物的 GitHub Release。
+- `.github/workflows/release.yml` —— tag `tarui-v<version>`(或手动触发):在推送 NuGet 包之前执行同样的组件包与外部消费者门禁,发布 `@lytree/api`,在 Windows (`zip;msix`)、macOS (osx-arm64 `.app.tar.gz`)、Linux (linux-x64 self-contained `zip`) 三个 runner 上并行构建,所有产物由 `softprops/action-gh-release` 上传到带产物的 GitHub Release。
 
 发布密钥保存在 GitHub `release` 环境。NuGet 发布使用 [trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)(OIDC,无需长期 API key):在 nuget.org 上 allowlist `release` 环境与 `release.yml` 工作流文件名,然后添加 `NUGET_USER` 环境密钥(nuget.org profile 名,不是邮箱)。`@lytree/api` 通过 [provenance](https://docs.npmjs.com/generating-provenance-statements)(OIDC)发布到 npm —— 在 npmjs.com 上为该仓库添加 `NPM_USER` 关联的 trusted-publisher 条目,无需 `NPM_TOKEN`。可选:`NUGET_SOURCE`。MSIX 签名可选:`WINDOWS_CERT_BASE64`、`WINDOWS_CERT_PUBLISHER`、`WINDOWS_CERT_PASSWORD`、`WINDOWS_CERT_TIMESTAMP`;无证书时 MSIX 以未签名形式产出。
 
