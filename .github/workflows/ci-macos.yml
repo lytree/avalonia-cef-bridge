@@ -90,7 +90,11 @@ jobs:
           $scratch = Join-Path $sandbox 'tarui.app.json'
           New-Item -ItemType Directory -Path $sandbox -Force | Out-Null
           Copy-Item -Recurse -Force examples/demo/capabilities (Join-Path $sandbox 'capabilities')
+          # desktopProject 与 manifest 同目录解析，sandbox 不含 Demo.Desktop 工程子目录——
+          # 改写为仓库根的绝对路径。
+          $demoProject = (Resolve-Path 'examples/demo/Demo.Desktop/Demo.Desktop.csproj').Path
           $json = Get-Content examples/demo/tarui.app.json -Raw | ConvertFrom-Json
+          $json.build.desktopProject = $demoProject
           if (-not $json.bundle.targets.Contains('app-bundle')) {
             $json.bundle.targets = @('app-bundle')
           }
