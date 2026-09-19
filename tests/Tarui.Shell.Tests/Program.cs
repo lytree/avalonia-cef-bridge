@@ -376,7 +376,8 @@ internal static class Program
             Assert(!(await mac.IsEnabledAsync(default)).Enabled, "A missing macOS entry must be disabled.");
             await mac.EnableAsync(new AutostartEnableOptions(["--minimized"]), default);
             Assert((await mac.IsEnabledAsync(default)).Enabled, "After writing, the macOS entry must be enabled.");
-            var plistPath = Path.Combine(macDir, "Demo.plist");
+            // 入口文件名由服务从 exe 派生（Linux 上 /opt/demo 生成小写 demo.plist），断言必须同步派生。
+            var plistPath = Path.Combine(macDir, Path.GetFileNameWithoutExtension(exe) + ".plist");
             Assert(File.Exists(plistPath), "The macOS LaunchAgents plist must exist after enable.");
             var plist = File.ReadAllText(plistPath);
             Assert(
@@ -389,7 +390,7 @@ internal static class Program
             Assert(!(await linux.IsEnabledAsync(default)).Enabled, "A missing Linux entry must be disabled.");
             await linux.EnableAsync(new AutostartEnableOptions(["--minimized"]), default);
             Assert((await linux.IsEnabledAsync(default)).Enabled, "After writing, the Linux entry must be enabled.");
-            var desktopPath = Path.Combine(linuxDir, "Demo.desktop");
+            var desktopPath = Path.Combine(linuxDir, Path.GetFileNameWithoutExtension(exe) + ".desktop");
             Assert(File.Exists(desktopPath), "The Linux .desktop entry must exist after enable.");
             var desktop = File.ReadAllText(desktopPath);
             Assert(
