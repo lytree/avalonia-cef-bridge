@@ -1,0 +1,59 @@
+name: ci-linux
+
+# Linux 自测试门禁（eng/test-all.ps1 的第一次常态化 Linux 执行）。
+# 背景：仓库此前只在 Windows 上跑全部 24 套自测试，发布期 validate job 才首次在 ubuntu 上
+# 执行，连续暴露了三类平台问题（路径分隔符、盘符字面量断言、Path.IsPathRooted 平台敏感的
+# 安全判定）。本 gate 把 Linux 全量自测试前移到每次 push/PR，避免只在发版时踩雷。
+#   目标（ubuntu-latest）：
+#     1. dotnet build -c Release（0 警告/0 错误，与 release validate 同配置）
+#     2. tarui info（manifest 完整性 sanity）
+#     3. ./eng/test-all.ps1 -BaselineCount 21（24 套自测试 + 基线数量回归门禁）
+# 注：不依赖 CEF runtime——全部套件为托管逻辑自测试（CefGlue.Next.Avalonia.Tests 只构造
+# 选项对象与 fake，不加载原生 CEF）；也不跑 demo publish（Linux 桌面验证需要 GTK/Framebuffer
+# 依赖，不属于本 gate 范围）。
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  linux-tests:
+    name: Linux self-tests (eng/test-all.ps1)
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: tarui.net.slnx
+
+      - name: Restore (NuGet.Config)
+        run: dotnet restore tarui.net.slnx --configfile NuGet.Config
+
+      - name: Build (0 warnings/errors)
+        run: dotnet build tarui.net.slnx -c Release --no-restore --nologo
+
+      - name: tarui info (manifest sanity)
+        run: |
+          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config examples/demo/tarui.app.json info
+
+      - name: Run all self-tests (baseline gate)
+        run: ./eng/test-all.ps1 -BaselineCount 21
