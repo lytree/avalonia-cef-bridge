@@ -3,7 +3,7 @@ namespace Tarui.Cli;
 /// <summary>Static CLI identity and help text (kept in sync with Directory.Build.props TaruiVersion).</summary>
 internal static class CliInfo
 {
-    public const string Version = "0.1.0";
+    public const string Version = "0.2.0";
 
     public const string HelpText =
         """
@@ -44,7 +44,7 @@ internal static class CliInfo
 
         'tarui build' options:
           --rid <rid>        Runtime identifier, e.g. win-x64 (default: current platform)
-          --bundle <csv>     Bundle targets to produce, e.g. zip,msix (default: manifest bundle.targets)
+          --bundle <csv>     Bundle targets to produce, e.g. zip,msix,app-bundle (default: manifest bundle.targets)
           --out <dir>        Output directory (default: ./dist)
           --verbose          Print child process command lines
         """;
