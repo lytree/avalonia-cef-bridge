@@ -80,9 +80,16 @@ jobs:
         run: |
           # Ensure the demo manifest opts into the macOS app-bundle target before invoking.
           # The CLI refuses to emit a .app without an explicit 'app-bundle' target and a known
-          # osx-* RID (MacOsBundleBuilder.AllowedRids). We amend the manifest in a scratch copy
-          # so the in-repo examples/demo/tarui.app.json stays zip-only.
-          $scratch = Join-Path $env:RUNNER_TEMP 'tarui.mac.app.json'
+          # osx-* RID (MacOsBundleBuilder.AllowedRids). We amend the manifest in a scratch sandbox
+          # so the in-repo examples/demo/tarui.app.json stays zip-only. The sandbox also copies
+          # the demo's capabilities/ subtree next to the scratch manifest — AppManifestValidator
+          # resolves capabilities/{id}.json relative to the manifest directory, not the repo root,
+          # so a bare scratch manifest without a capabilities/ sibling would falsely report
+          # "references 'main' but capabilities/main.json was not found".
+          $sandbox = Join-Path $env:RUNNER_TEMP 'tarui.mac.sandbox'
+          $scratch = Join-Path $sandbox 'tarui.app.json'
+          New-Item -ItemType Directory -Path $sandbox -Force | Out-Null
+          Copy-Item -Recurse -Force examples/demo/capabilities (Join-Path $sandbox 'capabilities')
           $json = Get-Content examples/demo/tarui.app.json -Raw | ConvertFrom-Json
           if (-not $json.bundle.targets.Contains('app-bundle')) {
             $json.bundle.targets = @('app-bundle')
@@ -200,5 +207,5 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: macos-app-bundle-manifest-${{ env.TARUI_RID }}
-          path: ${{ env.RUNNER_TEMP }}/tarui.mac.app.json
+          path: ${{ env.RUNNER_TEMP }}/tarui.mac.sandbox/tarui.app.json
           retention-days: 7
