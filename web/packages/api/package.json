@@ -129,6 +129,15 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lytree/avalonia-cef-bridge.git",
+    "directory": "web/packages/api"
+  },
+  "homepage": "https://github.com/lytree/avalonia-cef-bridge#readme",
+  "bugs": {
+    "url": "https://github.com/lytree/avalonia-cef-bridge/issues"
+  },
   "devDependencies": {
     "@vitest/coverage-v8": "3.2.4",
     "happy-dom": "15.11.7",
