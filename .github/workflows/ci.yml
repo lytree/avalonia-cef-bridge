@@ -110,7 +110,7 @@ jobs:
       - name: Architecture gate (Tarui.Architecture.Tests)
         run: dotnet run --project tests/Tarui.Architecture.Tests/Tarui.Architecture.Tests.csproj -c Release --no-build
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: nuget-packages
           path: artifacts/nuget/*.nupkg
@@ -129,7 +129,7 @@ jobs:
         with:
           version: 11.15.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm

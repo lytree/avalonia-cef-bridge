@@ -50,7 +50,7 @@ jobs:
         with:
           version: 11.15.1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
@@ -186,7 +186,7 @@ jobs:
 
       - name: Upload macOS bundle artifacts
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: macos-app-bundle-${{ env.TARUI_RID }}
           path: |
@@ -197,7 +197,7 @@ jobs:
 
       - name: Upload scratch manifest (debugging aid)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: macos-app-bundle-manifest-${{ env.TARUI_RID }}
           path: ${{ env.RUNNER_TEMP }}/tarui.mac.app.json
