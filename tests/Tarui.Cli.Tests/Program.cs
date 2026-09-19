@@ -240,9 +240,14 @@ internal static class Program
 
     private static void ResolvesRelativeAgainstManifestDirectory()
     {
-        var paths = new CliPaths("C:\\app\\tarui.app.json", "C:\\app");
-        Assert(paths.ResolveRelative("web/dist") == Path.GetFullPath("C:\\app\\web\\dist"), "Relative paths must resolve against the manifest directory.");
-        Assert(paths.ResolveRelative("C:\\absolute\\x") == Path.GetFullPath("C:\\absolute\\x"), "Absolute paths must pass through unchanged.");
+        // 用平台原生的 rooted 临时目录构造路径，避免断言依赖 Windows 盘符写法。
+        var manifestDir = Path.Combine(Path.GetTempPath(), "tarui-cli-tests", "app");
+        var paths = new CliPaths(Path.Combine(manifestDir, "tarui.app.json"), manifestDir);
+        Assert(
+            paths.ResolveRelative("web/dist") == Path.GetFullPath(Path.Combine(manifestDir, "web", "dist")),
+            "Relative paths must resolve against the manifest directory.");
+        var absolute = Path.Combine(Path.GetTempPath(), "tarui-cli-absolute", "x");
+        Assert(paths.ResolveRelative(absolute) == Path.GetFullPath(absolute), "Absolute paths must pass through unchanged.");
     }
 
     private static void DefaultsToTaruiAppJsonInCurrentDirectory()
@@ -255,14 +260,15 @@ internal static class Program
 
     private static void FrontendWorkingDirectoryUsesFrontendRoot()
     {
-        var paths = new CliPaths("C:\\app\\tarui.app.json", "C:\\app");
+        var manifestDir = Path.Combine(Path.GetTempPath(), "tarui-cli-tests", "app");
+        var paths = new CliPaths(Path.Combine(manifestDir, "tarui.app.json"), manifestDir);
         var build = new AppManifestBuild("web", null, null, null, "web/dist", null);
         Assert(
-            paths.FrontendWorkingDirectory(build) == Path.GetFullPath("C:\\app\\web"),
+            paths.FrontendWorkingDirectory(build) == Path.GetFullPath(Path.Combine(manifestDir, "web")),
             "The frontend working directory must join the manifest directory with build.frontend.");
         var noFrontend = new AppManifestBuild(null, null, null, null, "web/dist", null);
         Assert(
-            paths.FrontendWorkingDirectory(noFrontend) == Path.GetFullPath("C:\\app"),
+            paths.FrontendWorkingDirectory(noFrontend) == Path.GetFullPath(manifestDir),
             "Without build.frontend the manifest directory must be used.");
     }
 
