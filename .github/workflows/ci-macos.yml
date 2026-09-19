@@ -37,6 +37,10 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       # pin macOS self-contained publish RID; .NET 10 produces an osx-arm64 binary on Apple Silicon.
       TARUI_RID: 'osx-arm64'
+      # macOS .app bundle + tar.gz name must follow TaruiVersion; v0.3.0 here, the validation
+      # steps below key off this so the version bump stays a one-line change.
+      TARUI_VERSION: '0.3.0'
+      APP_TARBALL: 'demo-${{ env.TARUI_VERSION }}-${{ env.TARUI_RID }}.app.tar.gz'
     steps:
       - uses: actions/checkout@v6
 
@@ -121,13 +125,15 @@ jobs:
         run: |
           set -euo pipefail
           echo '--- dist tree (top 3 levels) ---'
-          find examples/demo/dist -maxdepth 3 -mindepth 1 -printf '%p (%s bytes)\n' | sort
+          # BSD find (macOS default) does not support -printf; use stat in a portable form.
+          find examples/demo/dist -maxdepth 3 -mindepth 1 -type f -exec stat -f '%N (%z bytes)' {} + | sort
+          find examples/demo/dist -maxdepth 3 -mindepth 1 -type d ! -path examples/demo/dist | sort
           echo '--- required files ---'
           for f in \
             "examples/demo/dist/demo.app/Contents/Info.plist" \
             "examples/demo/dist/demo.app/Contents/PkgInfo" \
             "examples/demo/dist/demo.app/Contents/MacOS/demo" \
-            "examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz" \
+            "examples/demo/dist/${APP_TARBALL}" \
           ; do
             if [ ! -e "$f" ]; then
               echo "::error::Missing $f"
@@ -162,7 +168,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ARCH=examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz
+          ARCH="examples/demo/dist/${APP_TARBALL}"
           echo '--- archive listing (first 20) ---'
           tar -tzf "$ARCH" | head -20
           echo '--- archive entry count ---'
@@ -185,10 +191,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ARCH=examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz
-          shasum -a 256 "$ARCH" | tee examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz.sha256
+          ARCH="examples/demo/dist/${APP_TARBALL}"
+          SHA_FILE="${ARCH}.sha256"
+          shasum -a 256 "$ARCH" | tee "$SHA_FILE"
           echo '--- verify by re-shasuming ---'
-          shasum -a 256 -c examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz.sha256
+          shasum -a 256 -c "$SHA_FILE"
 
       - name: DeepLink validation (cold argv -> DeepLinkService.Deliver -> deeplink://tarui event)
         shell: bash
@@ -207,8 +214,8 @@ jobs:
           name: macos-app-bundle-${{ env.TARUI_RID }}
           path: |
             examples/demo/dist/demo.app/
-            examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz
-            examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz.sha256
+            examples/demo/dist/demo-*.app.tar.gz
+            examples/demo/dist/demo-*.app.tar.gz.sha256
           retention-days: 7
 
       - name: Upload scratch manifest (debugging aid)

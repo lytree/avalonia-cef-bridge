@@ -415,8 +415,8 @@ jobs:
           name: installers-macos
           path: |
             examples/demo/dist/demo.app/
-            examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz
-            examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz.sha256
+            examples/demo/dist/demo-*.app.tar.gz
+            examples/demo/dist/demo-*.app.tar.gz.sha256
           retention-days: 1
 
       - name: Upload macOS nuget-packages
