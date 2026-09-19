@@ -83,7 +83,7 @@ Hosting  →  Shell  →  (Ipc, Contracts, WebView.Abstractions, WebView.Avaloni
 5. **能力闸门强制**:每个命令进入路由器都需经 `CommandRouterComposer` 比对 `RegisteredPermissions` ∩ 窗口 capability。
 6. **生命周期顺序**:`RunSubProcess` → `Host.StartAsync`/`Avalonia lifetime` → CEF `Initialize` → 创建 WebView → 关闭窗口 → `WebView.CloseAsync` 全部完成 → Avalonia loop 退出 → `Host.StopAsync` + `Dispose` → `finally: CefGlueNextAvaloniaRuntime.Shutdown`。
 7. **TreatWarningsAsErrors=true**:缺注释警告 CS1591/CS1572/CS1573/CS1574/CS1711/CS1712/CS1734 在 `Directory.Build.props` 已抑制;新增注释规范后续统一补齐。
-8. **版本单源**:`TaruiVersion=0.1.0` 在 `Directory.Build.props`,所有可打包项目与其一致;CI 校验等于 `@lytree/api` 的 `package.json` 版本。
+8. **版本单源**:`TaruiVersion=0.2.0` 在 `Directory.Build.props`,所有可打包项目与其一致;CI 校验等于 `@lytree/api` 的 `package.json` 版本。
 9. **Lockstep 发布**:`Tarui.*` NuGet 与 `@lytree/api` npm lockstep 推进,变更须同步升级。
 10. **零外部发布依赖**:CLI 零第三方依赖,仅 BCL + `System.Text.Json` 源生成。
 

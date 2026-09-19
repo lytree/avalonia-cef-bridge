@@ -17,7 +17,7 @@
 
 **已落地的近期能力**
 - **Channel 端到端流式 IPC**：`Channel` 令牌下沉到原生命令，`SendAsync` 逐帧回传，背压由
-  `WebviewSession` 的 `ExecuteScriptAsync` await 天然提供。
+  `WebviewSession` 的 `ExecuteScriptAsync` await 天然提供；解锁 fs 大文件流式、HTTP 流式与 Shell 子进程 stdio。
 - **fs 大文件 + 目录监听**：`plugin:fs|read-file-stream`（流式读，突破 8 MiB 单次上限）与
   `write-begin|write-chunk|write-commit|write-cancel`（分片写 + 原子提交 + 窗口级清理）；`plugin:fs|watch|unwatch`
   目录监听并以 `fs://watch-change` 定向事件投递。
@@ -28,9 +28,20 @@
   默认拒绝、stdout/stderr 经 Channel 流式回传、退出码 terminated 帧、进程树终止；前端经 `@lytree/api/shell`。
 - **上下文菜单 + Dialog ask**：`plugin:menu|show-context-menu` 任意坐标弹出（复用声明式 items + `menu://item-clicked`
   点击路由）；`plugin:dialog|ask` Yes/No 三态询问（可选显式取消）；前端经 `@lytree/api/menu`、`@lytree/api/dialog`。
-- **Updater apply + 打包分发**：`plugin:updater|apply` 对已校验暂存的 MSIX 执行安装（Windows `Add-AppxPackage`）
-  并广播 apply 状态事件；`tarui build` 产出 zip / 自研 MSIX 打包器 / 签名 `latest.json`；重启由前端经
-  `@lytree/api/updater` 衔接 `process.relaunch`。
+- **Updater check/download/apply**：`plugin:updater|check|download` 对清单做 ECDSA(P-384/SHA-384) 签名验证
+  与逐文件 SHA-256 核验，落入受控 staging 并广播 `updater://status` 事件；`plugin:updater|apply` 对已校验暂存的
+  MSIX 执行安装（Windows `Add-AppxPackage`）并广播 apply 状态事件；`tarui build` 产出 zip / 自研 MSIX 打包器 /
+  签名 `latest.json`；新增 `app-bundle` target 走 `MacOsBundleBuilder` + `InfoPlistBuilder` 输出 `<name>.app` 与
+  `.app.tar.gz`（含 `CFBundleURLTypes`，与运行时 `DeepLinkService.Deliver` 校验规则对齐；macOS 真机构建管道见
+  [docs/adr/0002-macos-real-build-pipeline.md](docs/adr/0002-macos-real-build-pipeline.md)）；
+  apply 默认 capability 不授权，需 PKI + 升级服务器 + 安装器策略齐备后由能力清单显式开启。
+  前端经 `@lytree/api/updater` 衔接 `process.relaunch`。
+- **DeepLink**：`plugin:deep-link|get-current|feed` + `deeplink://<scheme>` 事件；Windows
+  `HKCU\Software\Classes\<scheme>` 注册 + argv/SingleInstance 转发全链路；Linux `.desktop`（`x-scheme-handler/<scheme>`）
+  内容生成 + cold/warm argv 复用；macOS `NSAppleEventManager` `kAEGetURL` 桥（`MacDeepLinkBridge` + `IMacDeepLinkUrlExtractor`）
+  + 2s 去重窗口（`DeepLinkService.Deliver`）覆盖 cold argv + warm `openURLs:` 全链路，真机验收待执行。
+  前端经 `@lytree/api/deep-link` 调用。
+- **单实例 + 窗口状态**：Mutex（Windows）/Unix socket（macOS/Linux）抢占 + Named Pipe/socket 转发，主窗口未注册入队、`Flush()` 补投 `app://second-instance`；`plugin:window-state|save|restore|clear` 显示器拟合。前端经 `@lytree/api/single-instance`、`@lytree/api/window-state` 调用。
 - **平台能力矩阵 + 跨平台自启**：`core:platform|capabilities` 暴露 notification/global-shortcut/autostart/deep-link
   的真实可用性，前端据此禁用不可用 UI；Autostart 覆盖三平台（Windows registry / macOS LaunchAgents / Linux `.desktop`），
   前端经 `@lytree/api/platform`、`@lytree/api/autostart` 调用。
@@ -47,9 +58,11 @@
   必需校验，未知选项与类型错误诚实失败），前端经 `@lytree/api/cli` 的 `parseCliArgs/getCliMatches` 调用。
 - **窗口图标与主题**：`core:window|set-icon`（PNG 字节，含清除）与 `set-theme`（system/light/dark）——
   前端经 `@lytree/api/window` 的 `setIcon/setTheme` 调用。
+- **WebView 深度集成**：真实 windowed CEF——`window://file-drop-entered/left/dropped` 定向事件、
+  `webview://download-requested/navigation-requested` 策略化决策、`DraggableRegion` 命中与 NoDrag 覆盖。
 
 逐项能力与安装/打包细节见 [docs/wails-tauri-gap-analysis.md](docs/wails-tauri-gap-analysis.md) 与
-[examples/demo](examples/demo)。
+[examples/demo](examples/demo)；权威状态表见 [docs/tauri-desktop-alignment-plan.md §15](docs/tauri-desktop-alignment-plan.md#L899-L918)。
 
 ## 仓库目录
 
@@ -93,7 +106,7 @@ dotnet run --project tests/Tarui.Hosting.Tests --no-build
 dotnet run --project tests/Tarui.Architecture.Tests --no-build
 
 dotnet pack tarui.net.sln -c Release -o artifacts/nuget
-dotnet run --project tests/Tarui.Architecture.Tests --no-build -- --require-package --package artifacts/nuget/CefGlue.Next.Avalonia.0.1.0.nupkg
+dotnet run --project tests/Tarui.Architecture.Tests --no-build -- --require-package --package artifacts/nuget/CefGlue.Next.Avalonia.0.2.0.nupkg
 
 cd web
 pnpm install --frozen-lockfile
@@ -224,7 +237,18 @@ tarui info       # 环境 / 工具链 / 清单诊断
 tarui --help     # 完整命令面
 ```
 
-`tarui dev` 在 `build.frontend` 内启动 `build.beforeDevCommand`,等待 `build.devUrl` 可达,然后以 `TARUI_WEB_MODE=http` 与 `TARUI_WEB_URL=<devUrl>` 启动桌面项目。`tarui build` 会运行 `build.beforeBuildCommand`,校验 `build.frontendDist`,为当前 RID 自包含发布桌面项目,然后产出配置的 `bundle.targets`:可移植 `zip` + MSIX(`--bundle msix` 或 `bundle.targets: ["zip","msix"]`),以及带 SHA-256 的升级器蓝图 `dist/latest.json`。MSIX 由托管实现的 `MsixPacker` 构建(OPC ZIP + `AppxManifest.xml` + SHA-256 `AppxBlockMap.xml`,不依赖 `makeappx`);若配置了 `bundle.msix.certificate.{path,password,timeStamperUrl}`,将通过 `signtool.exe` 做 Authenticode 签名,否则产未签名包。`build` 还会把所有引用插件的 `permissions/<plugin>/schema.json` 合并进 `schemas/permissions.schema.json`(仅作校验辅助,运行时仍以 `capabilities/*.json` 为唯一授权源)。`tarui plugin init` 生成带权限描述符、强类型 guest-js 桥接和控制台自测试的插件;`tarui plugin pack` 校验布局、权限/版本一致性,运行自测试,并同时打包 NuGet 后端(含 `permissions/`)与 npm 前端。在应用目录下执行(也可传 `--config <path>` 指向仓库内 `examples/demo/tarui.app.json`);清单 schema 与分阶段实施见 `docs/dev-workflow-design.md`(W3 应用模板 / `tarui init` 已完成,W4 插件工作流已完成,W5 安装器已完成)。
+`tarui dev` 在 `build.frontend` 内启动 `build.beforeDevCommand`，等待 `build.devUrl` 可达，然后以 `TARUI_WEB_MODE=http` 与 `TARUI_WEB_URL=<devUrl>` 启动桌面项目。`tarui build` 会运行 `build.beforeBuildCommand`，校验 `build.frontendDist`，为当前 RID 自包含发布桌面项目，然后产出配置的 `bundle.targets`：可移植 `zip` + MSIX（`--bundle msix` 或 `bundle.targets: ["zip","msix"]`）+ macOS `.app` / `.app.tar.gz`（`--bundle app-bundle` 或 `bundle.targets: ["app-bundle"]`，需 `osx-x64`/`osx-arm64` RID 与 `bundle.macOS` 块），以及带 SHA-256 的升级器蓝图 `dist/latest.json`。MSIX 由托管实现的 `MsixPacker` 构建（OPC ZIP + `AppxManifest.xml` + SHA-256 `AppxBlockMap.xml`，不依赖 `makeappx`）；若配置了 `bundle.msix.certificate.{path,password,timeStamperUrl}`，将通过 `signtool.exe` 做 Authenticode 签名，否则产未签名包。macOS `.app` 由 `MacOsBundleBuilder` + `InfoPlistBuilder` 拼装（11 个 PLIST 必备键 + `CFBundleURLTypes`，与运行时 `DeepLinkService.Deliver` 同款 RFC 3986 scheme 校验），用 `System.Formats.Tar` 包成 `<name>-<version>-<rid>.app.tar.gz`，SHA-256 一并进 updater blueprint；macOS 真机构建管道见 [docs/adr/0002-macos-real-build-pipeline.md](docs/adr/0002-macos-real-build-pipeline.md)。macOS `.app.tar.gz` 解包与启动：
+
+```bash
+tar -xzf demo-0.2.0-osx-arm64.app.tar.gz
+xattr -dr com.apple.quarantine demo.app 2>/dev/null || true
+chmod +x demo.app/Contents/MacOS/demo
+open demo.app
+```
+
+> macOS 产物未签名/未公证，分发前需 `codesign --deep --sign <identity> demo.app` 与 `xcrun notarytool submit --wait demo.zip`（公证票据 `stapler staple demo.app`），详见 ADR-0002 §8。
+
+`build` 还会把所有引用插件的 `permissions/<plugin>/schema.json` 合并进 `schemas/permissions.schema.json`(仅作校验辅助,运行时仍以 `capabilities/*.json` 为唯一授权源)。`tarui plugin init` 生成带权限描述符、强类型 guest-js 桥接和控制台自测试的插件;`tarui plugin pack` 校验布局、权限/版本一致性,运行自测试,并同时打包 NuGet 后端(含 `permissions/`)与 npm 前端。在应用目录下执行(也可传 `--config <path>` 指向仓库内 `examples/demo/tarui.app.json`);清单 schema 与分阶段实施见 `docs/dev-workflow-design.md`(W3 应用模板 / `tarui init` 已完成,W4 插件工作流已完成,W5 安装器已完成)。
 
 ## Demo 应用
 
