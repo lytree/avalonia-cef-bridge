@@ -31,6 +31,7 @@ internal static class Program
             await DifferentApplicationIdsProduceDifferentEndpointsAsync();
             await SanitizedIdentifierIsStableAcrossCasing();
             await EndpointNamesAreStableForSpecialCharacters();
+            await SocketPathStaysWithinUnixDomainSocketLimit();
             await DisposalClosesListenerAndRemovesUnixSocketFileAsync();
             RelaunchHandshakeEventIsResolvedFromArguments();
         }
@@ -255,6 +256,31 @@ internal static class Program
         // No raw space or punctuation must leak through the sanitization.
         Assert(identity.SocketPath.IndexOf(' ') < 0 || OperatingSystem.IsWindows(),
             "The Unix socket path must not contain raw spaces.");
+        return Task.CompletedTask;
+    }
+
+    private static Task SocketPathStaysWithinUnixDomainSocketLimit()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            // Windows 走命名管道名，不受 sockaddr_un.sun_path 的 108 字节限制。
+            return Task.CompletedTask;
+        }
+
+        // SanitizeIdentifier 各自允许 64 字符；长 app-id + channel 在 Linux/macOS 上必须被
+        // 确定性折叠，否则 UnixDomainSocketEndpoint 在 Bind 时抛 ArgumentOutOfRange。
+        var identity = new SingleInstanceIdentity(new string('a', 64), new string('b', 64));
+        var path = identity.SocketPath;
+        Assert(path.Length <= 108,
+            $"The folded Unix socket path '{path}' ({path.Length} chars) still exceeds the 108-char sockaddr_un limit.");
+
+        // 折叠必须是同一 identity 的纯函数：primary 绑定的路径就是 secondary 连接的路径。
+        var again = new SingleInstanceIdentity(new string('a', 64), new string('b', 64)).SocketPath;
+        Assert(again == path, "The folded socket path must be deterministic for the same identity.");
+
+        // 不同长 identity 折叠后不得合并到同一 socket 文件。
+        var different = new SingleInstanceIdentity(new string('a', 64), new string('c', 64)).SocketPath;
+        Assert(different != path, "Different long identities must not collapse onto the same socket file.");
         return Task.CompletedTask;
     }
 
