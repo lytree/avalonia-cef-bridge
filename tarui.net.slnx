@@ -80,6 +80,7 @@
     <Project Path="tests/Tarui.Store.Tests/Tarui.Store.Tests.csproj" />
     <Project Path="tests/Tarui.Updater.Tests/Tarui.Updater.Tests.csproj" />
     <Project Path="tests/Tarui.WebView.Tests/Tarui.WebView.Tests.csproj" />
+    <Project Path="tests/Tarui.WebView.Tests.CefGlueNext/Tarui.WebView.Tests.CefGlueNext.csproj" />
     <Project Path="tests/Tarui.WebViewEvents.Tests/Tarui.WebViewEvents.Tests.csproj" />
     <Project Path="tests/Tarui.WindowState.Tests/Tarui.WindowState.Tests.csproj" />
   </Folder>

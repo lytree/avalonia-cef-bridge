@@ -37,8 +37,8 @@ if (-not (Test-Path -LiteralPath $TestsRoot)) {
     throw "TestsRoot '$TestsRoot' not found."
 }
 
-$projects = Get-ChildItem -LiteralPath $TestsRoot -Filter '*.Tests.csproj' -Recurse -File |
-    Where-Object { $_.DirectoryName -like '*.Tests' } |
+$projects = Get-ChildItem -LiteralPath $TestsRoot -Filter '*.Tests*.csproj' -Recurse -File |
+    Where-Object { $_.DirectoryName -like '*.Tests' -or $_.DirectoryName -like '*.Tests.*' } |
     Sort-Object FullName
 
 $projects = @($projects)

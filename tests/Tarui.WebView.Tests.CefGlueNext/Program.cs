@@ -24,7 +24,7 @@ internal static class Program
         RuntimeOptionsFingerprintStableForEquivalentOptions();
         RuntimeOptionsFingerprintDistinguishesSchemes();
         RuntimeOptionsFingerprintDistinguishesSubprocessAndCache();
-        Console.WriteLine("Tarui.WebView (CefGlue component) self-tests passed.");
+        Console.WriteLine("Tarui.WebView.CefGlueNext self-tests passed.");
         return 0;
     }
 

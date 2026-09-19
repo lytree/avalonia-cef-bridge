@@ -105,7 +105,7 @@ jobs:
           Write-Host "Versions consistent: $tarui"
 
       - name: Run self-tests (eng/test-all.ps1)
-        run: ./eng/test-all.ps1 -BaselineCount 21
+        run: ./eng/test-all.ps1 -BaselineCount 24
 
       - name: Architecture gate (Tarui.Architecture.Tests)
         run: dotnet run --project tests/Tarui.Architecture.Tests/Tarui.Architecture.Tests.csproj -c Release --no-build

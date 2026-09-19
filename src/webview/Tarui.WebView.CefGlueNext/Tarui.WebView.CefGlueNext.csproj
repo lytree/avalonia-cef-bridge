@@ -24,7 +24,7 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Tarui.WebView.Tests" />
-    <InternalsVisibleTo Include="CefGlue.Next.Avalonia.Tests" />
+    <InternalsVisibleTo Include="Tarui.WebView.Tests.CefGlueNext" />
   </ItemGroup>
 
   <PropertyGroup>
