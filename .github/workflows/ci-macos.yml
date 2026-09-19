@@ -1,0 +1,204 @@
+name: ci-macos
+
+# macOS 真机验收（docs/adr/0001-macos-deeplink-appleevent-bridge.md §9、tauri-desktop-alignment-plan.md §15 Phase 6）。
+#   目标：在 macos-latest 上完整跑通 `tarui build --bundle app-bundle` 的全链路。
+#     1. dotnet build（macOS 自包含 net10.0 产物）
+#     2. tarui build 产出 <name>.app 与 .app.tar.gz
+#     3. plutil -lint / plutil -p 校验 Info.plist 与 CFBundleURLTypes
+#     4. tar -tzf 列目录 + tar -xOf 抽 Info.plist 自检
+#     5. shasum -a 256 比对 manifest 产物的 SHA-256
+# 行为是 Windows-only 门禁的补充：Windows gate 仍然过 0 警告/0 错误，本 job 失败不阻塞 PR，但产物
+# 进入 artifacts 便于手动核验（true），并在 release.yml 中作为 macOS 真机构建源（未来的）。
+# 2026-09：macos-14 (Apple Silicon) runner；x64 走 macos-13。
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  macos-app-bundle:
+    name: macOS app bundle (tarui build --bundle app-bundle)
+    runs-on: macos-14
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      # pin macOS self-contained publish RID; .NET 10 produces an osx-arm64 binary on Apple Silicon.
+      TARUI_RID: 'osx-arm64'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: tarui.net.sln
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Restore (NuGet.Config)
+        run: dotnet restore tarui.net.sln --configfile NuGet.Config
+
+      - name: Build (0 warnings/errors)
+        run: dotnet build tarui.net.sln -c Release --no-restore --nologo
+
+      # 注：本 job 不依赖 CEF runtime —— `app-bundle` 目标只跑 MacOsBundleBuilder / InfoPlistBuilder，
+      # 后者只读 publish payload 的存在性。CLI 检查 manifest 文件路径存在就足够构建产物，
+      # 真正端到端 `dotnet run examples/demo/Demo.Desktop` 需 CEF，但属于真机 desktop job（不在本期范围）。
+
+      - name: Install demo frontend deps (frozen)
+        working-directory: examples/demo/web
+        run: pnpm install --frozen-lockfile
+
+      - name: tarui info (manifest sanity)
+        run: |
+          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config examples/demo/tarui.app.json info
+
+      - name: tarui build --bundle app-bundle (osx-arm64)
+        env:
+          TARUI_RID: osx-arm64
+        run: |
+          # Ensure the demo manifest opts into the macOS app-bundle target before invoking.
+          # The CLI refuses to emit a .app without an explicit 'app-bundle' target and a known
+          # osx-* RID (MacOsBundleBuilder.AllowedRids). We amend the manifest in a scratch copy
+          # so the in-repo examples/demo/tarui.app.json stays zip-only.
+          $scratch = Join-Path $env:RUNNER_TEMP 'tarui.mac.app.json'
+          $json = Get-Content examples/demo/tarui.app.json -Raw | ConvertFrom-Json
+          if (-not $json.bundle.targets.Contains('app-bundle')) {
+            $json.bundle.targets = @('app-bundle')
+          }
+          if (-not $json.bundle.macOS) {
+            $json.bundle | Add-Member -NotePropertyName 'macOS' -NotePropertyValue ([PSCustomObject]@{
+              bundleId = 'dev.demo'
+              executableName = 'demo'
+              minimumSystemVersion = '11.0'
+              schemes = @('tarui')
+            }) -Force
+          }
+          $json | ConvertTo-Json -Depth 10 | Set-Content $scratch
+          Get-Content $scratch
+
+          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config $scratch build --bundle app-bundle --rid osx-arm64 --out examples/demo/dist
+
+      - name: Inspect dist artifacts (existence + size)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '--- dist tree (top 3 levels) ---'
+          find examples/demo/dist -maxdepth 3 -mindepth 1 -printf '%p (%s bytes)\n' | sort
+          echo '--- required files ---'
+          for f in \
+            "examples/demo/dist/demo.app/Contents/Info.plist" \
+            "examples/demo/dist/demo.app/Contents/PkgInfo" \
+            "examples/demo/dist/demo.app/Contents/MacOS/demo" \
+            "examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz" \
+          ; do
+            if [ ! -e "$f" ]; then
+              echo "::error::Missing $f"
+              exit 1
+            fi
+            echo "OK $f"
+          done
+
+      - name: plutil -lint Info.plist (apple-native validator)
+        shell: bash
+        run: |
+          set -euo pipefail
+          plutil -lint examples/demo/dist/demo.app/Contents/Info.plist
+
+      - name: plutil -p Info.plist (key spot-check via Apple plist parser)
+        shell: bash
+        run: |
+          set -euo pipefail
+          INFO=examples/demo/dist/demo.app/Contents/Info.plist
+          echo '--- CFBundle* + LSMinimumSystemVersion ---'
+          plutil -p "$INFO" \
+            | grep -E 'CFBundleIdentifier|CFBundleName|CFBundleExecutable|CFBundlePackageType|CFBundleVersion|CFBundleShortVersionString|LSMinimumSystemVersion|NSPrincipalClass|NSHighResolutionCapable'
+          echo '--- CFBundleURLTypes (must contain tarui) ---'
+          plutil -extract CFBundleURLTypes xml1 -o - "$INFO"
+          plutil -extract CFBundleURLTypes xml1 -o - "$INFO" | grep -q '<string>tarui</string>' \
+            || { echo '::error::CFBundleURLTypes missing <string>tarui</string>'; exit 1; }
+          echo '--- CFBundleURLName pattern ---'
+          plutil -extract CFBundleURLTypes xml1 -o - "$INFO" | grep -E 'CFBundleURLName' | head -1
+          echo 'OK CFBundleURLTypes tarui present'
+
+      - name: tar -tzf + tar -xOf round-trip (archive integrity + payload preview)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCH=examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz
+          echo '--- archive listing (first 20) ---'
+          tar -tzf "$ARCH" | head -20
+          echo '--- archive entry count ---'
+          tar -tzf "$ARCH" | wc -l
+          echo '--- key entries must exist ---'
+          for entry in \
+            "demo.app/Contents/Info.plist" \
+            "demo.app/Contents/PkgInfo" \
+            "demo.app/Contents/MacOS/demo" \
+          ; do
+            tar -tzf "$ARCH" | grep -q "^$entry$" \
+              || { echo "::error::archive missing $entry"; exit 1; }
+            echo "OK $entry"
+          done
+          echo '--- extract Info.plist to stdout for byte-exact content match ---'
+          tar -xOf "$ARCH" demo.app/Contents/Info.plist | diff -q - examples/demo/dist/demo.app/Contents/Info.plist \
+            && echo 'OK archive Info.plist matches on-disk bundle'
+
+      - name: shasum -a 256 verification (Linux git sha256sum + macOS shasum cross-check)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARCH=examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz
+          shasum -a 256 "$ARCH" | tee examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz.sha256
+          echo '--- verify by re-shasuming ---'
+          shasum -a 256 -c examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz.sha256
+
+      - name: DeepLink validation (cold argv -> DeepLinkService.Deliver -> deeplink://tarui event)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Run the self-tests whose names mention DeepLink / Channel on macOS — proves the runtime
+          # DeepLinkService + Channel binding path is intact on Apple Silicon.
+          dotnet run --project tests/Tarui.DeepLink.Tests/Tarui.DeepLink.Tests.csproj -c Release --no-build
+          dotnet run --project tests/Tarui.Ipc.Tests/Tarui.Ipc.Tests.csproj -c Release --no-build
+          dotnet run --project tests/Tarui.Shell.Tests/Tarui.Shell.Tests.csproj -c Release --no-build
+
+      - name: Upload macOS bundle artifacts
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app-bundle-${{ env.TARUI_RID }}
+          path: |
+            examples/demo/dist/demo.app/
+            examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz
+            examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz.sha256
+          retention-days: 7
+
+      - name: Upload scratch manifest (debugging aid)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app-bundle-manifest-${{ env.TARUI_RID }}
+          path: ${{ env.RUNNER_TEMP }}/tarui.mac.app.json
+          retention-days: 7

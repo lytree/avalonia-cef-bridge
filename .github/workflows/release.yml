@@ -319,9 +319,96 @@ jobs:
           retention-days: 1
 
 
+  pack-and-build-macos:
+    name: pack + macOS app bundle (osx-arm64, unsigned)
+    needs: validate
+    runs-on: macos-14
+    environment: release
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: tarui.net.sln
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install demo frontend deps (frozen)
+        working-directory: examples/demo/web
+        run: pnpm install --frozen-lockfile
+
+      - name: dotnet pack (artifacts/nuget)
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          if [ -z "$VERSION" ]; then echo "::error::VERSION from validate.outputs is empty"; exit 1; fi
+          dotnet restore tarui.net.sln --configfile NuGet.Config
+          dotnet pack tarui.net.sln -c Release --no-restore --nologo -o artifacts/nuget
+
+      - name: Build cli + demo bundle (osx-arm64, app-bundle)
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          if [ -z "$VERSION" ]; then echo "::error::VERSION from validate.outputs is empty"; exit 1; fi
+          # Switch the demo manifest to opt into the macOS app-bundle target in a scratch copy so
+          # the in-repo examples/demo/tarui.app.json stays zip-only. The CLI refuses 'app-bundle'
+          # without an osx-* RID; MacOsBundleBuilder.AllowedRids enforces the allow-list.
+          scratch="$RUNNER_TEMP/tarui.mac.app.json"
+          pwsh -NoProfile -Command "
+            \$json = Get-Content examples/demo/tarui.app.json -Raw | ConvertFrom-Json
+            if (-not \$json.bundle.targets.Contains('app-bundle')) { \$json.bundle.targets = @('app-bundle') }
+            if (-not \$json.bundle.macOS) {
+              \$json.bundle | Add-Member -NotePropertyName 'macOS' -NotePropertyValue ([PSCustomObject]@{
+                bundleId = 'dev.demo'
+                executableName = 'demo'
+                minimumSystemVersion = '11.0'
+                schemes = @('tarui')
+              }) -Force
+            }
+            \$json | ConvertTo-Json -Depth 10 | Set-Content \"$scratch\"
+          "
+          cat "$scratch"
+          dotnet build src/tarui-cli/Tarui.Cli.csproj -c Release --no-restore
+          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config "$scratch" build --bundle app-bundle --rid osx-arm64 --out examples/demo/dist
+
+      - name: plutil -lint Info.plist + CFBundleURLTypes spot-check
+        run: |
+          set -euo pipefail
+          INFO=examples/demo/dist/demo.app/Contents/Info.plist
+          plutil -lint "$INFO"
+          plutil -extract CFBundleURLTypes xml1 -o - "$INFO" | grep -q '<string>tarui</string>' \
+            || { echo "::error::CFBundleURLTypes missing <string>tarui</string>"; exit 1; }
+
+      - name: Upload macOS installers (app + tar.gz + nupkgs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-macos
+          path: |
+            examples/demo/dist/demo.app/
+            examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz
+            examples/demo/dist/demo-0.1.0-osx-arm64.app.tar.gz.sha256
+          retention-days: 1
+
+      - name: Upload macOS nuget-packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages-macos
+          path: artifacts/nuget/*.nupkg
+          retention-days: 1
+
+
   release:
     name: GitHub Release
-    needs: [validate, pack-and-build, publish-dotnet, publish-npm]
+    needs: [validate, pack-and-build, pack-and-build-macos, publish-dotnet, publish-npm]
     runs-on: ubuntu-latest
     environment: release
     steps:
@@ -329,6 +416,10 @@ jobs:
         with:
           name: installers
           path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: installers-macos
+          path: dist-macos
       - uses: actions/download-artifact@v4
         with:
           name: nuget-packages
@@ -348,16 +439,20 @@ jobs:
             Where-Object -FilterScript { $_.PSIsContainer -eq $false } |
             Where-Object { $_.Extension -in '.zip', '.msix' } |
             Sort-Object FullName
+          $macosInstallers = Get-ChildItem -Path dist-macos -Recurse -File |
+            Where-Object -FilterScript { $_.PSIsContainer -eq $false } |
+            Where-Object { $_.Extension -eq '.gz' -or $_.Name -like '*.app.tar.gz*' } |
+            Sort-Object FullName
           $nupkgs = Get-ChildItem -Path nuget -File -Filter '*.nupkg' |
             Where-Object -FilterScript { $_.PSIsContainer -eq $false } |
             Where-Object { $_.Name -notlike '*.symbols.nupkg' } |
             Sort-Object FullName
-          $files = @($installers.FullName) + @($nupkgs.FullName)
+          $files = @($installers.FullName) + @($macosInstallers.FullName) + @($nupkgs.FullName)
           if ($files.Count -eq 0) {
-            throw 'No artifacts to attach (dist/*.zip/*.msix + nuget/*.nupkg).'
+            throw 'No artifacts to attach (dist/*.zip/*.msix + dist-macos/*.app.tar.gz + nuget/*.nupkg).'
           }
           Write-Host "Attaching $($files.Count) artifact(s) to tarui-v$env:VERSION:"
           foreach ($f in $files) { Write-Host "  - $f" }
           & gh release create "tarui-v$env:VERSION" @files `
             --title "tarui $env:VERSION" `
-            --notes "Tarui $env:VERSION 发布。MSIX 与 zip 安装器见附件（未配置签名证书时 MSIX 未签名）。"
+            --notes "Tarui $env:VERSION 发布。Windows zip/MSIX、macOS .app.tar.gz 与 NuGet 包见附件（未配置签名证书时 MSIX 未签名；macOS 包未签名/未公证，需在分发前 codesign + notarytool）。"
