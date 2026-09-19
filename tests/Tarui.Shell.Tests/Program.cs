@@ -1,4 +1,4 @@
-﻿﻿﻿﻿using System.Text.Json;
+﻿﻿﻿﻿﻿using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
@@ -579,6 +579,14 @@ internal static class Program
 
     private static void WindowExtensionContextExposesNativeWindow()
     {
+        // Headless Linux（CI ubuntu runner）无 X server，Avalonia X11 平台无法初始化；该用例
+        // 依赖真实 ShellWindow 构造，属于平台窗口能力，无显示环境时诚实跳过。
+        if (OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
+        {
+            Console.WriteLine("Skipped: WindowExtensionContextExposesNativeWindow requires a display (X11) unavailable on headless Linux.");
+            return;
+        }
+
         // The context surfaces the live native window so an extension can manipulate it directly.
         // The composition is assigned its owning window only once a window is built. We rely on a real
         // ShellWindow here: initializing the Avalonia platform lets us construct one without a display loop.
