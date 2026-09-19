@@ -324,6 +324,9 @@ jobs:
     needs: validate
     runs-on: macos-14
     environment: release
+    defaults:
+      run:
+        shell: bash
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
     steps:
@@ -359,23 +362,34 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           if [ -z "$VERSION" ]; then echo "::error::VERSION from validate.outputs is empty"; exit 1; fi
-          # Switch the demo manifest to opt into the macOS app-bundle target in a scratch copy so
-          # the in-repo examples/demo/tarui.app.json stays zip-only. The CLI refuses 'app-bundle'
-          # without an osx-* RID; MacOsBundleBuilder.AllowedRids enforces the allow-list.
-          scratch="$RUNNER_TEMP/tarui.mac.app.json"
-          pwsh -NoProfile -Command "
-            \$json = Get-Content examples/demo/tarui.app.json -Raw | ConvertFrom-Json
-            if (-not \$json.bundle.targets.Contains('app-bundle')) { \$json.bundle.targets = @('app-bundle') }
-            if (-not \$json.bundle.macOS) {
-              \$json.bundle | Add-Member -NotePropertyName 'macOS' -NotePropertyValue ([PSCustomObject]@{
-                bundleId = 'dev.demo'
-                executableName = 'demo'
-                minimumSystemVersion = '11.0'
-                schemes = @('tarui')
-              }) -Force
-            }
-            \$json | ConvertTo-Json -Depth 10 | Set-Content \"$scratch\"
-          "
+          # Switch the demo manifest to opt into the macOS app-bundle target in a scratch sandbox
+          # so the in-repo examples/demo/tarui.app.json stays zip-only. The CLI refuses 'app-bundle'
+          # without an osx-* RID; MacOsBundleBuilder.AllowedRids enforces the allow-list. The
+          # sandbox also bundles the demo's capabilities/ subtree next to the scratch manifest —
+          # AppManifestValidator resolves capabilities/{id}.json relative to the manifest directory,
+          # not the repo root, so a bare scratch manifest would falsely report
+          # "references 'main' but capabilities/main.json was not found". The PowerShell amend
+          # script is materialized as its own .ps1 file rather than passed inline to pwsh -Command
+          # to keep the bash/pwsh quoting and environment-passing trivial.
+          sandbox="$RUNNER_TEMP/tarui.mac.sandbox"
+          scratch="$sandbox/tarui.app.json"
+          amend="$sandbox/_amend.ps1"
+          mkdir -p "$sandbox"
+          cp -R examples/demo/capabilities "$sandbox/capabilities"
+          cat > "$amend" <<'PWSH'
+          $json = Get-Content examples/demo/tarui.app.json -Raw | ConvertFrom-Json
+          if (-not $json.bundle.targets.Contains('app-bundle')) { $json.bundle.targets = @('app-bundle') }
+          if (-not $json.bundle.macOS) {
+            $json.bundle | Add-Member -NotePropertyName 'macOS' -NotePropertyValue ([PSCustomObject]@{
+              bundleId = 'dev.demo'
+              executableName = 'demo'
+              minimumSystemVersion = '11.0'
+              schemes = @('tarui')
+            }) -Force
+          }
+          $json | ConvertTo-Json -Depth 10 | Set-Content $env:TARUI_MAC_SCRATCH
+          PWSH
+          TARUI_MAC_SCRATCH="$scratch" pwsh -NoProfile -File "$amend"
           cat "$scratch"
           dotnet build src/tarui-cli/Tarui.Cli.csproj -c Release --no-restore
           dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config "$scratch" build --bundle app-bundle --rid osx-arm64 --out examples/demo/dist
