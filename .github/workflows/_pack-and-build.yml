@@ -1,0 +1,270 @@
+name: _pack-and-build
+
+# 三平台 pack + bundle 共用 reusable workflow。
+# 调用方（release.yml）传入 RID/bundle/cef_runtime_id 等参数，
+# 内部负责：setup-dotnet/setup-node/pnpm、demo 前端 frozen install、
+# 可选 CEF runtime 安装（windows/linux 装，macOS 不装，走 MacOsBundleBuilder）、
+# 可选 Authenticode 签名配置、dotnet pack、tarui build、产物 smoke-test、
+# upload installers + nuget-packages artifact。
+#
+# 公共入参：
+#   os                — 'windows' | 'macos' | 'linux'（决定默认 shell、Authenticode、scratch manifest 等开关）
+#   cef_runtime_id    — 需要 install-runtime.ps1 装的 RID；空字符串表示跳过（macOS 走 MacOsBundleBuilder，
+#                       demo web 的 .app/.app.tar.gz 由 MacOsBundleBuilder + InfoPlistBuilder 拼装）
+#   bundle_csv        — `tarui build --bundle` 接受的 csv（windows: zip,msix；macOS: app-bundle；linux: zip）
+#   rid               — `tarui build --rid` 的 RID（windows: win-x64；macOS: osx-arm64；linux: linux-x64）
+#   installer_artifact— upload-artifact 的 name（release job 用 installers / installers-macos / installers-linux 下载）
+#   installer_path    — installer 的 path glob（如 examples/demo/dist/、examples/demo/dist/demo-*.app.tar.gz）
+#   nuget_artifact    — nupkg artifact name
+#   smoke_test_zip    — 'true'/'false'，linux 上验证 zip 含 demo 入口
+#   plutil_check      — 'true'/'false'，macOS 上 lint Info.plist + CFBundleURLTypes
+#   enable_signing    — 'true'/'false'，仅 windows 且配置了 WINDOWS_CERT_* 密钥时启用
+#
+# 公共输出：
+#   version — `validate` job 的 tag version（透传给子步骤，与 release.yml 命名一致）
+#
+# 行为不变量：
+#   - dotnet pack 输出 artifacts/nuget/（idempotent；publish-dotnet 用 --skip-duplicate，重复 pack 是无害的）
+#   - install CEF 失败会让 job 失败（仓库内 CefGlue.* DLLs 都期望 runtime 与 native 同时到位）
+#   - Authenticode signing 仅在 secrets 全配齐时启用；缺一即视为 unsigned
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: '目标平台（windows / macos / linux）'
+        required: true
+        type: string
+      cef_runtime_id:
+        description: '需要 install-runtime.ps1 装的 RID；空字符串表示跳过'
+        required: false
+        type: string
+        default: ''
+      bundle_csv:
+        description: 'tarui build --bundle 的 csv 参数'
+        required: true
+        type: string
+      rid:
+        description: 'tarui build --rid 的 RID'
+        required: true
+        type: string
+      installer_artifact:
+        description: 'upload-artifact 的 installers name'
+        required: true
+        type: string
+      installer_path:
+        description: 'upload-artifact 的 installers path glob（multiline）'
+        required: true
+        type: string
+      nuget_artifact:
+        description: 'upload-artifact 的 nuget-packages name'
+        required: true
+        type: string
+      smoke_test_zip:
+        description: 'true 时打开 zip 验证 demo 入口存在'
+        required: false
+        type: string
+        default: 'false'
+      plutil_check:
+        description: 'true 时对 demo.app/Contents/Info.plist 做 plutil -lint + CFBundleURLTypes 检查'
+        required: false
+        type: string
+        default: 'false'
+      enable_signing:
+        description: 'true 时启用 WINDOWS_CERT_* Authenticode 签名配置（仅 windows）'
+        required: false
+        type: string
+        default: 'false'
+      version:
+        description: 'Tag version (e.g. "0.4.0"); echoed back as an output so downstream jobs can chain'
+        required: true
+        type: string
+    secrets:
+      WINDOWS_CERT_BASE64:
+        description: 'Authenticode signing cert (base64 PFX); only consumed when enable_signing=true'
+        required: false
+      WINDOWS_CERT_PUBLISHER:
+        description: 'Authenticode signing publisher subject'
+        required: false
+      WINDOWS_CERT_PASSWORD:
+        description: 'Authenticode signing PFX password'
+        required: false
+      WINDOWS_CERT_TIMESTAMP:
+        description: 'Authenticode signing RFC 3161 time-stamping URL'
+        required: false
+    outputs:
+      version:
+        description: 'Tag version (echoed back to the caller for downstream steps that need it)'
+        value: ${{ inputs.version }}
+
+jobs:
+  pack-and-build:
+    name: pack + demo build + cli build (${{ inputs.os }} ${{ inputs.rid }}, ${{ inputs.bundle_csv }})
+    runs-on: ${{ inputs.os == 'macos' && 'macos-14' || inputs.os == 'windows' && 'windows-latest' || 'ubuntu-latest' }}
+    environment: release
+    defaults:
+      run:
+        shell: ${{ inputs.os == 'macos' && 'bash' || inputs.os == 'windows' && 'pwsh' || 'pwsh' }}
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: tarui.net.slnx
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install demo frontend deps (frozen)
+        working-directory: examples/demo/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Install CEF runtime (${{ inputs.cef_runtime_id }})
+        if: ${{ inputs.cef_runtime_id != '' }}
+        run: ./eng/cef/install-runtime.ps1 -RuntimeIdentifier ${{ inputs.cef_runtime_id }}
+
+      - name: Prepare macOS scratch sandbox (manifest + capabilities)
+        if: ${{ inputs.os == 'macos' }}
+        shell: bash
+        run: |
+          # The CLI refuses 'app-bundle' without an osx-* RID; MacOsBundleBuilder.AllowedRids
+          # enforces the allow-list. The sandbox holds only the manifest plus a capabilities/
+          # copy (the CLI resolves capability files against the manifest directory). Every
+          # other manifest-relative reference (build.frontend, build.frontendDist,
+          # build.desktopProject, --out) is rewritten to point at its repo-rooted absolute
+          # location. The demo web/ directory stays in its repo location so pnpm's
+          # --frozen-lockfile importer anchoring matches the path that wrote pnpm-lock.yaml —
+          # copying or symlinking it into the sandbox misanchors the lockfile and pnpm
+          # rejects it as a non-matching importer.
+          sandbox="$RUNNER_TEMP/tarui.mac.sandbox"
+          scratch="$sandbox/tarui.app.json"
+          amend="$sandbox/_amend.ps1"
+          rm -rf "$sandbox"
+          mkdir -p "$sandbox"
+          demoRoot="$(pwd)/examples/demo"
+          repoRoot="$(pwd)"
+          cp -R "$demoRoot/capabilities" "$sandbox/capabilities"
+          cat > "$amend" <<PWSH
+          \$json = Get-Content "$demoRoot/tarui.app.json" -Raw | ConvertFrom-Json
+          if (-not \$json.bundle.targets.Contains('app-bundle')) { \$json.bundle.targets = @('app-bundle') }
+          if (-not \$json.bundle.macOS) {
+            \$json.bundle | Add-Member -NotePropertyName 'macOS' -NotePropertyValue ([PSCustomObject]@{
+              bundleId = 'dev.demo'
+              executableName = 'demo'
+              minimumSystemVersion = '11.0'
+              schemes = @('tarui')
+            }) -Force
+          }
+          \$json.build.desktopProject = "$repoRoot/examples/demo/Demo.Desktop/Demo.Desktop.csproj"
+          \$json.build.frontend        = "$repoRoot/examples/demo/web"
+          \$json.build.frontendDist    = "$repoRoot/examples/demo/web/dist"
+          \$json | ConvertTo-Json -Depth 10 | Set-Content \$env:TARUI_MAC_SCRATCH
+          PWSH
+          TARUI_MAC_SCRATCH="$scratch" pwsh -NoProfile -File "$amend"
+          cat "$scratch"
+          echo "scratch_manifest=$scratch" >> "$GITHUB_ENV"
+          echo "scratch_out=$repoRoot/examples/demo/dist" >> "$GITHUB_ENV"
+
+      - name: Configure optional Authenticode signing
+        if: ${{ inputs.enable_signing == 'true' }}
+        run: |
+          $b64 = '${{ secrets.WINDOWS_CERT_BASE64 }}'
+          if (-not $b64) {
+            Write-Host 'No WINDOWS_CERT_BASE64; emitting unsigned MSIX.'
+            exit 0
+          }
+          $certPath = Join-Path ($env:RUNNER_TEMP) 'tarui-sign.pfx'
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($b64))
+          $manifestPath = 'examples/demo/tarui.app.json'
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          if (-not $manifest.bundle.msix) { $manifest.bundle | Add-Member -NotePropertyName msix -NotePropertyValue @{} -Force }
+          $manifest.bundle.msix.publisher = '${{ secrets.WINDOWS_CERT_PUBLISHER }}'
+          $manifest.bundle.msix.certificate = @{
+            path           = $certPath
+            password       = '${{ secrets.WINDOWS_CERT_PASSWORD }}'
+            timeStamperUrl = '${{ secrets.WINDOWS_CERT_TIMESTAMP }}'
+          }
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath
+          Write-Host 'Signing configured.'
+
+      - name: dotnet pack (artifacts/nuget)
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if [ -z "$VERSION" ]; then echo "::error::VERSION is empty"; exit 1; fi
+          dotnet restore tarui.net.slnx --configfile NuGet.Config
+          dotnet pack tarui.net.slnx -c Release --no-restore --nologo -o artifacts/nuget
+
+      - name: Build cli + demo bundle (${{ inputs.bundle_csv }}, ${{ inputs.rid }})
+        env:
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          if [ -z "$VERSION" ]; then echo "::error::VERSION is empty"; exit 1; fi
+          dotnet build src/tarui-cli/Tarui.Cli.csproj -c Release --no-restore
+          # macOS job: tarui build consumes the scratch manifest written by the previous
+          # step (sandbox + capabilities); --out redirects the .app back to the repo dist
+          # directory. Windows job: original pipeline omitted --out — the CLI resolves the
+          # dist directory relative to the manifest. Linux job: absolute --out as before.
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            CONFIG="--config ${scratch_manifest:?scratch_manifest missing}"
+            OUT="--out ${scratch_out:?scratch_out missing}"
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            CONFIG="--config examples/demo/tarui.app.json"
+            OUT="--out $PWD/examples/demo/dist"
+          else
+            CONFIG="--config examples/demo/tarui.app.json"
+            OUT=""
+          fi
+          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- \
+            $CONFIG build --bundle ${{ inputs.bundle_csv }} --rid ${{ inputs.rid }} $OUT
+
+      - name: plutil -lint Info.plist + CFBundleURLTypes spot-check
+        if: ${{ inputs.plutil_check == 'true' }}
+        run: |
+          set -euo pipefail
+          INFO=examples/demo/dist/demo.app/Contents/Info.plist
+          plutil -lint "$INFO"
+          plutil -extract CFBundleURLTypes xml1 -o - "$INFO" | grep -q '<string>tarui</string>' \
+            || { echo "::error::CFBundleURLTypes missing <string>tarui</string>"; exit 1; }
+
+      - name: Smoke-test the produced zip
+        if: ${{ inputs.smoke_test_zip == 'true' }}
+        run: |
+          $zip = Get-ChildItem -Path examples/demo/dist -Filter 'demo-*.zip' -File | Select-Object -First 1
+          if (-not $zip) { throw 'No demo-*.zip produced.' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
+          try {
+            $entries = $archive.Entries.FullName
+            if (-not ($entries -match 'demo(\.deps\.json)?$')) { throw "Zip missing demo entry; entries: $($entries -join ', ')" }
+            Write-Host "Zip contains demo executable ($(($entries | Measure-Object).Count) entries)."
+          } finally {
+            $archive.Dispose()
+          }
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ inputs.installer_artifact }}
+          path: ${{ inputs.installer_path }}
+          retention-days: 1
+
+      - name: Upload nuget-packages
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ inputs.nuget_artifact }}
+          path: artifacts/nuget/*.nupkg
+          retention-days: 1

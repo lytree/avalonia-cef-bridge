@@ -2,8 +2,9 @@ name: release
 
 # 发布流水线（docs/dev-workflow-design.md §6.3 / §10，W0–W5 共同交付）。
 #   触发：push tag `tarui-v{version}`（推荐，版本单源）或手动 dispatch。
-#   流程：门禁 → Windows zip;msix、macOS osx-arm64 .app、Linux linux-x64 zip
-#         并行构建 → NuGet 拓扑序推送（--skip-duplicate）→ @lytree/api npm publish
+#   流程：门禁 → 三平台并行（pack-and-build 调用 ./_pack-and-build.yml reusable workflow，
+#         windows 跑 zip+msix、macOS 跑 osx-arm64 .app、linux 跑 linux-x64 self-contained zip）
+#         → NuGet 拓扑序推送（--skip-duplicate）→ @lytree/api npm publish
 #         → softprops/action-gh-release 上传全部产物到 GitHub Release。
 #   密钥：GitHub Environments `release` + OIDC 预留（§12）。见 README「发布」节。
 on:
@@ -236,280 +237,59 @@ jobs:
 
 
   pack-and-build:
-    name: pack + demo build + cli build (原子化、串行)
+    name: pack + demo build + cli build (windows zip+msix)
     needs: validate
-    runs-on: windows-latest
-    environment: release
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
-          cache: true
-          cache-dependency-path: tarui.net.slnx
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.15.1
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
-
-      - name: Install CEF runtime (win-x64)
-        run: ./eng/cef/install-runtime.ps1 -RuntimeIdentifier win-x64
-
-      - name: Install demo frontend deps (frozen)
-        shell: bash
-        working-directory: examples/demo/web
-        run: pnpm install --frozen-lockfile
-
-      - name: Configure optional Authenticode signing
-        shell: pwsh
-        run: |
-          $b64 = '${{ secrets.WINDOWS_CERT_BASE64 }}'
-          if (-not $b64) {
-            Write-Host 'No WINDOWS_CERT_BASE64; emitting unsigned MSIX.'
-            exit 0
-          }
-          $certPath = Join-Path ($env:RUNNER_TEMP) 'tarui-sign.pfx'
-          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($b64))
-          $manifestPath = 'examples/demo/tarui.app.json'
-          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-          if (-not $manifest.bundle.msix) { $manifest.bundle | Add-Member -NotePropertyName msix -NotePropertyValue @{} -Force }
-          $manifest.bundle.msix.publisher = '${{ secrets.WINDOWS_CERT_PUBLISHER }}'
-          $manifest.bundle.msix.certificate = @{
-            path           = $certPath
-            password       = '${{ secrets.WINDOWS_CERT_PASSWORD }}'
-            timeStamperUrl = '${{ secrets.WINDOWS_CERT_TIMESTAMP }}'
-          }
-          $manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath
-          Write-Host 'Signing configured.'
-
-      - name: dotnet pack (artifacts/nuget)
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        shell: pwsh
-        run: |
-          if (-not $env:VERSION) { throw 'VERSION from validate.outputs is empty.' }
-          Write-Host "Packing Tarui.NET solution at VERSION=$env:VERSION."
-          dotnet restore tarui.net.slnx --configfile NuGet.Config
-          dotnet pack tarui.net.slnx -c Release --no-restore --nologo -o artifacts/nuget
-
-      - name: Build cli + demo frontend + bundle (zip;msix)
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        shell: pwsh
-        run: |
-          if (-not $env:VERSION) { throw 'VERSION from validate.outputs is empty.' }
-          dotnet build src/tarui-cli/Tarui.Cli.csproj -c Release --no-restore
-          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config examples/demo/tarui.app.json build --bundle zip,msix
-
-      - name: Upload installers
-        uses: actions/upload-artifact@v5
-        with:
-          name: installers
-          path: examples/demo/dist/
-          retention-days: 1
-
-      - name: Upload nuget-packages
-        uses: actions/upload-artifact@v5
-        with:
-          name: nuget-packages
-          path: artifacts/nuget/*.nupkg
-          retention-days: 1
+    uses: ./.github/workflows/_pack-and-build.yml
+    with:
+      os: windows
+      cef_runtime_id: win-x64
+      bundle_csv: zip,msix
+      rid: win-x64
+      installer_artifact: installers
+      installer_path: examples/demo/dist/
+      nuget_artifact: nuget-packages
+      enable_signing: 'true'
+      version: ${{ needs.validate.outputs.version }}
+    secrets:
+      WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+      WINDOWS_CERT_PUBLISHER: ${{ secrets.WINDOWS_CERT_PUBLISHER }}
+      WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+      WINDOWS_CERT_TIMESTAMP: ${{ secrets.WINDOWS_CERT_TIMESTAMP }}
 
 
   pack-and-build-macos:
-    name: pack + macOS app bundle (osx-arm64, unsigned)
+    name: pack + macOS app bundle (osx-arm64)
     needs: validate
-    runs-on: macos-14
-    environment: release
-    defaults:
-      run:
-        shell: bash
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
-          cache: true
-          cache-dependency-path: tarui.net.slnx
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.15.1
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
-
-      - name: Install demo frontend deps (frozen)
-        working-directory: examples/demo/web
-        run: pnpm install --frozen-lockfile
-
-      - name: dotnet pack (artifacts/nuget)
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          if [ -z "$VERSION" ]; then echo "::error::VERSION from validate.outputs is empty"; exit 1; fi
-          dotnet restore tarui.net.slnx --configfile NuGet.Config
-          dotnet pack tarui.net.slnx -c Release --no-restore --nologo -o artifacts/nuget
-
-      - name: Build cli + demo bundle (osx-arm64, app-bundle)
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          if [ -z "$VERSION" ]; then echo "::error::VERSION from validate.outputs is empty"; exit 1; fi
-          # Switch the demo manifest to opt into the macOS app-bundle target in a scratch sandbox
-          # so the in-repo examples/demo/tarui.app.json stays zip-only. The CLI refuses 'app-bundle'
-          # without an osx-* RID; MacOsBundleBuilder.AllowedRids enforces the allow-list. The
-          # sandbox holds only the manifest plus a capabilities/ copy (the CLI resolves capability
-          # files against the manifest directory). Every other manifest-relative reference
-          # (build.frontend, build.frontendDist, build.desktopProject, --out) is rewritten to
-          # point at its repo-rooted absolute location. The demo web/ directory stays in its
-          # repo location so pnpm's --frozen-lockfile importer anchoring matches the path that
-          # wrote pnpm-lock.yaml — copying or symlinking it into the sandbox misanchors the
-          # lockfile and pnpm rejects it as a non-matching importer.
-          sandbox="$RUNNER_TEMP/tarui.mac.sandbox"
-          scratch="$sandbox/tarui.app.json"
-          amend="$sandbox/_amend.ps1"
-          rm -rf "$sandbox"
-          mkdir -p "$sandbox"
-          demoRoot="$(pwd)/examples/demo"
-          repoRoot="$(pwd)"
-          cp -R "$demoRoot/capabilities" "$sandbox/capabilities"
-          cat > "$amend" <<PWSH
-          \$json = Get-Content "$demoRoot/tarui.app.json" -Raw | ConvertFrom-Json
-          if (-not \$json.bundle.targets.Contains('app-bundle')) { \$json.bundle.targets = @('app-bundle') }
-          if (-not \$json.bundle.macOS) {
-            \$json.bundle | Add-Member -NotePropertyName 'macOS' -NotePropertyValue ([PSCustomObject]@{
-              bundleId = 'dev.demo'
-              executableName = 'demo'
-              minimumSystemVersion = '11.0'
-              schemes = @('tarui')
-            }) -Force
-          }
-          \$json.build.desktopProject = "$repoRoot/examples/demo/Demo.Desktop/Demo.Desktop.csproj"
-          \$json.build.frontend        = "$repoRoot/examples/demo/web"
-          \$json.build.frontendDist    = "$repoRoot/examples/demo/web/dist"
-          \$json | ConvertTo-Json -Depth 10 | Set-Content \$env:TARUI_MAC_SCRATCH
-          PWSH
-          TARUI_MAC_SCRATCH="$scratch" pwsh -NoProfile -File "$amend"
-          cat "$scratch"
-          dotnet build src/tarui-cli/Tarui.Cli.csproj -c Release --no-restore
-          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config "$scratch" build --bundle app-bundle --rid osx-arm64 --out "$repoRoot/examples/demo/dist"
-
-      - name: plutil -lint Info.plist + CFBundleURLTypes spot-check
-        run: |
-          set -euo pipefail
-          INFO=examples/demo/dist/demo.app/Contents/Info.plist
-          plutil -lint "$INFO"
-          plutil -extract CFBundleURLTypes xml1 -o - "$INFO" | grep -q '<string>tarui</string>' \
-            || { echo "::error::CFBundleURLTypes missing <string>tarui</string>"; exit 1; }
-
-      - name: Upload macOS installers (app + tar.gz + nupkgs)
-        uses: actions/upload-artifact@v5
-        with:
-          name: installers-macos
-          path: |
-            examples/demo/dist/demo.app/
-            examples/demo/dist/demo-*.app.tar.gz
-            examples/demo/dist/demo-*.app.tar.gz.sha256
-          retention-days: 1
-
-      - name: Upload macOS nuget-packages
-        uses: actions/upload-artifact@v5
-        with:
-          name: nuget-packages-macos
-          path: artifacts/nuget/*.nupkg
-          retention-days: 1
+    uses: ./.github/workflows/_pack-and-build.yml
+    with:
+      os: macos
+      bundle_csv: app-bundle
+      rid: osx-arm64
+      installer_artifact: installers-macos
+      installer_path: |
+        examples/demo/dist/demo.app/
+        examples/demo/dist/demo-*.app.tar.gz
+        examples/demo/dist/demo-*.app.tar.gz.sha256
+      nuget_artifact: nuget-packages-macos
+      plutil_check: 'true'
+      version: ${{ needs.validate.outputs.version }}
+    # macOS 无需 WINDOWS_CERT_* —— reusable workflow 的 secrets 全部 required: false，直接省略。
 
 
   pack-and-build-linux:
     name: pack + Linux self-contained zip (linux-x64)
     needs: validate
-    runs-on: ubuntu-latest
-    environment: release
-    defaults:
-      run:
-        shell: pwsh
-    env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
-          cache: true
-          cache-dependency-path: tarui.net.slnx
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.15.1
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
-
-      - name: Install demo frontend deps (frozen)
-        working-directory: examples/demo/web
-        run: pnpm install --frozen-lockfile
-
-      - name: Install CEF runtime (linux-x64)
-        run: ./eng/cef/install-runtime.ps1 -RuntimeIdentifier linux-x64
-
-      - name: dotnet pack (artifacts/nuget)
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          if (-not $env:VERSION) { throw 'VERSION from validate.outputs is empty.' }
-          dotnet restore tarui.net.slnx --configfile NuGet.Config
-          dotnet pack tarui.net.slnx -c Release --no-restore --nologo -o artifacts/nuget
-
-      - name: Build cli + demo bundle (linux-x64, zip)
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          if (-not $env:VERSION) { throw 'VERSION from validate.outputs is empty.' }
-          # linux-x64 self-contained publish via the same --bundle zip target used on Windows:
-          # `tarui build` walks the manifest, runs beforeBuildCommand, then dotnet publish
-          # for the requested RID, and finally stages the zip artifact under --out.
-          dotnet build src/tarui-cli/Tarui.Cli.csproj -c Release --no-restore
-          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config examples/demo/tarui.app.json build --bundle zip --rid linux-x64 --out "$PWD/examples/demo/dist"
-
-      - name: Smoke-test the produced zip
-        run: |
-          $zip = Get-ChildItem -Path examples/demo/dist -Filter 'demo-*.zip' -File | Select-Object -First 1
-          if (-not $zip) { throw 'No demo-*.zip produced for linux-x64.' }
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $archive = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
-          try {
-            $entries = $archive.Entries.FullName
-            if (-not ($entries -match 'demo(\.deps\.json)?$')) { throw "Zip missing demo entry; entries: $($entries -join ', ')" }
-            Write-Host "Zip contains demo executable ($(($entries | Measure-Object).Count) entries)."
-          } finally {
-            $archive.Dispose()
-          }
-
-      - name: Upload Linux installers
-        uses: actions/upload-artifact@v5
-        with:
-          name: installers-linux
-          path: examples/demo/dist/demo-*.zip
-          retention-days: 1
-
-      - name: Upload Linux nuget-packages
-        uses: actions/upload-artifact@v5
-        with:
-          name: nuget-packages-linux
-          path: artifacts/nuget/*.nupkg
-          retention-days: 1
+    uses: ./.github/workflows/_pack-and-build.yml
+    with:
+      os: linux
+      cef_runtime_id: linux-x64
+      bundle_csv: zip
+      rid: linux-x64
+      installer_artifact: installers-linux
+      installer_path: examples/demo/dist/demo-*.zip
+      nuget_artifact: nuget-packages-linux
+      smoke_test_zip: 'true'
+      version: ${{ needs.validate.outputs.version }}
 
 
   release:
