@@ -365,19 +365,21 @@ jobs:
           # Switch the demo manifest to opt into the macOS app-bundle target in a scratch sandbox
           # so the in-repo examples/demo/tarui.app.json stays zip-only. The CLI refuses 'app-bundle'
           # without an osx-* RID; MacOsBundleBuilder.AllowedRids enforces the allow-list. The
-          # sandbox holds only the bare manifest; capabilities/, Demo.Desktop/, and web/ are
-          # symlinked back to their repo locations so every manifest-relative path (including the
-          # demo web pnpm workspace whose workspace:* resolves to web/packages/api) keeps the same
-          # resolution it has for the in-repo manifest. node_modules and web/dist remain in the
-          # repo and are not inflated into $RUNNER_TEMP.
+          # sandbox holds only the manifest plus a capabilities/ copy (the CLI resolves capability
+          # files against the manifest directory). Every other manifest-relative reference
+          # (build.frontend, build.frontendDist, build.desktopProject, --out) is rewritten to
+          # point at its repo-rooted absolute location. The demo web/ directory stays in its
+          # repo location so pnpm's --frozen-lockfile importer anchoring matches the path that
+          # wrote pnpm-lock.yaml — copying or symlinking it into the sandbox misanchors the
+          # lockfile and pnpm rejects it as a non-matching importer.
           sandbox="$RUNNER_TEMP/tarui.mac.sandbox"
           scratch="$sandbox/tarui.app.json"
           amend="$sandbox/_amend.ps1"
+          rm -rf "$sandbox"
           mkdir -p "$sandbox"
           demoRoot="$(pwd)/examples/demo"
-          ln -sfn "$demoRoot/capabilities" "$sandbox/capabilities"
-          ln -sfn "$demoRoot/Demo.Desktop" "$sandbox/Demo.Desktop"
-          ln -sfn "$demoRoot/web"          "$sandbox/web"
+          repoRoot="$(pwd)"
+          cp -R "$demoRoot/capabilities" "$sandbox/capabilities"
           cat > "$amend" <<PWSH
           \$json = Get-Content "$demoRoot/tarui.app.json" -Raw | ConvertFrom-Json
           if (-not \$json.bundle.targets.Contains('app-bundle')) { \$json.bundle.targets = @('app-bundle') }
@@ -389,12 +391,15 @@ jobs:
               schemes = @('tarui')
             }) -Force
           }
+          \$json.build.desktopProject = "$repoRoot/examples/demo/Demo.Desktop/Demo.Desktop.csproj"
+          \$json.build.frontend        = "$repoRoot/examples/demo/web"
+          \$json.build.frontendDist    = "$repoRoot/examples/demo/web/dist"
           \$json | ConvertTo-Json -Depth 10 | Set-Content \$env:TARUI_MAC_SCRATCH
           PWSH
           TARUI_MAC_SCRATCH="$scratch" pwsh -NoProfile -File "$amend"
           cat "$scratch"
           dotnet build src/tarui-cli/Tarui.Cli.csproj -c Release --no-restore
-          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config "$scratch" build --bundle app-bundle --rid osx-arm64 --out examples/demo/dist
+          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config "$scratch" build --bundle app-bundle --rid osx-arm64 --out "$repoRoot/examples/demo/dist"
 
       - name: plutil -lint Info.plist + CFBundleURLTypes spot-check
         run: |

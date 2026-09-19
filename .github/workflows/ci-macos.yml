@@ -81,25 +81,24 @@ jobs:
           # Ensure the demo manifest opts into the macOS app-bundle target before invoking.
           # The CLI refuses to emit a .app without an explicit 'app-bundle' target and a known
           # osx-* RID (MacOsBundleBuilder.AllowedRids). We amend the manifest in a scratch sandbox
-          # so the in-repo examples/demo/tarui.app.json stays zip-only. The sandbox also copies
-          # the demo's capabilities/ subtree next to the scratch manifest — AppManifestValidator
-          # resolves capabilities/{id}.json relative to the manifest directory, not the repo root,
-          # so a bare scratch manifest without a capabilities/ sibling would falsely report
-          # "references 'main' but capabilities/main.json was not found".
+          # so the in-repo examples/demo/tarui.app.json stays zip-only. The sandbox holds only
+          # the manifest plus a capabilities/ copy (CLI resolves capability files against the
+          # manifest directory). Every other manifest-relative reference (build.frontend,
+          # build.frontendDist, build.desktopProject, --out) is rewritten to point at its
+          # repo-rooted absolute location. The demo web/ directory stays in its repo location so
+          # pnpm's --frozen-lockfile importer anchoring matches the path that wrote
+          # pnpm-lock.yaml — copying or symlinking it into the sandbox misanchors the lockfile
+          # and pnpm rejects it as a non-matching importer.
           $sandbox = Join-Path $env:RUNNER_TEMP 'tarui.mac.sandbox'
           $scratch = Join-Path $sandbox 'tarui.app.json'
           New-Item -ItemType Directory -Path $sandbox -Force | Out-Null
-          # Keep the sandbox co-located with the repo rather than copying trees. Symlinking the
-          # demo's heavy children back to their repo locations preserves every manifest-relative
-          # path (capabilities/, desktopProject, frontendDist, web/ as a real pnpm workspace
-          # whose workspace:* resolves to web/packages/api) without inflating $RUNNER_TEMP with
-          # node_modules, web/dist, etc. The scratch manifest then overlays the macOS-only fields
-          # the in-repo manifest must not gain. Only the bare manifest lives inside the sandbox.
           $demoRoot = (Resolve-Path examples/demo).Path
-          New-Item -ItemType SymbolicLink -Path (Join-Path $sandbox 'capabilities') -Target (Join-Path $demoRoot 'capabilities') | Out-Null
-          New-Item -ItemType SymbolicLink -Path (Join-Path $sandbox 'Demo.Desktop') -Target (Join-Path $demoRoot 'Demo.Desktop') | Out-Null
-          New-Item -ItemType SymbolicLink -Path (Join-Path $sandbox 'web') -Target (Join-Path $demoRoot 'web') | Out-Null
+          $repoRoot = (Resolve-Path '.').Path
+          Copy-Item -Recurse -Force (Join-Path $demoRoot 'capabilities') (Join-Path $sandbox 'capabilities')
           $json = Get-Content (Join-Path $demoRoot 'tarui.app.json') -Raw | ConvertFrom-Json
+          $json.build.desktopProject = (Join-Path $repoRoot 'examples/demo/Demo.Desktop/Demo.Desktop.csproj')
+          $json.build.frontend        = (Join-Path $repoRoot 'examples/demo/web')
+          $json.build.frontendDist    = (Join-Path $repoRoot 'examples/demo/web/dist')
           if (-not $json.bundle.targets.Contains('app-bundle')) {
             $json.bundle.targets = @('app-bundle')
           }
@@ -114,7 +113,8 @@ jobs:
           $json | ConvertTo-Json -Depth 10 | Set-Content $scratch
           Get-Content $scratch
 
-          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config $scratch build --bundle app-bundle --rid osx-arm64 --out examples/demo/dist
+          $outDir = (Join-Path $repoRoot 'examples/demo/dist')
+          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config $scratch build --bundle app-bundle --rid osx-arm64 --out "$outDir"
 
       - name: Inspect dist artifacts (existence + size)
         shell: bash
