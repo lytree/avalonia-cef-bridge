@@ -39,10 +39,41 @@
         "targets": {
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string", "enum": ["zip", "msix"] }
+          "items": { "type": "string", "enum": ["zip", "msix", "app-bundle"] }
         },
         "icon": { "type": "string" },
-        "shortDescription": { "type": "string" }
+        "shortDescription": { "type": "string" },
+        "macOS": {
+          "type": "object",
+          "description": "macOS application bundle options. Consumed by tarui build --bundle app-bundle; ignored otherwise. Schemes are injected into Info.plist CFBundleURLTypes so the OS hands deep-link activations to this app.",
+          "additionalProperties": false,
+          "properties": {
+            "bundleId": {
+              "type": "string",
+              "description": "Reverse-DNS CFBundleIdentifier. Defaults to product.identifier when omitted."
+            },
+            "executableName": {
+              "type": "string",
+              "description": "CFBundleExecutable inside Contents/MacOS. Defaults to the product name when omitted."
+            },
+            "minimumSystemVersion": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+){0,2}$",
+              "description": "LSMinimumSystemVersion. Defaults to a RID-derived minimum (11.0 for osx-arm64, 10.15 for osx-x64)."
+            },
+            "schemes": {
+              "type": "array",
+              "description": "Custom URL schemes registered via CFBundleURLTypes. Token grammar mirrors Tarui:Application:DeepLinkSchemes (RFC 3986 scheme: ALPHA *( ALPHA / DIGIT / + / - / . )).",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z][A-Za-z0-9+.\\-]*$",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "uniqueItems": true
+            }
+          }
+        }
       }
     },
     "app": {

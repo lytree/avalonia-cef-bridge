@@ -156,6 +156,7 @@ internal sealed class BuildCommand
         {
             "zip" => await BundleZipAsync(manifest, binDir, outDir, rid).ConfigureAwait(false),
             "msix" => await BundleMsixAsync(manifest, binDir, outDir, rid).ConfigureAwait(false),
+            "app-bundle" => await BundleAppBundleAsync(manifest, binDir, outDir, rid).ConfigureAwait(false),
             _ => throw new CliException($"Unsupported bundle target '{target}'.")
         };
     }
@@ -199,6 +200,26 @@ internal sealed class BuildCommand
             new BundleArtifact(
                 RelativeName: relativeName,
                 AbsolutePath: result.Path,
+                Sha256: result.Sha256)
+        ];
+    }
+
+    private async Task<List<BundleArtifact>> BundleAppBundleAsync(AppManifest manifest, string binDir, string outDir, string rid)
+    {
+        _console.Info($"Packaging macOS app bundle (unsigned, no notarization) from {binDir} ...");
+        var result = await MacOsBundleBuilder.BuildAsync(manifest, binDir, outDir, rid).ConfigureAwait(false);
+        var bundleRelative = Path.GetFileName(result.BundlePath);
+        var archiveRelative = Path.GetFileName(result.TarGzPath);
+        _console.Info(
+            $"Wrote macOS bundle {bundleRelative} + {archiveRelative} (sha256 {result.Sha256[..16]}...).");
+        _console.Warn(
+            "The macOS bundle is unsigned and un-notarized. Run `codesign --deep --sign <identity> <bundle>.app` " +
+            "and `xcrun notarytool submit` before distributing outside the developer machine.");
+        return
+        [
+            new BundleArtifact(
+                RelativeName: archiveRelative,
+                AbsolutePath: result.TarGzPath,
                 Sha256: result.Sha256)
         ];
     }

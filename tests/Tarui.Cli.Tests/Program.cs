@@ -791,6 +791,17 @@ internal static class Program
         AppxManifestHasExpectedFields();
         BlockMapMatchesPackageContents();
         EndToEndPacksValidPackage();
+        InfoPlistRendersAllRequiredKeys();
+        InfoPlistEmitsUrlTypesForEveryScheme();
+        InfoPlistDeduplicatesRepeatedScheme();
+        InfoPlistRejectsInvalidSchemeToken();
+        InfoPlistRejectsBadBundleId();
+        InfoPlistUsesRidDefaultForMinimumSystemVersion();
+        MacOsBundleValidatesRid();
+        MacOsBundleProducesExpectedLayout();
+        MacOsBundleEmitsTarGzArchive();
+        AppBundleTargetAcceptedByValidator();
+        MacOsSchemesWithoutTargetIsReported();
     }
 
     private static void ParsesMsixManifest()
@@ -909,6 +920,219 @@ internal static class Program
               "bundle": { "targets": ["msix"] }
             }
             """);
+
+    private static AppManifest ManifestForAppBundle(params string[] schemes) =>
+        AppManifestLoader.Parse(
+            $$"""
+            {
+              "product": { "name": "my-app", "version": "0.1.0", "identifier": "com.example.app" },
+              "build": { "frontendDist": "web/dist" },
+              "bundle": {
+                "targets": ["app-bundle"],
+                "macOS": {
+                  "bundleId": "com.example.app",
+                  "schemes": [{{string.Join(", ", schemes.Select(static s => $"\"{s}\""))}}]
+                }
+              }
+            }
+            """);
+
+    private static void InfoPlistRendersAllRequiredKeys()
+    {
+        var manifest = ManifestForAppBundle("tarui");
+        var infoPlist = InfoPlistBuilder.Build(manifest, "osx-arm64");
+
+        Assert(infoPlist.StartsWith("<?xml", StringComparison.Ordinal),
+            "Info.plist must declare the XML 1.0 processing instruction.");
+        Assert(infoPlist.Contains("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\"", StringComparison.Ordinal),
+            "Info.plist must declare the PLIST 1.0 DOCTYPE for plutil compatibility.");
+        Assert(infoPlist.Contains("<plist version=\"1.0\">", StringComparison.Ordinal),
+            "Info.plist must wrap the body in <plist version=\"1.0\">.");
+        foreach (var required in new[]
+                 {
+                     "CFBundleIdentifier", "CFBundleName", "CFBundleDisplayName",
+                     "CFBundleExecutable", "CFBundleVersion", "CFBundleShortVersionString",
+                     "CFBundlePackageType", "CFBundleSignature", "LSMinimumSystemVersion",
+                     "NSHighResolutionCapable", "NSPrincipalClass",
+                 })
+        {
+            Assert(infoPlist.Contains($"<key>{required}</key>", StringComparison.Ordinal),
+                $"Info.plist must declare the {required} key.");
+        }
+
+        Assert(infoPlist.Contains("<string>com.example.app</string>", StringComparison.Ordinal),
+            "The bundle identifier from the manifest must be carried into CFBundleIdentifier.");
+        Assert(infoPlist.Contains("<string>my-app</string>", StringComparison.Ordinal),
+            "The product name must populate CFBundleName / CFBundleDisplayName.");
+        Assert(infoPlist.Contains("<string>APPL</string>", StringComparison.Ordinal),
+            "CFBundlePackageType must be APPL for an application bundle.");
+    }
+
+    private static void InfoPlistEmitsUrlTypesForEveryScheme()
+    {
+        var manifest = ManifestForAppBundle("tarui", "market");
+        var infoPlist = InfoPlistBuilder.Build(manifest, "osx-arm64");
+
+        Assert(infoPlist.Contains("<key>CFBundleURLTypes</key>", StringComparison.Ordinal),
+            "Info.plist must declare CFBundleURLTypes when schemes are configured.");
+        Assert(infoPlist.Contains("<string>tarui</string>", StringComparison.Ordinal),
+            "Every configured scheme must appear under CFBundleURLSchemes.");
+        Assert(infoPlist.Contains("<string>market</string>", StringComparison.Ordinal),
+            "Every configured scheme must appear under CFBundleURLSchemes.");
+        Assert(infoPlist.Contains("net.tarui.tarui", StringComparison.Ordinal),
+            "CFBundleURLName must use the net.tarui.<scheme> convention for primary scheme.");
+        Assert(infoPlist.Contains("net.tarui.market", StringComparison.Ordinal),
+            "CFBundleURLName must use the net.tarui.<scheme> convention for the second scheme.");
+    }
+
+    private static void InfoPlistDeduplicatesRepeatedScheme()
+    {
+        var manifest = ManifestForAppBundle("tarui", "tarui");
+        var urlTypes = InfoPlistBuilder.BuildUrlTypes(manifest.Bundle.MacOs!.Schemes);
+
+        var occurrences = CountOccurrences(urlTypes, "<string>tarui</string>");
+        Assert(occurrences == 1,
+            $"Repeated schemes must collapse to a single CFBundleURLTypes entry, got {occurrences}.");
+    }
+
+    private static void InfoPlistRejectsInvalidSchemeToken()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "my-app", "version": "0.1.0", "identifier": "com.example.app" },
+              "build": { "frontendDist": "web/dist" },
+              "bundle": {
+                "targets": ["app-bundle"],
+                "macOS": { "schemes": ["1bad"] }
+              }
+            }
+            """);
+        Throws<CliException>(
+            () => InfoPlistBuilder.Build(manifest, "osx-arm64"),
+            "Schemes starting with a digit must be rejected at injection time.");
+    }
+
+    private static void InfoPlistRejectsBadBundleId()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "my-app", "version": "0.1.0", "identifier": "com.example.app" },
+              "build": { "frontendDist": "web/dist" },
+              "bundle": {
+                "targets": ["app-bundle"],
+                "macOS": { "bundleId": "Not A Bundle Id" }
+              }
+            }
+            """);
+        Throws<CliException>(
+            () => InfoPlistBuilder.Build(manifest, "osx-arm64"),
+            "CFBundleIdentifier must follow the reverse-DNS grammar.");
+    }
+
+    private static void InfoPlistUsesRidDefaultForMinimumSystemVersion()
+    {
+        var arm = InfoPlistBuilder.Build(ManifestForAppBundle(), "osx-arm64");
+        Assert(arm.Contains("<string>11.0</string>", StringComparison.Ordinal),
+            "osx-arm64 must default LSMinimumSystemVersion to 11.0.");
+
+        var x64 = InfoPlistBuilder.Build(ManifestForAppBundle(), "osx-x64");
+        Assert(x64.Contains("<string>10.15</string>", StringComparison.Ordinal),
+            "osx-x64 must default LSMinimumSystemVersion to 10.15.");
+    }
+
+    private static void MacOsBundleValidatesRid()
+    {
+        using var directory = TempDirectory.Create();
+        var binDir = Path.Combine(directory.Path, "bin");
+        Directory.CreateDirectory(binDir);
+        File.WriteAllText(Path.Combine(binDir, "my-app"), "binary");
+        Throws<CliException>(
+            () => MacOsBundleBuilder.BuildAsync(ManifestForAppBundle("tarui"), binDir, directory.Path, "win-x64").GetAwaiter().GetResult(),
+            "Non-macOS RIDs must be rejected by the bundle builder.");
+    }
+
+    private static void MacOsBundleProducesExpectedLayout()
+    {
+        using var directory = TempDirectory.Create();
+        var binDir = Path.Combine(directory.Path, "bin");
+        Directory.CreateDirectory(binDir);
+        File.WriteAllText(Path.Combine(binDir, "my-app"), "binary");
+        File.WriteAllText(Path.Combine(binDir, "my-app.dll"), "managed");
+        File.WriteAllText(Path.Combine(binDir, "index.html"), "<html></html>");
+
+        var result = MacOsBundleBuilder.BuildAsync(ManifestForAppBundle("tarui"), binDir, directory.Path, "osx-arm64").GetAwaiter().GetResult();
+        Assert(Directory.Exists(Path.Combine(result.BundlePath, "Contents", "MacOS")),
+            "Contents/MacOS must exist inside the assembled bundle.");
+        Assert(File.Exists(Path.Combine(result.BundlePath, "Contents", "Info.plist")),
+            "Contents/Info.plist must be written.");
+        Assert(File.Exists(Path.Combine(result.BundlePath, "Contents", "PkgInfo")),
+            "Contents/PkgInfo must be written.");
+        Assert(File.Exists(Path.Combine(result.BundlePath, "Contents", "MacOS", "my-app")),
+            "The product executable must be promoted into Contents/MacOS.");
+        Assert(File.Exists(Path.Combine(result.BundlePath, "Contents", "Resources", "my-app.dll")),
+            "Managed assemblies must be carried into Contents/Resources.");
+        Assert(File.Exists(Path.Combine(result.BundlePath, "Contents", "Resources", "index.html")),
+            "Frontend assets must be carried into Contents/Resources.");
+    }
+
+    private static void MacOsBundleEmitsTarGzArchive()
+    {
+        using var directory = TempDirectory.Create();
+        var binDir = Path.Combine(directory.Path, "bin");
+        Directory.CreateDirectory(binDir);
+        File.WriteAllText(Path.Combine(binDir, "my-app"), "binary");
+
+        var result = MacOsBundleBuilder.BuildAsync(ManifestForAppBundle("tarui"), binDir, directory.Path, "osx-arm64").GetAwaiter().GetResult();
+        Assert(File.Exists(result.TarGzPath), "The tar.gz archive must be written next to the bundle directory.");
+        Assert(result.TarGzPath.EndsWith(".app.tar.gz", StringComparison.OrdinalIgnoreCase),
+            "The archive must carry the .app.tar.gz suffix.");
+        Assert(result.Sha256.Length == 64, "The archive SHA-256 must be computed.");
+    }
+
+    private static void AppBundleTargetAcceptedByValidator()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "my-app", "version": "0.1.0", "identifier": "com.example.app" },
+              "build": { "frontendDist": "web/dist" },
+              "bundle": { "targets": ["app-bundle"] }
+            }
+            """);
+        var errors = AppManifestValidator.Validate(manifest, ".");
+        Assert(errors.Count == 0,
+            $"An app-bundle target alone must validate, got: {string.Join("; ", errors)}");
+    }
+
+    private static void MacOsSchemesWithoutTargetIsReported()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "a", "version": "0.1.0", "identifier": "a" },
+              "build": { "frontendDist": "d" },
+              "bundle": { "targets": ["zip"], "macOS": { "schemes": ["tarui"] } }
+            }
+            """);
+        var errors = AppManifestValidator.Validate(manifest, ".");
+        Assert(Has(errors, "'app-bundle'"),
+            "bundle.macOS without an app-bundle target must be reported.");
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = haystack.IndexOf(needle, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += needle.Length;
+        }
+
+        return count;
+    }
 
     private static bool Has(IEnumerable<string> errors, string fragment) =>
         errors.Any(error => error.Contains(fragment, StringComparison.Ordinal));

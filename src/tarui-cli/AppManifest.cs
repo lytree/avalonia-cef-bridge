@@ -23,7 +23,8 @@ internal sealed record AppManifestBundle(
     IReadOnlyList<string> Targets,
     string? Icon,
     string? ShortDescription,
-    AppManifestMsix? Msix);
+    AppManifestMsix? Msix,
+    AppManifestMacOs? MacOs);
 
 /// <summary>MSIX bundle configuration (design §5.5 / W5). Signing stays optional:
 /// the packer emits a structurally valid package, and Authenticode signing runs when
@@ -35,6 +36,19 @@ internal sealed record AppManifestMsix(
     string? TimeStamperUrl);
 
 internal sealed record AppManifestApp(IReadOnlyList<string> Capabilities);
+
+/// <summary>
+/// macOS application bundle configuration (W5). The CLI uses <see cref="Schemes"/> to drive
+/// <c>CFBundleURLTypes</c> in <c>Info.plist</c>; <see cref="BundleId"/> / <see cref="ExecutableName"/>
+/// / <see cref="MinimumSystemVersion"/> override the default derivations from <c>product</c>.
+/// Notarization and stapling stay out of scope (Windows-first CLI; macOS produces an unsigned
+/// unsigned .app bundle that an operator can notarize before distribution).
+/// </summary>
+internal sealed record AppManifestMacOs(
+    string? BundleId,
+    string? ExecutableName,
+    string? MinimumSystemVersion,
+    IReadOnlyList<string> Schemes);
 
 /// <summary>JSON-bound DTO (camelCase, source generated). Unknown properties such as $schema are ignored.</summary>
 internal sealed class AppManifestDto
@@ -68,6 +82,15 @@ internal sealed class AppManifestBundleDto
     [JsonPropertyName("icon")] public string? Icon { get; set; }
     [JsonPropertyName("shortDescription")] public string? ShortDescription { get; set; }
     [JsonPropertyName("msix")] public AppManifestMsixDto? Msix { get; set; }
+    [JsonPropertyName("macOS")] public AppManifestMacOsDto? MacOs { get; set; }
+}
+
+internal sealed class AppManifestMacOsDto
+{
+    [JsonPropertyName("bundleId")] public string? BundleId { get; set; }
+    [JsonPropertyName("executableName")] public string? ExecutableName { get; set; }
+    [JsonPropertyName("minimumSystemVersion")] public string? MinimumSystemVersion { get; set; }
+    [JsonPropertyName("schemes")] public List<string>? Schemes { get; set; }
 }
 
 internal sealed class AppManifestMsixDto
@@ -126,7 +149,8 @@ internal static class AppManifestLoader
                 dto.Bundle?.Targets ?? [],
                 dto.Bundle?.Icon,
                 dto.Bundle?.ShortDescription,
-                ToMsix(dto.Bundle?.Msix)),
+                ToMsix(dto.Bundle?.Msix),
+                ToMacOs(dto.Bundle?.MacOs)),
             dto.App is null
                 ? null
                 : new AppManifestApp(dto.App.Capabilities ?? []));
@@ -144,6 +168,26 @@ internal static class AppManifestLoader
             dto.Certificate?.Path,
             dto.Certificate?.Password,
             dto.Certificate?.TimeStamperUrl);
+    }
+
+    private static AppManifestMacOs? ToMacOs(AppManifestMacOsDto? dto)
+    {
+        if (dto is null)
+        {
+            return null;
+        }
+
+        // Filter out whitespace-only entries early so the CLI surface stays deterministic; the
+        // downstream builder re-validates each token before injection.
+        var schemes = (dto.Schemes ?? [])
+            .Where(scheme => !string.IsNullOrWhiteSpace(scheme))
+            .Select(scheme => scheme.Trim())
+            .ToArray();
+        return new AppManifestMacOs(
+            string.IsNullOrWhiteSpace(dto.BundleId) ? null : dto.BundleId.Trim(),
+            string.IsNullOrWhiteSpace(dto.ExecutableName) ? null : dto.ExecutableName.Trim(),
+            string.IsNullOrWhiteSpace(dto.MinimumSystemVersion) ? null : dto.MinimumSystemVersion.Trim(),
+            schemes);
     }
 
     public static AppManifest Load(string manifestPath)
