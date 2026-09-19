@@ -55,4 +55,7 @@ export async function matches(options: CliParseOptions): Promise<CliParseResult>
   return parseCli(options)
 }
 
+// Alias kept for parity with the root `@lytree/api` namespace re-exports.
+export const parseCliArgs = parseCli
+
 export const cli = { parse: parseCli, matches } as const

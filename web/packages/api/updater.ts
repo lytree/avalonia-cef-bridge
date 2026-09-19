@@ -100,7 +100,16 @@ export const updater = {
   check,
   download,
   apply,
+  // Aliases kept for parity with the root `@lytree/api` namespace re-exports.
+  checkUpdate: check,
+  downloadUpdate: download,
+  applyUpdate: apply,
   onStatus,
   updaterStatusPhases,
   UPDATER_STATUS_EVENT,
 } as const
+
+// Named aliases for direct `import { checkUpdate } from '@lytree/api/updater'` style usage.
+export const checkUpdate = check
+export const downloadUpdate = download
+export const applyUpdate = apply

@@ -56,6 +56,22 @@
       "types": "./dist/clipboard.d.ts",
       "default": "./dist/clipboard.js"
     },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "default": "./dist/http.js"
+    },
+    "./cookie": {
+      "types": "./dist/cookie.d.ts",
+      "default": "./dist/cookie.js"
+    },
+    "./platform": {
+      "types": "./dist/platform.d.ts",
+      "default": "./dist/platform.js"
+    },
     "./fs": {
       "types": "./dist/fs.d.ts",
       "default": "./dist/fs.js"
