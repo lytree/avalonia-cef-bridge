@@ -494,24 +494,28 @@ internal static class Program
               </ItemGroup>
             </Project>
             """;
-        var rewritten = LocalReferenceRewriter.RewriteContent(csproj, "C:/local/repo");
+        // 仓库根 fixture 必须是平台原生的绝对路径：RewriteContent 会对 root 做 GetFullPath
+        // 归一化（Windows 盘符写法在 Linux 上会被当成相对路径拼到 cwd）。
+        var repoRoot = Path.Combine(Path.GetTempPath(), "tarui-cli-local-repo");
+        var root = repoRoot.Replace('\\', '/').TrimEnd('/');
+        var rewritten = LocalReferenceRewriter.RewriteContent(csproj, repoRoot);
         Assert(!rewritten.Contains("PackageReference Include=\"Tarui.Hosting\"", StringComparison.Ordinal),
             "In-repo Tarui package references must be replaced.");
-        Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/desktop/Tarui.Hosting/Tarui.Hosting.csproj\" />", StringComparison.Ordinal),
+        Assert(rewritten.Contains($"<ProjectReference Include=\"{root}/src/desktop/Tarui.Hosting/Tarui.Hosting.csproj\" />", StringComparison.Ordinal),
             "Tarui.Hosting must resolve to its local project path.");
-        Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/webview/Tarui.WebView.CefGlueNext/Tarui.WebView.CefGlueNext.csproj\" />", StringComparison.Ordinal),
+        Assert(rewritten.Contains($"<ProjectReference Include=\"{root}/src/webview/Tarui.WebView.CefGlueNext/Tarui.WebView.CefGlueNext.csproj\" />", StringComparison.Ordinal),
             "Tarui.WebView.CefGlueNext must resolve to its local project path.");
-        Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/webview/CefGlue.Next.Avalonia/CefGlue.Next.Avalonia.csproj\" />", StringComparison.Ordinal),
+        Assert(rewritten.Contains($"<ProjectReference Include=\"{root}/src/webview/CefGlue.Next.Avalonia/CefGlue.Next.Avalonia.csproj\" />", StringComparison.Ordinal),
             "CefGlue.Next.Avalonia must resolve to its local project path.");
-        Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/webview/Tarui.WebView.Avalonia/Tarui.WebView.Avalonia.csproj\" />", StringComparison.Ordinal),
+        Assert(rewritten.Contains($"<ProjectReference Include=\"{root}/src/webview/Tarui.WebView.Avalonia/Tarui.WebView.Avalonia.csproj\" />", StringComparison.Ordinal),
             "Tarui.WebView.Avalonia must resolve to its local project path.");
-        Assert(rewritten.Contains("<ProjectReference Include=\"C:/local/repo/src/plugins/Tarui.Plugins.Window/Tarui.Plugins.Window.csproj\" />", StringComparison.Ordinal),
+        Assert(rewritten.Contains($"<ProjectReference Include=\"{root}/src/plugins/Tarui.Plugins.Window/Tarui.Plugins.Window.csproj\" />", StringComparison.Ordinal),
             "Tarui.Plugins.Window must resolve to its local project path.");
         Assert(rewritten.Contains("PackageReference Include=\"NotInRepo\"", StringComparison.Ordinal),
             "Third-party package references must be left untouched.");
-        Assert(rewritten.Contains("<TaruiCefRuntimeRoot>C:/local/repo/runtime/cef</TaruiCefRuntimeRoot>", StringComparison.Ordinal),
+        Assert(rewritten.Contains($"<TaruiCefRuntimeRoot>{root}/runtime/cef</TaruiCefRuntimeRoot>", StringComparison.Ordinal),
             "The CEF runtime root must be pointed at the local source tree.");
-        Assert(rewritten.Contains("<TaruiWebDistRoot>C:/local/repo/web/apps/Tarui.Web/dist</TaruiWebDistRoot>", StringComparison.Ordinal),
+        Assert(rewritten.Contains($"<TaruiWebDistRoot>{root}/web/apps/Tarui.Web/dist</TaruiWebDistRoot>", StringComparison.Ordinal),
             "The web dist root must be pointed at the local source tree.");
     }
 
