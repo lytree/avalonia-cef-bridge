@@ -276,12 +276,21 @@ internal static class TrayIconPath
             }
         }
 
-        if (Path.IsPathRooted(spec))
+        // Tray icon spec 是受守卫的标识符而非宿主文件系统探测，因此 Windows 形态的绝对路径
+        // （盘符绝对/相对、UNC、反斜杠 rooted）在任何宿主平台上都必须按同一方式识别——
+        // Path.IsPathRooted 在 Unix 上不认识这些形态，需要显式补齐。
+        if (Path.IsPathRooted(spec) || IsWindowsFormRooted(spec))
         {
             return spec;
         }
 
         throw new InvalidOperationException($"Tray icon spec '{spec}' is not rooted and has no known base prefix.");
+    }
+
+    private static bool IsWindowsFormRooted(string spec)
+    {
+        return (spec.Length >= 2 && spec[1] == ':' && char.IsAsciiLetter(spec[0]))
+            || spec.StartsWith('\\');
     }
 
     private static string? RootFor(string baseName)
