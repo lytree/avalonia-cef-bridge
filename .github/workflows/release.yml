@@ -364,34 +364,34 @@ jobs:
           if [ -z "$VERSION" ]; then echo "::error::VERSION from validate.outputs is empty"; exit 1; fi
           # Switch the demo manifest to opt into the macOS app-bundle target in a scratch sandbox
           # so the in-repo examples/demo/tarui.app.json stays zip-only. The CLI refuses 'app-bundle'
-          # without an osx-* RID; MacOsBundleBuilder.AllowedRids enforces the allow-list. We copy
-          # the entire examples/demo/ tree into the sandbox (excluding dist/ and web/dist/) so
-          # every manifest-relative path (capabilities/, desktopProject, frontendDist, the
-          # frontend working directory used by beforeBuildCommand, etc.) resolves the same way as
-          # it does for the repo manifest. The scratch manifest then overlays the macOS-only
-          # fields the in-repo manifest must not gain.
+          # without an osx-* RID; MacOsBundleBuilder.AllowedRids enforces the allow-list. The
+          # sandbox holds only the bare manifest; capabilities/, Demo.Desktop/, and web/ are
+          # symlinked back to their repo locations so every manifest-relative path (including the
+          # demo web pnpm workspace whose workspace:* resolves to web/packages/api) keeps the same
+          # resolution it has for the in-repo manifest. node_modules and web/dist remain in the
+          # repo and are not inflated into $RUNNER_TEMP.
           sandbox="$RUNNER_TEMP/tarui.mac.sandbox"
           scratch="$sandbox/tarui.app.json"
           amend="$sandbox/_amend.ps1"
           mkdir -p "$sandbox"
-          rsync -a --exclude='dist' --exclude='web/dist' --exclude='web/node_modules' \
-                examples/demo/ "$sandbox/" || \
-                { find examples/demo -mindepth 1 -maxdepth 1 -not -name 'dist' -exec cp -R {} "$sandbox/" \;; }
-          cp examples/demo/tarui.app.json "$sandbox/tarui.app.json.orig"
-          cat > "$amend" <<'PWSH'
-          $json = Get-Content "$env:TARUI_MAC_SCRATCH_ORIG" | ConvertFrom-Json
-          if (-not $json.bundle.targets.Contains('app-bundle')) { $json.bundle.targets = @('app-bundle') }
-          if (-not $json.bundle.macOS) {
-            $json.bundle | Add-Member -NotePropertyName 'macOS' -NotePropertyValue ([PSCustomObject]@{
+          demoRoot="$(pwd)/examples/demo"
+          ln -sfn "$demoRoot/capabilities" "$sandbox/capabilities"
+          ln -sfn "$demoRoot/Demo.Desktop" "$sandbox/Demo.Desktop"
+          ln -sfn "$demoRoot/web"          "$sandbox/web"
+          cat > "$amend" <<PWSH
+          \$json = Get-Content "$demoRoot/tarui.app.json" -Raw | ConvertFrom-Json
+          if (-not \$json.bundle.targets.Contains('app-bundle')) { \$json.bundle.targets = @('app-bundle') }
+          if (-not \$json.bundle.macOS) {
+            \$json.bundle | Add-Member -NotePropertyName 'macOS' -NotePropertyValue ([PSCustomObject]@{
               bundleId = 'dev.demo'
               executableName = 'demo'
               minimumSystemVersion = '11.0'
               schemes = @('tarui')
             }) -Force
           }
-          $json | ConvertTo-Json -Depth 10 | Set-Content $env:TARUI_MAC_SCRATCH
+          \$json | ConvertTo-Json -Depth 10 | Set-Content \$env:TARUI_MAC_SCRATCH
           PWSH
-          TARUI_MAC_SCRATCH="$scratch" TARUI_MAC_SCRATCH_ORIG="$sandbox/tarui.app.json.orig" pwsh -NoProfile -File "$amend"
+          TARUI_MAC_SCRATCH="$scratch" pwsh -NoProfile -File "$amend"
           cat "$scratch"
           dotnet build src/tarui-cli/Tarui.Cli.csproj -c Release --no-restore
           dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config "$scratch" build --bundle app-bundle --rid osx-arm64 --out examples/demo/dist

@@ -88,19 +88,18 @@ jobs:
           # "references 'main' but capabilities/main.json was not found".
           $sandbox = Join-Path $env:RUNNER_TEMP 'tarui.mac.sandbox'
           $scratch = Join-Path $sandbox 'tarui.app.json'
-          $orig = Join-Path $sandbox 'tarui.app.json.orig'
           New-Item -ItemType Directory -Path $sandbox -Force | Out-Null
-          # Mirror the entire examples/demo/ tree into the sandbox (excluding dist/ and web/dist/)
-          # so every manifest-relative path (capabilities/, desktopProject, frontendDist, frontend
-          # working dir for beforeBuildCommand, etc.) resolves the same way as for the repo
-          # manifest. The scratch manifest then overlays the macOS-only fields the in-repo
-          # manifest must not gain.
-          Copy-Item -Recurse -Force (Join-Path examples/demo 'web') (Join-Path $sandbox 'web')
-          Copy-Item -Recurse -Force (Join-Path examples/demo 'Demo.Desktop') (Join-Path $sandbox 'Demo.Desktop')
-          Copy-Item -Recurse -Force (Join-Path examples/demo 'capabilities') (Join-Path $sandbox 'capabilities')
-          Copy-Item -Recurse -Force (Join-Path examples/demo 'appsettings.json') (Join-Path $sandbox 'appsettings.json') -ErrorAction SilentlyContinue
-          Copy-Item -Force examples/demo/tarui.app.json $orig
-          $json = Get-Content $orig -Raw | ConvertFrom-Json
+          # Keep the sandbox co-located with the repo rather than copying trees. Symlinking the
+          # demo's heavy children back to their repo locations preserves every manifest-relative
+          # path (capabilities/, desktopProject, frontendDist, web/ as a real pnpm workspace
+          # whose workspace:* resolves to web/packages/api) without inflating $RUNNER_TEMP with
+          # node_modules, web/dist, etc. The scratch manifest then overlays the macOS-only fields
+          # the in-repo manifest must not gain. Only the bare manifest lives inside the sandbox.
+          $demoRoot = (Resolve-Path examples/demo).Path
+          New-Item -ItemType SymbolicLink -Path (Join-Path $sandbox 'capabilities') -Target (Join-Path $demoRoot 'capabilities') | Out-Null
+          New-Item -ItemType SymbolicLink -Path (Join-Path $sandbox 'Demo.Desktop') -Target (Join-Path $demoRoot 'Demo.Desktop') | Out-Null
+          New-Item -ItemType SymbolicLink -Path (Join-Path $sandbox 'web') -Target (Join-Path $demoRoot 'web') | Out-Null
+          $json = Get-Content (Join-Path $demoRoot 'tarui.app.json') -Raw | ConvertFrom-Json
           if (-not $json.bundle.targets.Contains('app-bundle')) {
             $json.bundle.targets = @('app-bundle')
           }
