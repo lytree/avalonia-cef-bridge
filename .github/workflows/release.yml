@@ -2,8 +2,9 @@ name: release
 
 # 发布流水线（docs/dev-workflow-design.md §6.3 / §10，W0–W5 共同交付）。
 #   触发：push tag `tarui-v{version}`（推荐，版本单源）或手动 dispatch。
-#   流程：门禁 → NuGet 拓扑序推送（--skip-duplicate）→ @lytree/api npm publish
-#         → Windows 构建 tarui build --bundle zip;msix（可选 Authenticode）→ GitHub Release 附件。
+#   流程：门禁 → Windows zip;msix、macOS osx-arm64 .app、Linux linux-x64 zip
+#         并行构建 → NuGet 拓扑序推送（--skip-duplicate）→ @lytree/api npm publish
+#         → softprops/action-gh-release 上传全部产物到 GitHub Release。
 #   密钥：GitHub Environments `release` + OIDC 预留（§12）。见 README「发布」节。
 on:
   push:
@@ -427,9 +428,93 @@ jobs:
           retention-days: 1
 
 
+  pack-and-build-linux:
+    name: pack + Linux self-contained zip (linux-x64)
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: release
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+          cache: true
+          cache-dependency-path: tarui.net.slnx
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.15.1
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install demo frontend deps (frozen)
+        working-directory: examples/demo/web
+        run: pnpm install --frozen-lockfile
+
+      - name: Install CEF runtime (linux-x64)
+        run: ./eng/cef/install-runtime.ps1 -RuntimeIdentifier linux-x64
+
+      - name: dotnet pack (artifacts/nuget)
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          if (-not $env:VERSION) { throw 'VERSION from validate.outputs is empty.' }
+          dotnet restore tarui.net.slnx --configfile NuGet.Config
+          dotnet pack tarui.net.slnx -c Release --no-restore --nologo -o artifacts/nuget
+
+      - name: Build cli + demo bundle (linux-x64, zip)
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          if (-not $env:VERSION) { throw 'VERSION from validate.outputs is empty.' }
+          # linux-x64 self-contained publish via the same --bundle zip target used on Windows:
+          # `tarui build` walks the manifest, runs beforeBuildCommand, then dotnet publish
+          # for the requested RID, and finally stages the zip artifact under --out.
+          dotnet build src/tarui-cli/Tarui.Cli.csproj -c Release --no-restore
+          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config examples/demo/tarui.app.json build --bundle zip --rid linux-x64 --out "$PWD/examples/demo/dist"
+
+      - name: Smoke-test the produced zip
+        run: |
+          $zip = Get-ChildItem -Path examples/demo/dist -Filter 'demo-*.zip' -File | Select-Object -First 1
+          if (-not $zip) { throw 'No demo-*.zip produced for linux-x64.' }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [IO.Compression.ZipFile]::OpenRead($zip.FullName)
+          try {
+            $entries = $archive.Entries.FullName
+            if (-not ($entries -match 'demo(\.deps\.json)?$')) { throw "Zip missing demo entry; entries: $($entries -join ', ')" }
+            Write-Host "Zip contains demo executable ($(($entries | Measure-Object).Count) entries)."
+          } finally {
+            $archive.Dispose()
+          }
+
+      - name: Upload Linux installers
+        uses: actions/upload-artifact@v5
+        with:
+          name: installers-linux
+          path: examples/demo/dist/demo-*.zip
+          retention-days: 1
+
+      - name: Upload Linux nuget-packages
+        uses: actions/upload-artifact@v5
+        with:
+          name: nuget-packages-linux
+          path: artifacts/nuget/*.nupkg
+          retention-days: 1
+
+
   release:
     name: GitHub Release
-    needs: [validate, pack-and-build, pack-and-build-macos, publish-dotnet, publish-npm]
+    needs: [validate, pack-and-build, pack-and-build-macos, pack-and-build-linux, publish-dotnet, publish-npm]
     runs-on: ubuntu-latest
     environment: release
     steps:
@@ -441,6 +526,10 @@ jobs:
         with:
           name: installers-macos
           path: dist-macos
+      - uses: actions/download-artifact@v5
+        with:
+          name: installers-linux
+          path: dist-linux
       - uses: actions/download-artifact@v5
         with:
           name: nuget-packages
@@ -458,6 +547,7 @@ jobs:
             dist/*.zip
             dist/*.msix
             dist-macos/*.app.tar.gz
+            dist-linux/*.zip
             nuget/*.nupkg
           body: |
             Tarui ${{ needs.validate.outputs.version }} 发布。
@@ -469,14 +559,32 @@ jobs:
 
             ## 附件
 
-            - Windows：`*.zip`、`*.msix`
-            - macOS (osx-arm64)：`*.app.tar.gz`
+            - Windows：`demo-0.4.0-win-x64.zip`、`demo-0.4.0-win-x64.msix`
+            - macOS (osx-arm64)：`demo-0.4.0-osx-arm64.app.tar.gz`
+            - Linux (linux-x64)：`demo-0.4.0-linux-x64.zip`
             - NuGet 包：`*.nupkg`（含 `Tarui.WebView.CefGlueNext.0.4.0.nupkg`、`Tarui.Hosting.0.4.0.nupkg` 等）
+
+            ## 安装与启动
+
+            - **Windows**：解压 zip 或安装 msix，启动 `demo.exe`。
+            - **macOS**：
+              ```bash
+              tar -xzf demo-0.4.0-osx-arm64.app.tar.gz
+              xattr -dr com.apple.quarantine demo.app 2>/dev/null || true
+              chmod +x demo.app/Contents/MacOS/demo
+              open demo.app
+              ```
+            - **Linux**：
+              ```bash
+              unzip demo-0.4.0-linux-x64.zip
+              ./demo
+              ```
 
             ## 签名状态
 
             - **MSIX**：未配置签名证书时为未签名包；如需 Authenticode 签名，在 GitHub `release` environment 注入 `WINDOWS_CERT_*` 密钥。
             - **macOS .app**：未签名/未公证，分发前需 `codesign --deep --sign <identity>` 与 `xcrun notarytool submit --wait`（详见 `docs/adr/0002-macos-real-build-pipeline.md` §8）。
+            - **Linux zip**：未签名/未打包 deb/rpm/AppImage；分发前可考虑 fpm/electron-builder 等格式（暂未实现，详见 `docs/dev-workflow-design.md` §12 待办）。
             - **NuGet/npm**：均通过 OIDC Trusted Publishing 发布（无需长期 API key）。
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
