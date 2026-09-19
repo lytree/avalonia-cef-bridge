@@ -168,7 +168,11 @@ public sealed class FileAccessPolicy : IFileAccessPolicy
         }
 
         // 3. Reject rooted and drive-relative paths (absolute, \x, /x, C:\x, C:x).
-        if (Path.IsPathRooted(requestPath))
+        //    Path.IsPathRooted 语义随平台变化（如 "C:\x" 在 Unix 上不是 rooted、"\x" 在 Unix 上
+        //    也不是 rooted），安全闸门要求各平台给出同一判定，因此补齐显式的 Windows 形态检查。
+        if (Path.IsPathRooted(requestPath)
+            || (requestPath.Length >= 2 && requestPath[1] == ':' && char.IsAsciiLetter(requestPath[0]))
+            || requestPath[0] is '\\' or '/')
         {
             throw new PathAccessDeniedException(PathDenialReason.Rooted,
                 "Only relative paths are accepted.");
