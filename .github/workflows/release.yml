@@ -364,20 +364,22 @@ jobs:
           if [ -z "$VERSION" ]; then echo "::error::VERSION from validate.outputs is empty"; exit 1; fi
           # Switch the demo manifest to opt into the macOS app-bundle target in a scratch sandbox
           # so the in-repo examples/demo/tarui.app.json stays zip-only. The CLI refuses 'app-bundle'
-          # without an osx-* RID; MacOsBundleBuilder.AllowedRids enforces the allow-list. The
-          # sandbox also bundles the demo's capabilities/ subtree next to the scratch manifest —
-          # AppManifestValidator resolves capabilities/{id}.json relative to the manifest directory,
-          # not the repo root, so a bare scratch manifest would falsely report
-          # "references 'main' but capabilities/main.json was not found". The PowerShell amend
-          # script is materialized as its own .ps1 file rather than passed inline to pwsh -Command
-          # to keep the bash/pwsh quoting and environment-passing trivial.
+          # without an osx-* RID; MacOsBundleBuilder.AllowedRids enforces the allow-list. We copy
+          # the entire examples/demo/ tree into the sandbox (excluding dist/ and web/dist/) so
+          # every manifest-relative path (capabilities/, desktopProject, frontendDist, the
+          # frontend working directory used by beforeBuildCommand, etc.) resolves the same way as
+          # it does for the repo manifest. The scratch manifest then overlays the macOS-only
+          # fields the in-repo manifest must not gain.
           sandbox="$RUNNER_TEMP/tarui.mac.sandbox"
           scratch="$sandbox/tarui.app.json"
           amend="$sandbox/_amend.ps1"
           mkdir -p "$sandbox"
-          cp -R examples/demo/capabilities "$sandbox/capabilities"
+          rsync -a --exclude='dist' --exclude='web/dist' --exclude='web/node_modules' \
+                examples/demo/ "$sandbox/" || \
+                { find examples/demo -mindepth 1 -maxdepth 1 -not -name 'dist' -exec cp -R {} "$sandbox/" \;; }
+          cp examples/demo/tarui.app.json "$sandbox/tarui.app.json.orig"
           cat > "$amend" <<'PWSH'
-          $json = Get-Content examples/demo/tarui.app.json -Raw | ConvertFrom-Json
+          $json = Get-Content "$env:TARUI_MAC_SCRATCH_ORIG" | ConvertFrom-Json
           if (-not $json.bundle.targets.Contains('app-bundle')) { $json.bundle.targets = @('app-bundle') }
           if (-not $json.bundle.macOS) {
             $json.bundle | Add-Member -NotePropertyName 'macOS' -NotePropertyValue ([PSCustomObject]@{
@@ -387,12 +389,9 @@ jobs:
               schemes = @('tarui')
             }) -Force
           }
-          # desktopProject 与 manifest 同目录解析，sandbox 没有 Demo.Desktop 工程子目录——
-          # 改写为绝对路径指向仓库根。validate + bundle.targets/app.macOS 调整前已 sandbox 化。
-          $json.build.desktopProject = $env:TARUI_MAC_DEMO_PROJECT
           $json | ConvertTo-Json -Depth 10 | Set-Content $env:TARUI_MAC_SCRATCH
           PWSH
-          TARUI_MAC_SCRATCH="$scratch" TARUI_MAC_DEMO_PROJECT="$(pwd)/examples/demo/Demo.Desktop/Demo.Desktop.csproj" pwsh -NoProfile -File "$amend"
+          TARUI_MAC_SCRATCH="$scratch" TARUI_MAC_SCRATCH_ORIG="$sandbox/tarui.app.json.orig" pwsh -NoProfile -File "$amend"
           cat "$scratch"
           dotnet build src/tarui-cli/Tarui.Cli.csproj -c Release --no-restore
           dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config "$scratch" build --bundle app-bundle --rid osx-arm64 --out examples/demo/dist

@@ -88,13 +88,19 @@ jobs:
           # "references 'main' but capabilities/main.json was not found".
           $sandbox = Join-Path $env:RUNNER_TEMP 'tarui.mac.sandbox'
           $scratch = Join-Path $sandbox 'tarui.app.json'
+          $orig = Join-Path $sandbox 'tarui.app.json.orig'
           New-Item -ItemType Directory -Path $sandbox -Force | Out-Null
-          Copy-Item -Recurse -Force examples/demo/capabilities (Join-Path $sandbox 'capabilities')
-          # desktopProject 与 manifest 同目录解析，sandbox 不含 Demo.Desktop 工程子目录——
-          # 改写为仓库根的绝对路径。
-          $demoProject = (Resolve-Path 'examples/demo/Demo.Desktop/Demo.Desktop.csproj').Path
-          $json = Get-Content examples/demo/tarui.app.json -Raw | ConvertFrom-Json
-          $json.build.desktopProject = $demoProject
+          # Mirror the entire examples/demo/ tree into the sandbox (excluding dist/ and web/dist/)
+          # so every manifest-relative path (capabilities/, desktopProject, frontendDist, frontend
+          # working dir for beforeBuildCommand, etc.) resolves the same way as for the repo
+          # manifest. The scratch manifest then overlays the macOS-only fields the in-repo
+          # manifest must not gain.
+          Copy-Item -Recurse -Force (Join-Path examples/demo 'web') (Join-Path $sandbox 'web')
+          Copy-Item -Recurse -Force (Join-Path examples/demo 'Demo.Desktop') (Join-Path $sandbox 'Demo.Desktop')
+          Copy-Item -Recurse -Force (Join-Path examples/demo 'capabilities') (Join-Path $sandbox 'capabilities')
+          Copy-Item -Recurse -Force (Join-Path examples/demo 'appsettings.json') (Join-Path $sandbox 'appsettings.json') -ErrorAction SilentlyContinue
+          Copy-Item -Force examples/demo/tarui.app.json $orig
+          $json = Get-Content $orig -Raw | ConvertFrom-Json
           if (-not $json.bundle.targets.Contains('app-bundle')) {
             $json.bundle.targets = @('app-bundle')
           }
