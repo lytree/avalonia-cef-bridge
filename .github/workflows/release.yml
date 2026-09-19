@@ -44,7 +44,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
           cache: true
-          cache-dependency-path: tarui.net.sln
+          cache-dependency-path: tarui.net.slnx
 
       - name: Tag version
         id: vars
@@ -59,11 +59,11 @@ jobs:
 
       - name: Restore & build (0 warnings/errors)
         run: |
-          dotnet restore tarui.net.sln --configfile NuGet.Config
-          dotnet build tarui.net.sln -c Release --no-restore
+          dotnet restore tarui.net.slnx --configfile NuGet.Config
+          dotnet build tarui.net.slnx -c Release --no-restore
 
       - name: Pack packages for release validation
-        run: dotnet pack tarui.net.sln -c Release --no-build --nologo -o artifacts/nuget
+        run: dotnet pack tarui.net.slnx -c Release --no-build --nologo -o artifacts/nuget
 
       - name: CefGlue.Next.Avalonia package gate
         run: |
@@ -150,7 +150,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
           cache: true
-          cache-dependency-path: tarui.net.sln
+          cache-dependency-path: tarui.net.slnx
 
       - name: Download nupkgs from pack-and-build
         uses: actions/download-artifact@v4
@@ -245,7 +245,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
           cache: true
-          cache-dependency-path: tarui.net.sln
+          cache-dependency-path: tarui.net.slnx
       - uses: pnpm/action-setup@v4
         with:
           version: 11.15.1
@@ -292,8 +292,8 @@ jobs:
         run: |
           if (-not $env:VERSION) { throw 'VERSION from validate.outputs is empty.' }
           Write-Host "Packing Tarui.NET solution at VERSION=$env:VERSION."
-          dotnet restore tarui.net.sln --configfile NuGet.Config
-          dotnet pack tarui.net.sln -c Release --no-restore --nologo -o artifacts/nuget
+          dotnet restore tarui.net.slnx --configfile NuGet.Config
+          dotnet pack tarui.net.slnx -c Release --no-restore --nologo -o artifacts/nuget
 
       - name: Build cli + demo frontend + bundle (zip;msix)
         env:
@@ -332,7 +332,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
           cache: true
-          cache-dependency-path: tarui.net.sln
+          cache-dependency-path: tarui.net.slnx
       - uses: pnpm/action-setup@v4
         with:
           version: 11.15.1
@@ -351,8 +351,8 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
         run: |
           if [ -z "$VERSION" ]; then echo "::error::VERSION from validate.outputs is empty"; exit 1; fi
-          dotnet restore tarui.net.sln --configfile NuGet.Config
-          dotnet pack tarui.net.sln -c Release --no-restore --nologo -o artifacts/nuget
+          dotnet restore tarui.net.slnx --configfile NuGet.Config
+          dotnet pack tarui.net.slnx -c Release --no-restore --nologo -o artifacts/nuget
 
       - name: Build cli + demo bundle (osx-arm64, app-bundle)
         env:

@@ -74,8 +74,8 @@ cd F:\Code\tauri.net
 # 其他 RID:win-arm64 / linux-x64 / linux-arm64 / osx-x64 / osx-arm64
 
 # 还原 + 构建 .NET 解决方案
-dotnet restore tarui.net.sln --configfile NuGet.Config
-dotnet build tarui.net.sln --no-restore
+dotnet restore tarui.net.slnx --configfile NuGet.Config
+dotnet build tarui.net.slnx --no-restore
 ```
 
 ### 3.2 跑 Demo

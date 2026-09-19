@@ -33,16 +33,16 @@ jobs:
         with:
           dotnet-version: 10.0.x
           cache: true
-          cache-dependency-path: tarui.net.sln
+          cache-dependency-path: tarui.net.slnx
 
       - name: Restore (NuGet.Config)
-        run: dotnet restore tarui.net.sln --configfile NuGet.Config
+        run: dotnet restore tarui.net.slnx --configfile NuGet.Config
 
       - name: Build (0 warnings/errors)
-        run: dotnet build tarui.net.sln -c Release --no-restore
+        run: dotnet build tarui.net.slnx -c Release --no-restore
 
       - name: Package baseline (新增包门禁)
-        run: dotnet pack tarui.net.sln -c Release --no-build --nologo -o artifacts/nuget
+        run: dotnet pack tarui.net.slnx -c Release --no-build --nologo -o artifacts/nuget
 
       - name: Package baseline validation
         run: |

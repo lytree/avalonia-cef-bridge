@@ -130,8 +130,8 @@ sequenceDiagram
 
     Runner->>Dotnet: setup dotnet 10.0.x + cache
     Runner->>Pnpm: setup pnpm 11.15.1 + node 22 + cache
-    Runner->>Cli: dotnet restore tarui.net.sln
-    Runner->>Cli: dotnet build tarui.net.sln -c Release
+    Runner->>Cli: dotnet restore tarui.net.slnx
+    Runner->>Cli: dotnet build tarui.net.slnx -c Release
     Runner->>Cli: dotnet build src/tarui-cli
     Runner->>Pnpm: pnpm install --frozen-lockfile (examples/demo/web)
     Runner->>Cli: tarui info (manifest OK.)

@@ -94,8 +94,8 @@ docs/                      架构与实现说明
 ```powershell
 ./eng/cef/install-runtime.ps1 -RuntimeIdentifier win-x64
 
-dotnet restore tarui.net.sln --configfile NuGet.Config
-dotnet build tarui.net.sln --no-restore
+dotnet restore tarui.net.slnx --configfile NuGet.Config
+dotnet build tarui.net.slnx --no-restore
 
 dotnet run --project tests/Tarui.Http.Tests --no-build
 dotnet run --project tests/Tarui.ShellPlugin.Tests --no-build
@@ -105,7 +105,7 @@ dotnet run --project tests/Tarui.Plugins.Tests --no-build
 dotnet run --project tests/Tarui.Hosting.Tests --no-build
 dotnet run --project tests/Tarui.Architecture.Tests --no-build
 
-dotnet pack tarui.net.sln -c Release -o artifacts/nuget
+dotnet pack tarui.net.slnx -c Release -o artifacts/nuget
 dotnet run --project tests/Tarui.Architecture.Tests --no-build -- --require-package --package artifacts/nuget/CefGlue.Next.Avalonia.0.2.0.nupkg
 
 cd web

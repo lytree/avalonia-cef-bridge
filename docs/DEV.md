@@ -281,8 +281,8 @@ MSIX 签名:`WINDOWS_CERT_*` secrets 可选,无证书时产未签名包。证书
 git pull --rebase
 
 # 1. 还原 + 构建(0 警告是硬指标)
-dotnet restore tarui.net.sln --configfile NuGet.Config
-dotnet build tarui.net.sln -c Release --no-restore
+dotnet restore tarui.net.slnx --configfile NuGet.Config
+dotnet build tarui.net.slnx -c Release --no-restore
 
 # 2. 跑自测试 + 架构门禁
 ./eng/test-all.ps1 -BaselineCount 21

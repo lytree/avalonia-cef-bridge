@@ -76,7 +76,7 @@ dotnet --version         # 必须 >= 10.0.400
 `NuGet.Config` 已锁定源为 `nuget.org`(且清空其他源),可直接使用:
 
 ```powershell
-dotnet restore tarui.net.sln --configfile NuGet.Config
+dotnet restore tarui.net.slnx --configfile NuGet.Config
 ```
 
 ### 3.3 安装 CEF 原生运行时
@@ -104,7 +104,7 @@ dotnet restore tarui.net.sln --configfile NuGet.Config
 ### 3.4 构建解决方案
 
 ```powershell
-dotnet build tarui.net.sln --no-restore
+dotnet build tarui.net.slnx --no-restore
 # 期望:0 warnings, 0 errors(TreatWarningsAsErrors=true)
 ```
 
@@ -160,8 +160,8 @@ sudo apt-get install -y libx11-dev libxcomposite-dev libxdamage-dev \
 # 注意:脚本依赖 PowerShell 7,Linux 上装为 'pwsh'
 
 # 5. 还原 + 构建 + 测试
-dotnet restore tarui.net.sln --configfile NuGet.Config
-dotnet build tarui.net.sln --no-restore
+dotnet restore tarui.net.slnx --configfile NuGet.Config
+dotnet build tarui.net.slnx --no-restore
 ./eng/test-all.ps1 -BaselineCount 21
 ```
 
@@ -188,8 +188,8 @@ corepack prepare pnpm@11.15.1 --activate
 ./eng/cef/install-runtime.ps1 -RuntimeIdentifier osx-arm64  # 或 osx-x64
 
 # 5. 还原 + 构建 + 测试
-dotnet restore tarui.net.sln --configfile NuGet.Config
-dotnet build tarui.net.sln --no-restore
+dotnet restore tarui.net.slnx --configfile NuGet.Config
+dotnet build tarui.net.slnx --no-restore
 ./eng/test-all.ps1 -BaselineCount 21
 ```
 
@@ -231,8 +231,8 @@ CI 与 Release 的关键步骤都设计为本地可复现:
 | --- | --- |
 | `actions/setup-dotnet@v4` (10.0.x) | 同 §2 |
 | `dotnet restore --configfile NuGet.Config` | 同上 |
-| `dotnet build -c Release --no-restore` | `dotnet build tarui.net.sln -c Release --no-restore` |
-| `dotnet pack` + 校验 | `dotnet pack tarui.net.sln -c Release --no-build -o artifacts/nuget` |
+| `dotnet build -c Release --no-restore` | `dotnet build tarui.net.slnx -c Release --no-restore` |
+| `dotnet pack` + 校验 | `dotnet pack tarui.net.slnx -c Release --no-build -o artifacts/nuget` |
 | `Architecture.Tests --require-package --package` | `dotnet run --project tests/Tarui.Architecture.Tests -c Release --no-build -- --require-package --package artifacts/nuget/CefGlue.Next.Avalonia.0.2.0.nupkg` |
 | 外部 NuGet 消费者冒烟 | 复制 `.github/workflows/ci.yml` 中 "External NuGet consumer smoke" 步骤到本地 |
 | 版本一致性 | `pnpm exec node -e "console.log(require('./web/packages/api/package.json').version)"` 应等于 `<TaruiVersion>` |
@@ -273,7 +273,7 @@ nuget.org 与 npmjs.com 上需预先配置 trusted publishing(OIDC),允许 `rele
 
 ```powershell
 # 清理构建产物
-dotnet clean tarui.net.sln
+dotnet clean tarui.net.slnx
 Remove-Item -Recurse -Force artifacts, dist, .out, examples/demo/web/dist, examples/demo/web/node_modules
 
 # 清理 CEF 运行时(谨慎:下次需要联网下载)
@@ -307,8 +307,8 @@ dotnet nuget locals all --clear
 - [ ] `node --version` 输出 v22.x
 - [ ] `pnpm --version` 输出 11.15.1
 - [ ] `runtime/cef/<rid>/Release/cef.dll`(或对应平台 lib)存在
-- [ ] `dotnet restore tarui.net.sln --configfile NuGet.Config` 0 错误
-- [ ] `dotnet build tarui.net.sln -c Release --no-restore` 0 warnings / 0 errors
+- [ ] `dotnet restore tarui.net.slnx --configfile NuGet.Config` 0 错误
+- [ ] `dotnet build tarui.net.slnx -c Release --no-restore` 0 warnings / 0 errors
 - [ ] `cd web; pnpm install --frozen-lockfile` 成功
 - [ ] `cd web; pnpm build` 成功
 - [ ] `./eng/test-all.ps1 -BaselineCount 21` 全部通过

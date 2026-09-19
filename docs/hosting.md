@@ -192,7 +192,7 @@ public sealed class TaruiApplication     // Services；StartAsync/StopAsync；Ru
 1. 线上 IPC 契约（命令名/权限名/DTO/TaruiJsonContext）零变更；前端 `@lytree/api` 不动。
 2. 无反射、无程序集扫描、无动态插件加载；`AddPlugin<T>()` 为编译期显式注册。架构门禁（含禁 `Activator`/`MethodInfo`）必须持续通过，因此**不得使用 `ActivatorUtilities`**。
 3. `CommandContext` 标签权威、能力校验、协作式关闭等既有架构不变量原样保留。
-4. 每阶段结束：`dotnet build tarui.net.sln --no-restore` 零警告（TreatWarningsAsErrors）、相关测试套件全绿，再进入下一阶段。
+4. 每阶段结束：`dotnet build tarui.net.slnx --no-restore` 零警告（TreatWarningsAsErrors）、相关测试套件全绿，再进入下一阶段。
 5. `CefGlueNextAvaloniaRuntime.RunSubProcess(args)` 永远先于 Host 构建；所有 WebView 完成 native close 后，Avalonia loop 退出、Host `StopAsync` 与 `Dispose` 完成，最后由 `Program` 的 `finally` 调用 runtime `Shutdown`。
 
 ## CEF/Avalonia 生命周期

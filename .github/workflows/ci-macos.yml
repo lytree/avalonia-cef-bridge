@@ -44,7 +44,7 @@ jobs:
         with:
           dotnet-version: 10.0.x
           cache: true
-          cache-dependency-path: tarui.net.sln
+          cache-dependency-path: tarui.net.slnx
 
       - uses: pnpm/action-setup@v4
         with:
@@ -57,10 +57,10 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Restore (NuGet.Config)
-        run: dotnet restore tarui.net.sln --configfile NuGet.Config
+        run: dotnet restore tarui.net.slnx --configfile NuGet.Config
 
       - name: Build (0 warnings/errors)
-        run: dotnet build tarui.net.sln -c Release --no-restore --nologo
+        run: dotnet build tarui.net.slnx -c Release --no-restore --nologo
 
       # 注：本 job 不依赖 CEF runtime —— `app-bundle` 目标只跑 MacOsBundleBuilder / InfoPlistBuilder，
       # 后者只读 publish payload 的存在性。CLI 检查 manifest 文件路径存在就足够构建产物，
