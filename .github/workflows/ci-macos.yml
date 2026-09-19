@@ -40,9 +40,14 @@ jobs:
       # macOS .app bundle + tar.gz name must follow TaruiVersion; v0.4.1 here, the validation
       # steps below key off this so the version bump stays a one-line change.
       TARUI_VERSION: '0.4.1'
-      APP_TARBALL: 'demo-0.4.1-${{ env.TARUI_RID }}.app.tar.gz'
     steps:
       - uses: actions/checkout@v6
+
+      # job 级 env 块求值时 env 上下文不可用（GitHub 表达式限制），APP_TARBALL 在此派生：
+      # demo-<version>-<rid>.app.tar.gz，后续 bash 步骤沿用 ${APP_TARBALL} 引用。
+      - name: Resolve APP_TARBALL
+        run: |
+          "APP_TARBALL=demo-$($env:TARUI_VERSION)-$($env:TARUI_RID).app.tar.gz" >> $env:GITHUB_ENV
 
       - uses: actions/setup-dotnet@v5
         with:
