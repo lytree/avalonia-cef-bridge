@@ -211,7 +211,7 @@ security find-identity -v -p codesigning
 F:\Code\tauri.net\
   global.json                   # .NET SDK 10.0.400 latestPatch
   NuGet.Config                  # 仅 nuget.org
-  Directory.Build.props         # TaruiVersion=0.2.0 / TreatWarningsAsErrors
+  Directory.Build.props         # TaruiVersion=0.3.0 / TreatWarningsAsErrors
   tarui.net.slnx                # 56 个项目,21 个 *.Tests
   runtime/cef/win-x64/          # CEF 原生运行时(由脚本生成)
   artifacts/nuget/              # dotnet pack 产物(可选)
@@ -233,7 +233,7 @@ CI 与 Release 的关键步骤都设计为本地可复现:
 | `dotnet restore --configfile NuGet.Config` | 同上 |
 | `dotnet build -c Release --no-restore` | `dotnet build tarui.net.slnx -c Release --no-restore` |
 | `dotnet pack` + 校验 | `dotnet pack tarui.net.slnx -c Release --no-build -o artifacts/nuget` |
-| `Architecture.Tests --require-package --package` | `dotnet run --project tests/Tarui.Architecture.Tests -c Release --no-build -- --require-package --package artifacts/nuget/CefGlue.Next.Avalonia.0.2.0.nupkg` |
+| `Architecture.Tests --require-package --package` | `dotnet run --project tests/Tarui.Architecture.Tests -c Release --no-build -- --require-package --package artifacts/nuget/CefGlue.Next.Avalonia.0.3.0.nupkg` |
 | 外部 NuGet 消费者冒烟 | 复制 `.github/workflows/ci.yml` 中 "External NuGet consumer smoke" 步骤到本地 |
 | 版本一致性 | `pnpm exec node -e "console.log(require('./web/packages/api/package.json').version)"` 应等于 `<TaruiVersion>` |
 | `./eng/test-all.ps1 -BaselineCount 21` | 同左 |
