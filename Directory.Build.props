@@ -17,7 +17,7 @@
       （演示应用 examples/demo、测试、cefglue 第三方源码等）。
   -->
   <PropertyGroup Condition="'$(IsPackable)' != 'false'">
-    <TaruiVersion>0.4.0</TaruiVersion>
+    <TaruiVersion>0.4.1</TaruiVersion>
     <Version>$(TaruiVersion)</Version>
     <Authors>tarui.net contributors</Authors>
     <PackageId>$(MSBuildProjectName)</PackageId>

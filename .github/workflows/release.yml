@@ -334,29 +334,29 @@ jobs:
 
             ## 改动
 
-            - **CefGlue.Next.Avalonia 并入 Tarui.WebView.CefGlueNext**：浏览器组件层不再独立成包；包名变化是破坏性变更，对应 NuGet 包名改为 `Tarui.WebView.CefGlueNext`。
-            - 同步版本号到 0.4.0（Directory.Build.props / @lytree/api / examples/demo/tarui.app.json / tarui-cli / Tarui.Templates）。
+            - **发布流水线重构**：三平台 pack+build 抽取为 reusable workflow `.github/workflows/_pack-and-build.yml`；release.yml 精简为「validate → 三平台 reusable 调用 → publish → release」，产物与安装方式不变。
+            - 同步版本号到 0.4.1（Directory.Build.props / @lytree/api / examples/demo/tarui.app.json / tarui-cli / Tarui.Templates）。
 
             ## 附件
 
-            - Windows：`demo-0.4.0-win-x64.zip`、`demo-0.4.0-win-x64.msix`
-            - macOS (osx-arm64)：`demo-0.4.0-osx-arm64.app.tar.gz`
-            - Linux (linux-x64)：`demo-0.4.0-linux-x64.zip`
-            - NuGet 包：`*.nupkg`（含 `Tarui.WebView.CefGlueNext.0.4.0.nupkg`、`Tarui.Hosting.0.4.0.nupkg` 等）
+            - Windows：`demo-0.4.1-win-x64.zip`、`demo-0.4.1-win-x64.msix`
+            - macOS (osx-arm64)：`demo-0.4.1-osx-arm64.app.tar.gz`
+            - Linux (linux-x64)：`demo-0.4.1-linux-x64.zip`
+            - NuGet 包：`*.nupkg`（含 `Tarui.WebView.CefGlueNext.0.4.1.nupkg`、`Tarui.Hosting.0.4.1.nupkg` 等）
 
             ## 安装与启动
 
             - **Windows**：解压 zip 或安装 msix，启动 `demo.exe`。
             - **macOS**：
               ```bash
-              tar -xzf demo-0.4.0-osx-arm64.app.tar.gz
+              tar -xzf demo-0.4.1-osx-arm64.app.tar.gz
               xattr -dr com.apple.quarantine demo.app 2>/dev/null || true
               chmod +x demo.app/Contents/MacOS/demo
               open demo.app
               ```
             - **Linux**：
               ```bash
-              unzip demo-0.4.0-linux-x64.zip
+              unzip demo-0.4.1-linux-x64.zip
               ./demo
               ```
 

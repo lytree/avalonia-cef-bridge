@@ -108,9 +108,9 @@ internal static class PluginScaffolder
               </PropertyGroup>
               <ItemGroup>
                 <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
-                <PackageReference Include="Tarui.Ipc" Version="0.4.0" />
-                <PackageReference Include="Tarui.Contracts" Version="0.4.0" />
-                <PackageReference Include="Tarui.Ipc.Generators" Version="0.4.0" />
+                <PackageReference Include="Tarui.Ipc" Version="0.4.1" />
+                <PackageReference Include="Tarui.Contracts" Version="0.4.1" />
+                <PackageReference Include="Tarui.Ipc.Generators" Version="0.4.1" />
                                   OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
               </ItemGroup>
               <ItemGroup>

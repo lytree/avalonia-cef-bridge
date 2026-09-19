@@ -76,7 +76,7 @@ on:
         type: string
         default: 'false'
       version:
-        description: 'Tag version (e.g. "0.4.0"); echoed back as an output so downstream jobs can chain'
+        description: 'Tag version (e.g. "0.4.1"); echoed back as an output so downstream jobs can chain'
         required: true
         type: string
     secrets:
