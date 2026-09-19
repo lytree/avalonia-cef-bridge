@@ -38,7 +38,7 @@ jobs:
       # pin macOS self-contained publish RID; .NET 10 produces an osx-arm64 binary on Apple Silicon.
       TARUI_RID: 'osx-arm64'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-dotnet@v4
         with:
