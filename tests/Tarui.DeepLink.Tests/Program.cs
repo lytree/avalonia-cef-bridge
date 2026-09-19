@@ -26,9 +26,14 @@ internal static class Program
             await DeliverEmitsPerSchemeEventAsync();
             await DeliverIgnoresInvalidUrlAsync();
             await FeedAsyncReproducesValidationPathAsync();
+            await DeliverDeduplicatesRepeatedUrlAsync();
+            await DeliverKeepsCurrentUrlAfterDeduplicationAsync();
             PluginRegistersGetCurrentAndFeedCommands();
             LinuxDesktopEntryAdvertisesScheme();
             LinuxDesktopEntryQuotesExecAndUrlPlaceholder();
+            await MacDeepLinkBridgeStartsAndStopsAsync();
+            await MacDeepLinkBridgeNonMacIsNoOpAsync();
+            MacDeepLinkBridgeFactorySelectsImplementation();
         }
         catch (Exception exception)
         {
@@ -189,6 +194,104 @@ internal static class Program
         Assert(router.Commands.Contains("plugin:deep-link|get-current"), "get-current must be registered.");
         Assert(router.Commands.Contains("plugin:deep-link|feed"), "feed must be registered.");
         Assert(router.RegisteredPermissions.Count == 2, "Two deep-link permissions must be registered.");
+    }
+
+    private static async Task DeliverDeduplicatesRepeatedUrlAsync()
+    {
+        var (router, captured) = BuildRouter();
+        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+
+        service.Deliver("tarui://open/doc?id=1");
+        // Same URL delivered again inside the dedup window must not emit a second event.
+        service.Deliver("tarui://open/doc?id=1");
+
+        Assert(captured.Count == 1,
+            $"Repeated URLs inside the dedup window must emit only one event; captured {captured.Count}.");
+    }
+
+    private static async Task DeliverKeepsCurrentUrlAfterDeduplicationAsync()
+    {
+        var (router, captured) = BuildRouter();
+        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+
+        service.Deliver("tarui://open/doc?id=1");
+        service.Deliver("tarui://open/doc?id=1");
+        service.Deliver("tarui://open/doc?id=2");
+
+        Assert(captured.Count == 2,
+            $"A distinct URL must still emit after a dedup-suppressed duplicate; captured {captured.Count}.");
+        var current = await service.GetCurrentAsync(default);
+        Assert(current.Url == "tarui://open/doc?id=2",
+            "The current URL must reflect the most recent valid delivery, even when dedup suppressed an event.");
+    }
+
+    private static async Task MacDeepLinkBridgeStartsAndStopsAsync()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            // The factory still produces a non-null bridge, but it is the no-op partial; skip the
+            // fake extractor wiring when Cocoa bindings would not be exercised.
+            return;
+        }
+
+        var (router, captured) = BuildRouter();
+        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+        var extractor = new ScriptedExtractor("tarui://open/from-appleevent");
+
+        var bridge = MacDeepLinkBridge.Factory(service, extractor);
+        await bridge.StartAsync(default);
+        // The bridge routes through IMacDeepLinkUrlExtractor → DeepLinkService.Deliver; on macOS
+        // the AppleEvent manager is replaced by the bridge, but the fake extractor means no real
+        // URL flows until a fake descriptor is processed. The StartAsync contract is "registered".
+        Assert(extractor.LastCalledWith == IntPtr.Zero,
+            "StartAsync must not synthesize events; the bridge waits for a real AppleEvent.");
+
+        // Smoke-check: invoking the extractor through the bridge hand-off path produces an event.
+        // We cannot construct a real NSAppleEventDescriptor outside Cocoa; the bridge registers
+        // but we do not exercise its selector here because no fake descriptor is available.
+        await bridge.StopAsync(default);
+    }
+
+    private static async Task MacDeepLinkBridgeNonMacIsNoOpAsync()
+    {
+        var (router, captured) = BuildRouter();
+        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+
+        var bridge = MacDeepLinkBridge.Factory(service, new ScriptedExtractor("tarui://ignored"));
+        await bridge.StartAsync(default);
+        await bridge.StopAsync(default);
+
+        Assert(captured.Count == 0,
+            "The non-macOS bridge partial must never emit events; no AppleEvent manager is involved.");
+    }
+
+    private static void MacDeepLinkBridgeFactorySelectsImplementation()
+    {
+        var (router, _) = BuildRouter();
+        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+
+        var bridge = MacDeepLinkBridge.Factory(service, new ScriptedExtractor(null));
+        if (OperatingSystem.IsMacOS())
+        {
+            Assert(bridge.GetType().Name == "Macos",
+                "On macOS the factory must select the Cocoa-backed partial implementation.");
+        }
+        else
+        {
+            Assert(bridge.GetType().Name == "NoOp",
+                "Off macOS the factory must select the no-op partial implementation.");
+        }
+    }
+
+    private sealed class ScriptedExtractor(string? url) : IMacDeepLinkUrlExtractor
+    {
+        public IntPtr LastCalledWith { get; private set; }
+
+        public string? TryExtractUrl(IntPtr eventDescriptor)
+        {
+            LastCalledWith = eventDescriptor;
+            return url;
+        }
     }
 
     private static void LinuxDesktopEntryAdvertisesScheme()

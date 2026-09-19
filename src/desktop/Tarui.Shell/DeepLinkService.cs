@@ -15,10 +15,20 @@ namespace Tarui.Shell;
 /// </summary>
 public sealed class DeepLinkService : IDeepLinkService, ISecondActivationSink
 {
+    /// <summary>
+    /// Suppresses event emission when the same URL is delivered twice within this window. macOS
+    /// cold activation can route the launch URL through both <c>argv</c> and the AppleEvent handler;
+    /// warm activation can also see rapid duplicate <c>openURLs:</c> when an external tool retries.
+    /// <see cref="_currentUrl"/> is always updated so <c>get-current</c> reflects the latest value.
+    /// </summary>
+    private static readonly TimeSpan DedupWindow = TimeSpan.FromSeconds(2);
+
     private readonly EventRouter _events;
     private readonly IReadOnlySet<string> _schemes;
     private readonly object _gate = new();
     private string? _currentUrl;
+    private string? _lastDeliveredUrl;
+    private DateTimeOffset _lastDeliveredAt = DateTimeOffset.MinValue;
 
     public DeepLinkService(
         string[] startupArgs,
@@ -79,7 +89,9 @@ public sealed class DeepLinkService : IDeepLinkService, ISecondActivationSink
     /// <summary>
     /// Accepts a deep-link URL from any native activation source (warm single-instance URL, macOS
     /// delegate bridge). Invalid URLs (unregistered scheme, control characters, oversized) are
-    /// rejected and never produce an event.
+    /// rejected and never produce an event. Repeats of the same URL within <see cref="DedupWindow"/>
+    /// update <c>_currentUrl</c> but suppress the <c>deeplink://&lt;scheme&gt;</c> event emission so the
+    /// web layer is not asked to handle the same payload twice (macOS cold argv + AppleEvent).
     /// </summary>
     public void Deliver(string url)
     {
@@ -89,9 +101,22 @@ public sealed class DeepLinkService : IDeepLinkService, ISecondActivationSink
             return;
         }
 
+        var emit = false;
         lock (_gate)
         {
             _currentUrl = url;
+            var now = DateTimeOffset.UtcNow;
+            if (_lastDeliveredUrl != url || now - _lastDeliveredAt >= DedupWindow)
+            {
+                _lastDeliveredUrl = url;
+                _lastDeliveredAt = now;
+                emit = true;
+            }
+        }
+
+        if (!emit)
+        {
+            return;
         }
 
         FireAndForget.Run(_events.EmitToAllAsync(

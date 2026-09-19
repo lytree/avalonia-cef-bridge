@@ -98,6 +98,7 @@ public static class TaruiShellServiceCollectionExtensions
             sp.GetRequiredService<EventRouter>()))
         .AddSingleton<IDeepLinkService>(sp => sp.GetRequiredService<DeepLinkService>())
         .AddSingleton<ISecondActivationSink>(sp => sp.GetRequiredService<DeepLinkService>())
+        .AddSingleton<IMacDeepLinkUrlExtractor, NoOpMacDeepLinkUrlExtractor>()
         .AddHostedService<DeepLinkRegistrarHostedService>()
         .AddSingleton<HttpClient>()
         .AddSingleton<IUpdateApplier>(_ => OperatingSystem.IsWindows()
