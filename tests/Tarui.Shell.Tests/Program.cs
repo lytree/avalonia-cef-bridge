@@ -1028,6 +1028,7 @@ internal static class Program
     {
 #pragma warning disable CS0067 // The message and drag-region events are part of the interface but unused by routing tests.
         public event EventHandler<TaruiWebMessage>? MessageReceived;
+        public event EventHandler<TaruiWebMessage>? HybridMessageReceived;
         public event EventHandler<TaruiWebViewFileDropEventArgs>? FileDropEntered;
         public event EventHandler<TaruiWebViewFileDropLeftEventArgs>? FileDropLeft;
         public event EventHandler<TaruiWebViewFileDropEventArgs>? FileDropped;

@@ -39,7 +39,8 @@ public static class CefGlueRuntimeBootstrap
                             IsCorsEnabled = false,
                             IsCspBypassing = false,
                             IsFetchEnabled = true,
-                            ResourceProvider = new LocalWebAssetResolver(
+                            ResourceProvider = webAppOptions.SchemeResourceProvider
+                                ?? new LocalWebAssetResolver(
                                 webAppOptions.ContentRoot,
                                 webAppOptions.SchemeName,
                                 webAppOptions.DomainName,
@@ -117,6 +118,15 @@ public static class CefGlueRuntimeBootstrap
 
 public sealed class CefGlueNextWebViewFactory : ITaruiWebViewFactory, ITaruiAvaloniaWebViewFactory
 {
+    private EventHandler<CefGlueNextWebViewCreatedEventArgs>? _webViewCreated;
+
+    /// <summary>Raised after each web view is created, before it is returned to the caller.</summary>
+    public event EventHandler<CefGlueNextWebViewCreatedEventArgs>? WebViewCreated
+    {
+        add => _webViewCreated += value;
+        remove => _webViewCreated -= value;
+    }
+
     public CefGlueNextWebViewFactory(CefGlueNextWebAppOptions webAppOptions)
     {
         ArgumentNullException.ThrowIfNull(webAppOptions);
@@ -130,7 +140,9 @@ public sealed class CefGlueNextWebViewFactory : ITaruiWebViewFactory, ITaruiAval
     public CefGlueNextWebView Create(TaruiWebViewOptions options)
     {
         GC.KeepAlive(this);
-        return new CefGlueNextWebView(options);
+        var webView = new CefGlueNextWebView(options);
+        _webViewCreated?.Invoke(this, new CefGlueNextWebViewCreatedEventArgs(webView));
+        return webView;
     }
 }
 
@@ -138,6 +150,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
 {
     private readonly CefGlueNextAvaloniaWebView _component;
     private EventHandler<TaruiWebMessage>? _messageReceived;
+    private EventHandler<TaruiWebMessage>? _hybridMessageReceived;
     private EventHandler<TaruiWebViewFileDropEventArgs>? _fileDropEntered;
     private EventHandler<TaruiWebViewFileDropLeftEventArgs>? _fileDropLeft;
     private EventHandler<TaruiWebViewFileDropEventArgs>? _fileDropped;
@@ -151,6 +164,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
         _component = new CefGlueNextAvaloniaWebView(options.InitialSource);
         _component.MessageReceived += OnComponentMessageReceived;
+        _component.HybridMessageReceived += OnComponentHybridMessageReceived;
         _component.FileDropEntered += OnComponentFileDropEntered;
         _component.FileDropLeft += OnComponentFileDropLeft;
         _component.FileDropped += OnComponentFileDropped;
@@ -168,6 +182,12 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
     {
         add => _messageReceived += value;
         remove => _messageReceived -= value;
+    }
+
+    public event EventHandler<TaruiWebMessage>? HybridMessageReceived
+    {
+        add => _hybridMessageReceived += value;
+        remove => _hybridMessageReceived -= value;
     }
 
     public event EventHandler<TaruiWebViewFileDropEventArgs>? FileDropEntered
@@ -262,6 +282,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         }
 
         _component.MessageReceived -= OnComponentMessageReceived;
+        _component.HybridMessageReceived -= OnComponentHybridMessageReceived;
         _component.FileDropEntered -= OnComponentFileDropEntered;
         _component.FileDropLeft -= OnComponentFileDropLeft;
         _component.FileDropped -= OnComponentFileDropped;
@@ -271,6 +292,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         _component.DragRegionsUpdated -= OnComponentDragRegionsUpdated;
         _component.Dispose();
         _messageReceived = null;
+        _hybridMessageReceived = null;
         _fileDropEntered = null;
         _fileDropLeft = null;
         _fileDropped = null;
@@ -294,6 +316,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
     private void DetachComponentEvents()
     {
         _component.MessageReceived -= OnComponentMessageReceived;
+        _component.HybridMessageReceived -= OnComponentHybridMessageReceived;
         _component.FileDropEntered -= OnComponentFileDropEntered;
         _component.FileDropLeft -= OnComponentFileDropLeft;
         _component.FileDropped -= OnComponentFileDropped;
@@ -306,6 +329,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
     private void ClearEventHandlers()
     {
         _messageReceived = null;
+        _hybridMessageReceived = null;
         _fileDropEntered = null;
         _fileDropLeft = null;
         _fileDropped = null;
@@ -316,6 +340,9 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
 
     private void OnComponentMessageReceived(object? sender, string message) =>
         _messageReceived?.Invoke(this, new TaruiWebMessage(message));
+
+    private void OnComponentHybridMessageReceived(object? sender, string message) =>
+        _hybridMessageReceived?.Invoke(this, new TaruiWebMessage(message));
 
     private void OnComponentFileDropEntered(object? sender, CefGlueNextAvaloniaFileDropEventArgs args)
     {

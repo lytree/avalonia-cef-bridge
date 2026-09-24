@@ -1,0 +1,109 @@
+@* Base64 编解码：文本 ⇄ Base64，支持 URL 安全字母表。 *@
+
+@inherits ComponentBase
+
+<div class="settings-row">
+    <label class="setting">模式
+        <select value="@_mode" @onchange="OnModeChanged">
+            <option value="encode">编码（文本 → Base64）</option>
+            <option value="decode">解码（Base64 → 文本）</option>
+        </select>
+    </label>
+    <label class="setting">URL 安全字母表
+        <input type="checkbox" class="switch" @bind="_urlSafe" />
+    </label>
+</div>
+
+<ToolCard Title="输入">
+<ChildContent>
+    <textarea class="tool-io" placeholder="@(ModeLabel)…" @bind="_input" @bind:event="oninput"></textarea>
+</ChildContent>
+</ToolCard>
+
+<ToolCard Title="输出">
+    <Actions><CopyButton Text="@(_error ?? _output)" /></Actions>
+<ChildContent>
+    <textarea class="tool-io output @(_error is null ? "" : "error")" readonly>@(_error ?? _output)</textarea>
+</ChildContent>
+</ToolCard>
+
+@code {
+    private string _input = string.Empty;
+    private string _mode = "encode";
+    private bool _urlSafe;
+
+    private string ModeLabel => _mode == "encode" ? "输入要编码的文本" : "输入要解码的 Base64";
+
+    private void OnModeChanged(ChangeEventArgs args) => _mode = args.Value?.ToString() ?? "encode";
+
+    private string _output
+    {
+        get
+        {
+            if (_input.Length == 0)
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                return _mode == "encode" ? Encode(_input) : Decode(_input);
+            }
+            catch (Exception exception)
+            {
+                return $"无法处理输入：{exception.Message}";
+            }
+        }
+    }
+
+    private string? _error => _input.Length == 0
+        ? null
+        : (_mode == "encode" || IsWellFormedBase64(_input)
+            ? null
+            : "输入不是有效的 Base64 字符串，已尝试容错解码。");
+
+    private string Encode(string text)
+    {
+        var bytes = Encoding.UTF8.GetBytes(text);
+        var base64 = Convert.ToBase64String(bytes);
+        if (_urlSafe)
+        {
+            base64 = base64.Replace('+', '-').Replace('/', '_').TrimEnd('=');
+        }
+
+        return base64;
+    }
+
+    private string Decode(string text)
+    {
+        var normalized = NormalizeBase64(text);
+        var bytes = Convert.FromBase64String(normalized);
+        return Encoding.UTF8.GetString(bytes);
+    }
+
+    private static bool IsWellFormedBase64(string text)
+    {
+        try
+        {
+            Convert.FromBase64String(NormalizeBase64(text));
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
+
+    private static string NormalizeBase64(string text)
+    {
+        var compact = new string(text.Where(static character => !char.IsWhiteSpace(character)).ToArray())
+            .Replace('-', '+')
+            .Replace('_', '/');
+        return (compact.Length % 4) switch
+        {
+            2 => compact + "==",
+            3 => compact + "=",
+            _ => compact,
+        };
+    }
+}

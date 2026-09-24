@@ -113,6 +113,7 @@ namespace Xilium.CefGlue.Common
 
         public event AsyncUnhandledExceptionEventHandler UnhandledException;
         public event Action<string> WebMessageReceived;
+        public event Action<string> HybridWebMessageReceived;
 
         public CefRequestContext RequestContext { get; }
 
@@ -296,6 +297,7 @@ namespace Xilium.CefGlue.Common
             var cefClient = CreateCefClient();
             cefClient.Dispatcher.RegisterMessageHandler(Messages.UnhandledException.Name, OnBrowserProcessUnhandledException);
             cefClient.Dispatcher.RegisterMessageHandler("__taruiIpc", OnWebMessageReceived);
+            cefClient.Dispatcher.RegisterMessageHandler("__taruiHybrid", OnHybridMessageReceived);
             _cefClient = cefClient;
 
             using (var extraInfo = CefDictionaryValue.Create())
@@ -341,6 +343,12 @@ namespace Xilium.CefGlue.Common
         {
             using var arguments = eventArgs.Message.Arguments;
             WebMessageReceived?.Invoke(arguments.GetString(0));
+        }
+
+        private void OnHybridMessageReceived(MessageReceivedEventArgs eventArgs)
+        {
+            using var arguments = eventArgs.Message.Arguments;
+            HybridWebMessageReceived?.Invoke(arguments.GetString(0));
         }
 
         protected void WithErrorHandling(string scopeName, Action action)

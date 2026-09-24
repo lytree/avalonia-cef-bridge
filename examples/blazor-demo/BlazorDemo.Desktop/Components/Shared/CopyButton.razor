@@ -1,0 +1,31 @@
+@* 共享的「复制」按钮，带 1.5 秒的已复制反馈。 *@
+
+@inherits ComponentBase
+@inject IJSRuntime JS
+
+<button type="button" class="copy-btn" @onclick="CopyAsync">
+    @(_copied ? "已复制 ✓" : Label)
+</button>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = string.Empty;
+
+    [Parameter] public string Label { get; set; } = "复制";
+
+    private bool _copied;
+
+    private async Task CopyAsync()
+    {
+        await JS.InvokeVoidAsync("devbox.clipboard.copy", Text);
+        _copied = true;
+        StateHasChanged();
+        _ = ResetAfterDelayAsync();
+    }
+
+    private async Task ResetAfterDelayAsync()
+    {
+        await Task.Delay(1500);
+        _copied = false;
+        StateHasChanged();
+    }
+}

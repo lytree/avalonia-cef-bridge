@@ -1,0 +1,58 @@
+@* GUID 生成器：批量生成 + 格式选项。 *@
+
+@inherits ComponentBase
+
+<div class="settings-row">
+    <label class="setting">数量
+        <input type="number" min="1" max="500" @bind="_count" @bind:event="oninput" />
+    </label>
+    <label class="setting">大写 <input type="checkbox" class="switch" @bind="_upper" /></label>
+    <label class="setting">连字符 <input type="checkbox" class="switch" @bind="_hyphens" /></label>
+    <label class="setting">大括号 <input type="checkbox" class="switch" @bind="_braces" /></label>
+</div>
+
+<ToolCard Title="结果">
+    <Actions>
+        <button type="button" class="copy-btn" @onclick="Regenerate">重新生成</button>
+        <CopyButton Text="@Output" />
+    </Actions>
+    <ChildContent>
+        <textarea class="tool-io output" readonly>@Output</textarea>
+    </ChildContent>
+</ToolCard>
+
+@code {
+    private int _count = 5;
+    private bool _upper;
+    private bool _hyphens = true;
+    private bool _braces;
+    private List<Guid> _guides = new();
+
+    protected override void OnInitialized() => Regenerate();
+
+    private string Output
+    {
+        get
+        {
+            var lines = _guides.Select(Format);
+            return string.Join(Environment.NewLine, lines);
+        }
+    }
+
+    private void Regenerate()
+    {
+        var count = Math.Clamp(_count, 1, 500);
+        _guides = Enumerable.Range(0, count).Select(static _ => Guid.NewGuid()).ToList();
+    }
+
+    private string Format(Guid value)
+    {
+        var text = _hyphens ? value.ToString("D") : value.ToString("N");
+        if (_upper)
+        {
+            text = text.ToUpperInvariant();
+        }
+
+        return _braces ? $"{{{text}}}" : text;
+    }
+}

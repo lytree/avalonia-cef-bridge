@@ -1,16 +1,19 @@
-<Project Sdk="Microsoft.NET.Sdk.Razor">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Tarui.Hosting.Blazor</RootNamespace>
     <AssemblyName>Tarui.Hosting.Blazor</AssemblyName>
     <!--
-      Blazor hosting package: embeds an ASP.NET Core in-process server that hosts a Blazor Server
-      application, then surfaces its URL through Tarui's window pipeline so the CEF WebView loads
-      the Blazor front-end. No runtime reflection, no assembly scanning — every endpoint and
-      service is wired explicitly via AddTaruiBlazor().
+      Blazor Hybrid hosting package: hosts Blazor components in-process inside the Tarui desktop
+      window, mirroring the official Microsoft.AspNetCore.Components.WebView (BlazorWebView)
+      architecture. A WebViewManager subclass renders the component tree directly into the CEF
+      web view over the private "__taruiHybrid" message channel, and the tarui:// custom scheme
+      serves the host page and static web assets (including _framework/blazor.webview.js) through
+      WebViewManager's static content pipeline — there is no loopback HTTP server, no listening
+      socket, and no network round trip. No runtime reflection, no assembly scanning — every
+      endpoint and service is wired explicitly via AddTaruiBlazor().
     -->
-    <RazorLangVersion>latest</RazorLangVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,10 +21,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\core\Tarui.Contracts\Tarui.Contracts.csproj" />
     <ProjectReference Include="..\..\core\Tarui.Ipc\Tarui.Ipc.csproj" />
     <ProjectReference Include="..\Tarui.Hosting\Tarui.Hosting.csproj" />
     <ProjectReference Include="..\Tarui.Shell\Tarui.Shell.csproj" />
+    <ProjectReference Include="..\..\webview\Tarui.WebView.CefGlueNext\Tarui.WebView.CefGlueNext.csproj" />
   </ItemGroup>
 
   <ItemGroup>

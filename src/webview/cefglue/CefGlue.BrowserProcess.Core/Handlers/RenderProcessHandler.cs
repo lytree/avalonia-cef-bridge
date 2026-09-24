@@ -13,6 +13,7 @@ namespace Xilium.CefGlue.BrowserProcess.Handlers
         private FrameDeliveryRenderSide _frameDelivery;
         private SharedFrameDeliveryRenderSide _sharedFrameDelivery;
         private readonly InputChannelRenderSide _inputChannel = new();
+        private readonly HybridChannelRenderSide _hybridChannel = new();
         private readonly MessageDispatcher _messageDispatcher = new();
 
         public RenderProcessHandler()
@@ -51,6 +52,7 @@ namespace Xilium.CefGlue.BrowserProcess.Handlers
             if (frame.IsMain)
             {
                 _inputChannel.Install(context);
+                _hybridChannel.Install(context);
             }
         }
 

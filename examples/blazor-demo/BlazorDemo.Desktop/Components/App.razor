@@ -1,49 +1,137 @@
-@* Root component for the Tarui Blazor demo. Hosts three pages that exercise the IPC bridge:
-   1. Counter — basic component lifecycle, no IPC.
-   2. App Info — calls `core:app|get-info` through `ITaruiIpc`.
-   3. OS Info — calls `core:os|info` through `ITaruiIpc` and subscribes to `shell://theme-changed`.
-*@
+@* DevBox — DevToys 风格的 Blazor Hybrid 工具箱外壳：侧边栏分类 + 搜索 + 主题切换 + 工具路由。 *@
 
 @inherits ComponentBase
+@inject IJSRuntime JS
 
-<PageTitle>Tarui Blazor Demo</PageTitle>
+<div class="app" data-theme="@_theme">
+    <aside class="sidebar">
+        <div class="brand">
+            <span class="brand-logo">🧰</span>
+            <div>
+                <div class="brand-name">DevBox</div>
+                <div class="brand-sub">Blazor Hybrid 工具箱</div>
+            </div>
+        </div>
 
-<div class="tarui-shell">
-    <nav class="tarui-tabs">
-        @foreach (var entry in Pages)
-        {
-            <button class="tarui-tab @(entry.Key == ActivePage ? "is-active" : null)"
-                    @onclick="() => ActivePage = entry.Key">
-                @entry.Title
+        <input class="search" type="text" placeholder="搜索工具…"
+               value="@_search" @oninput="OnSearchInput" />
+
+        <nav class="tool-list">
+            @if (_visibleTools.Count == 0)
+            {
+                <div class="tool-empty">没有匹配「@_search」的工具</div>
+            }
+            else
+            {
+                foreach (var group in _visibleTools.GroupBy(static tool => tool.Category))
+                {
+                    <div class="group-title">@group.Key</div>
+                    foreach (var tool in group)
+                    {
+                        <button type="button"
+                                class="tool-item @(tool.Id == _activeId ? "active" : "")"
+                                @onclick="() => SelectTool(tool.Id)">
+                            <span class="tool-icon">@tool.Icon</span>
+                            <span>@tool.Name</span>
+                        </button>
+                    }
+                }
+            }
+        </nav>
+
+        <div class="sidebar-footer">
+            <button type="button" class="icon-btn" title="切换亮/暗主题" @onclick="ToggleTheme">
+                @(_theme == "dark" ? "☀️" : "🌙")
             </button>
-        }
-    </nav>
+            <button type="button" class="icon-btn" title="关于" @onclick='() => SelectTool("about")'>ℹ️</button>
+            <span style="margin-left:auto;font-size:11px;color:var(--text-2)">Blazor Hybrid</span>
+        </div>
+    </aside>
 
-    <main class="tarui-page">
-        @switch (ActivePage)
-        {
-            case "counter":
-                <CounterPage />
-                break;
-            case "app-info":
-                <AppInfoPage />
-                break;
-            case "os-info":
-                <OsInfoPage />
-                break;
-        }
+    <main class="content">
+        <header class="tool-header">
+            <span class="tool-header-icon">@_active.Icon</span>
+            <div>
+                <h1>@_active.Name</h1>
+                <p>@_active.Description</p>
+            </div>
+        </header>
+
+        <div class="tool-body">
+            @switch (_activeId)
+            {
+                case "base64": <Base64Tool /> break;
+                case "json": <JsonFormatterTool /> break;
+                case "guid": <GuidGeneratorTool /> break;
+                default: <AboutPage /> break;
+            }
+        </div>
     </main>
 </div>
 
 @code {
-    private string ActivePage { get; set; } = "counter";
+    private sealed record ToolInfo(string Id, string Name, string Description, string Category, string Icon, string Keywords);
 
-    private record PageEntry(string Key, string Title);
-
-    private static readonly PageEntry[] Pages =
+    private static readonly ToolInfo[] AllTools =
     [
-        new("counter", "Counter"),
-        new("app-info", "App Info"),
-        new("os-info", "OS Info"),
+        new("base64", "Base64 编解码", "在文本与 Base64 字符串之间互相转换，支持 URL 安全字母表。", "编码器", "🔐", "base64 encode decode 编码 解码"),
+        new("json", "JSON 格式化", "校验、美化与压缩 JSON 文本。", "格式化", "✨", "json format minify 格式化 压缩"),
+        new("guid", "GUID 生成器", "批量生成 GUID/UUID，可控制大小写、连字符与大括号。", "生成器", "🆔", "guid uuid 生成"),
+        new("about", "关于", "应用信息与运行时环境。", "帮助", "ℹ️", "about 关于 版本"),
     ];
+
+    private static readonly Dictionary<string, ToolInfo> ToolsById =
+        AllTools.ToDictionary(static tool => tool.Id, static tool => tool, StringComparer.Ordinal);
+
+    private string _search = string.Empty;
+    private string _activeId = "base64";
+    private string _theme = "light";
+    private List<ToolInfo> _visibleTools = new(AllTools);
+
+    private ToolInfo _active => ToolsById.GetValueOrDefault(_activeId, AllTools[0]);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var persisted = await JS.InvokeAsync<string>("devbox.getTheme");
+            if (_theme != persisted)
+            {
+                _theme = persisted;
+                StateHasChanged();
+            }
+        }
+    }
+
+    private void OnSearchInput(ChangeEventArgs args)
+    {
+        _search = args.Value?.ToString() ?? string.Empty;
+        ApplyFilter();
+    }
+
+    private void SelectTool(string id)
+    {
+        _activeId = id;
+    }
+
+    private async Task ToggleTheme()
+    {
+        _theme = _theme == "dark" ? "light" : "dark";
+        await JS.InvokeVoidAsync("devbox.setTheme", _theme);
+    }
+
+    private void ApplyFilter()
+    {
+        if (string.IsNullOrWhiteSpace(_search))
+        {
+            _visibleTools = new List<ToolInfo>(AllTools);
+            return;
+        }
+
+        var needle = _search.Trim();
+        _visibleTools = AllTools
+            .Where(tool => tool.Name.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+                           tool.Keywords.Contains(needle, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
 }

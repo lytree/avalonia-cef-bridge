@@ -10,6 +10,14 @@ public interface ITaruiWebView : IDisposable
 
     event EventHandler<TaruiWebMessage>? MessageReceived;
 
+    /// <summary>
+    /// Raised when the page sends a message over the hybrid (in-process Blazor) channel — the
+    /// private "__taruiHybrid" process message that backs <c>window.external.sendMessage</c> for
+    /// <c>blazor.webview.js</c>. Kept separate from <see cref="MessageReceived"/> so the Tarui IPC
+    /// bridge and the in-process Blazor renderer never observe each other's frames.
+    /// </summary>
+    event EventHandler<TaruiWebMessage>? HybridMessageReceived;
+
     event EventHandler<TaruiWebViewFileDropEventArgs>? FileDropEntered;
 
     event EventHandler<TaruiWebViewFileDropLeftEventArgs>? FileDropLeft;

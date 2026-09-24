@@ -1,4 +1,5 @@
 using Avalonia;
+using Tarui.WebView.Abstractions;
 
 namespace Tarui.WebView.CefGlueNext;
 
@@ -148,3 +149,9 @@ public readonly record struct CefGlueNextAvaloniaDraggableRegion(
     int Width,
     int Height,
     bool IsDraggable);
+
+/// <summary>Carries the web view a factory just created, so hosts can attach additional pipelines.</summary>
+public sealed class CefGlueNextWebViewCreatedEventArgs(ITaruiWebView webView) : EventArgs
+{
+    public ITaruiWebView WebView { get; } = webView;
+}

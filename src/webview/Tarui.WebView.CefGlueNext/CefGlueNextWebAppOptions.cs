@@ -29,7 +29,8 @@ public sealed record CefGlueNextWebAppOptions
         string contentSecurityPolicy,
         long maxAssetBytes,
         IReadOnlyList<string> allowedSchemes,
-        Uri? schemeOrigin)
+        Uri? schemeOrigin,
+        ICefGlueNextAvaloniaResourceProvider? schemeResourceProvider = null)
     {
         Mode = mode;
         StartUri = startUri;
@@ -41,6 +42,7 @@ public sealed record CefGlueNextWebAppOptions
         MaxAssetBytes = maxAssetBytes;
         AllowedSchemes = allowedSchemes;
         SchemeOrigin = schemeOrigin;
+        SchemeResourceProvider = schemeResourceProvider;
     }
 
     public TaruiWebResourceMode Mode { get; }
@@ -71,6 +73,14 @@ public sealed record CefGlueNextWebAppOptions
     /// asset resolver, or null when no local assets are served and the app only loads over HTTP(S).
     /// </summary>
     public Uri? SchemeOrigin { get; }
+
+    /// <summary>
+    /// An optional replacement for the default <c>LocalWebAssetResolver</c> on the custom scheme.
+    /// Blazor Hybrid hosting supplies a provider that delegates to <c>WebViewManager</c> so static
+    /// web assets (including <c>_framework/blazor.webview.js</c>) are served exactly like the
+    /// official platform hosts. When null the local file resolver is used.
+    /// </summary>
+    public ICefGlueNextAvaloniaResourceProvider? SchemeResourceProvider { get; }
 
     public static CefGlueNextWebAppOptions FromConfiguration(IConfiguration configuration)
     {
@@ -150,7 +160,8 @@ public sealed record CefGlueNextWebAppOptions
         string? domainName = null,
         bool? spaFallback = null,
         string? contentSecurityPolicy = null,
-        long? maxAssetBytes = null)
+        long? maxAssetBytes = null,
+        ICefGlueNextAvaloniaResourceProvider? schemeResourceProvider = null)
     {
         var serving = TryResolveSchemeServing(
             contentRoot,
@@ -172,7 +183,8 @@ public sealed record CefGlueNextWebAppOptions
             serving.ContentSecurityPolicy,
             serving.MaxAssetBytes,
             [serving.SchemeName, "http", "https"],
-            serving.Origin);
+            serving.Origin,
+            schemeResourceProvider);
     }
 
     /// <summary>

@@ -45,6 +45,7 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
         _browser.DownloadHandler = _downloadHandler;
         _browser.DragHandler = _dragHandler;
         _browser.WebMessageReceived += OnWebMessageReceived;
+        _browser.HybridWebMessageReceived += OnHybridWebMessageReceived;
         _browser.BrowserInitialized += OnBrowserInitialized;
         _browser.BrowserClosed += OnBrowserClosed;
         _browser.AddressChanged += OnAddressChanged;
@@ -83,6 +84,9 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
     public event EventHandler<CefGlueNextAvaloniaDragRegionsUpdatedEventArgs>? DragRegionsUpdated;
 
     public event EventHandler<string>? MessageReceived;
+
+    /// <summary>Raised when the page sends a message over the hybrid (in-process Blazor) channel.</summary>
+    public event EventHandler<string>? HybridMessageReceived;
 
     public bool IsBrowserInitialized => _browser.IsBrowserInitialized;
 
@@ -282,6 +286,7 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
             _addressChangeHooked = false;
         }
         _browser.WebMessageReceived -= OnWebMessageReceived;
+        _browser.HybridWebMessageReceived -= OnHybridWebMessageReceived;
         _browser.BrowserInitialized -= OnBrowserInitialized;
         _browser.RequestHandler = null;
         _browser.DownloadHandler = null;
@@ -326,6 +331,11 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
     private void OnWebMessageReceived(string message)
     {
         MessageReceived?.Invoke(this, message);
+    }
+
+    private void OnHybridWebMessageReceived(string message)
+    {
+        HybridMessageReceived?.Invoke(this, message);
     }
 
     private void OnDragEnter(object? sender, DragEventArgs e)

@@ -1,23 +1,15 @@
-using Microsoft.AspNetCore.Hosting;
-
 namespace Tarui.Hosting.Blazor;
 
+using Tarui.WebView.CefGlueNext;
+
 /// <summary>
-/// Options that control how the in-process ASP.NET Core server hosts a Blazor application inside a
-/// Tarui desktop window. Defaults are tuned for "Blazor Hybrid inside Tarui" — server-rendered HTML
-/// over loopback HTTP, no public listener, no forwarded headers.
+/// Options that control how <see cref="TaruiBlazorServiceCollectionExtensions.AddTaruiBlazor"/>
+/// hosts a Blazor Hybrid application inside a Tarui desktop window. The component tree runs
+/// in-process (no HTTP server); the <c>tarui://</c> custom scheme serves the host page and static
+/// web assets, and interop frames travel over the private "__taruiHybrid" web view channel.
 /// </summary>
 public sealed class TaruiBlazorOptions
 {
-    /// <summary>The TCP port the embedded Kestrel listener binds to. Use <c>0</c> for OS-assigned.</summary>
-    public int Port { get; set; }
-
-    /// <summary>The host name the embedded Kestrel listener binds to. Defaults to loopback only.</summary>
-    public string Host { get; set; } = "127.0.0.1";
-
-    /// <summary>The relative path the Blazor root component is mounted at. Defaults to <c>/</c>.</summary>
-    public string RootPath { get; set; } = "/";
-
     /// <summary>
     /// The Blazor application root component type (a <c>ComponentBase</c>-derived class). Required.
     /// Tarui.Hosting.Blazor never reflects over assemblies to discover it; the host application must
@@ -25,23 +17,51 @@ public sealed class TaruiBlazorOptions
     /// </summary>
     public Type? RootComponent { get; set; }
 
-    /// <summary>Optional callback invoked once the listener is bound; receives the absolute URL the CEF WebView should navigate to.</summary>
-    public Action<Uri>? OnListening { get; set; }
-
-    /// <summary>Forwarded to <see cref="IWebHostBuilder.UseSetting"/> verbatim. Use to override ASP.NET Core defaults from Tarui's configuration.</summary>
-    public IDictionary<string, string?> WebHostSettings { get; } = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// CSS selector inside the host page where the root component is mounted. Defaults to
+    /// <c>#app</c>; the host page must contain a matching element.
+    /// </summary>
+    public string RootComponentSelector { get; set; } = "#app";
 
     /// <summary>
-    /// When <c>true</c>, the embedded server only listens on the configured loopback port and never
-    /// registers a public certificate. This is the safe default for desktop windows; turn it off only
-    /// when intentionally exposing the Blazor server to the wider network.
+    /// Filesystem directory served as the application root (the Blazor host page plus any static
+    /// content). Defaults to <c>wwwroot</c> next to the application executable. Must contain the
+    /// host page referenced by <see cref="HostPageRelativePath"/>.
     /// </summary>
-    public bool LoopbackOnly { get; set; } = true;
+    public string? ContentRoot { get; set; }
 
     /// <summary>
-    /// Resolves the absolute URL the window should navigate to. Falls back to
-    /// <c>http://{Host}:{Port}{RootPath}</c>. Callers may override to inject a dev server URL when
-    /// iterating on the front-end from <c>tarui dev</c>.
+    /// Path to the host page relative to <see cref="ContentRoot"/>. Defaults to <c>index.html</c>.
     /// </summary>
-    public Func<int, Uri>? ResolveStartUri { get; set; }
+    public string HostPageRelativePath { get; set; } = "index.html";
+
+    /// <summary>The custom scheme the application is served over. Defaults to <c>tarui</c>.</summary>
+    public string SchemeName { get; set; } = CefGlueNextWebAppOptions.DefaultSchemeName;
+
+    /// <summary>The custom scheme domain. Defaults to <c>localhost</c>.</summary>
+    public string DomainName { get; set; } = CefGlueNextWebAppOptions.DefaultDomainName;
+
+    /// <summary>
+    /// When <c>true</c> (default), main-frame requests that do not match a file fall back to the
+    /// host page so client-side routes can be deep-linked.
+    /// </summary>
+    public bool SpaFallback { get; set; } = true;
+
+    /// <summary>
+    /// Content-Security-Policy header applied to scheme responses. Defaults to the shared Tarui
+    /// policy (same-origin scripts and styles, no remote frames).
+    /// </summary>
+    public string? ContentSecurityPolicy { get; set; }
+
+    internal string ResolveContentRoot()
+    {
+        var root = ContentRoot ?? Path.Combine(AppContext.BaseDirectory, "wwwroot");
+        return Path.GetFullPath(root);
+    }
+
+    internal Uri ResolveAppBaseUri() =>
+        new($"{SchemeName}://{DomainName}/", UriKind.Absolute);
+
+    internal Uri ResolveHostPageUri() =>
+        new(ResolveAppBaseUri(), HostPageRelativePath);
 }

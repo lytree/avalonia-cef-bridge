@@ -1,50 +1,43 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Tarui.Contracts;
 using Tarui.Hosting;
 using Tarui.Ipc;
 using Tarui.Shell;
+using Tarui.WebView.CefGlueNext;
 
 namespace Tarui.Hosting.Blazor;
 
 /// <summary>
-/// DI extensions that wire the Blazor hosting package into a Tarui application.
+/// DI extensions that wire the Blazor Hybrid hosting package into a Tarui application.
 /// </summary>
 public static class TaruiBlazorServiceCollectionExtensions
 {
     /// <summary>
-    /// Configures the host to host a Blazor Server application. After this call:
+    /// Configures the host to run Blazor Hybrid: Razor components execute in-process inside the
+    /// Tarui desktop window — there is no HTTP listener. After this call:
     /// <list type="bullet">
-    /// <item><see cref="ITaruiIpc"/> is registered so Blazor components can invoke Tarui commands.</item>
-    /// <item>An embedded ASP.NET Core <see cref="IHost"/> starts before the main window opens and
-    ///       exposes its absolute URL through <see cref="TaruiBlazorServer.StartUri"/>.</item>
-    /// <item>The main window's <see cref="TaruiWindowBuilder.Url"/> is automatically set to the
-    ///       Blazor root URL when the user did not provide one explicitly.</item>
+    /// <item><see cref="ITaruiIpc"/> is registered so Blazor components can invoke Tarui commands
+    ///       through the same dispatcher and capability gate the TypeScript bridge uses.</item>
+    /// <item>The <c>tarui://</c> custom scheme serves the host page and static web assets
+    ///       (including <c>_framework/blazor.webview.js</c>) through the official
+    ///       <c>WebViewManager</c> static content pipeline.</item>
+    /// <item>The main window's URL defaults to the Blazor host page when the user did not supply
+    ///       one explicitly.</item>
     /// </list>
     /// The Blazor application root component type must be set on
-    /// <see cref="TaruiBlazorOptions.RootComponent"/> before the host builds; this keeps startup
-    /// reflection-free — there is no assembly scanning to discover a default root.
+    /// <see cref="TaruiBlazorOptions.RootComponent"/>; this keeps startup reflection-free — there
+    /// is no assembly scanning to discover a default root.
     /// </summary>
+    /// <remarks>
+    /// Call after <c>AddCefGlueWebView()</c> so the hybrid scheme options replace the default
+    /// <see cref="CefGlueNextWebAppOptions"/> registration.
+    /// </remarks>
     /// <param name="services">The Tarui service collection (typically obtained via <c>TaruiHost.CreateApplicationBuilder</c>).</param>
-    /// <param name="configure">Callback that mutates <see cref="TaruiBlazorOptions"/> before the embedded server starts.</param>
+    /// <param name="configure">Callback that mutates <see cref="TaruiBlazorOptions"/> before the host builds.</param>
     public static IServiceCollection AddTaruiBlazor(
         this IServiceCollection services,
         Action<TaruiBlazorOptions> configure)
-        => services.AddTaruiBlazor(configure, configureApp: null);
-
-    /// <summary>
-    /// Variant of <see cref="AddTaruiBlazor(IServiceCollection, Action{TaruiBlazorOptions})"/> that
-    /// also lets the host application configure the embedded <see cref="WebApplication"/>. Useful when
-    /// the host wants to register additional Razor endpoints or middleware on the same server.
-    /// </summary>
-    public static IServiceCollection AddTaruiBlazor(
-        this IServiceCollection services,
-        Action<TaruiBlazorOptions> configure,
-        Action<WebApplication>? configureApp)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configure);
@@ -54,61 +47,37 @@ public static class TaruiBlazorServiceCollectionExtensions
 
         services.TryAddSingleton(options);
         services.AddSingleton<ITaruiIpc, TaruiIpc>();
-        services.AddSingleton<TaruiBlazorServer>(sp =>
-        {
-            var opts = sp.GetRequiredService<TaruiBlazorOptions>();
-            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<TaruiBlazorServer>();
-            var host = TaruiBlazorHostFactory.Create(opts, configureApp);
-            return new TaruiBlazorServer(host, opts, logger);
-        });
+        services.AddSingleton<TaruiBlazorHybridState>();
 
-        services.AddHostedService<TaruiBlazorHostedService>();
+        // Expose the in-process IPC façade to components as a cascading value, matching the
+        // experience of the previous Blazor Server-based host.
+        services.AddCascadingValue(sp => sp.GetRequiredService<ITaruiIpc>());
+
+        // Replace the web app options so the custom scheme serves Blazor content through the
+        // WebViewManager static content pipeline instead of the plain local file resolver. The
+        // provider reads the manager out of TaruiBlazorHybridState lazily, so registration order
+        // never matters for the scheme handler itself.
+        services.AddSingleton(sp => CefGlueNextWebAppOptions.CreateScheme(
+            contentRoot: options.ResolveContentRoot(),
+            schemeName: options.SchemeName,
+            domainName: options.DomainName,
+            spaFallback: options.SpaFallback,
+            contentSecurityPolicy: options.ContentSecurityPolicy,
+            schemeResourceProvider: new TaruiBlazorSchemeContentProvider(
+                sp.GetRequiredService<TaruiBlazorHybridState>(),
+                options.ContentSecurityPolicy)));
+
+        services.AddHostedService<TaruiBlazorHybridHostedService>();
         return services;
     }
 
     /// <summary>
-    /// Sets the Blazor root URL on the host's main <see cref="TaruiWindowBuilder"/>. Idempotent and
-    /// safe to call after <see cref="AddTaruiBlazor(IServiceCollection, Action{TaruiBlazorOptions})"/>.
+    /// Legacy no-op retained for source compatibility: the window URL now falls back to the
+    /// application origin's start URI (the Blazor host page) automatically.
     /// </summary>
     public static IServiceCollection UseTaruiBlazorWindow(this IServiceCollection services)
     {
-        services.AddHostedService<TaruiBlazorWindowUrlApplier>();
+        ArgumentNullException.ThrowIfNull(services);
         return services;
-    }
-}
-
-/// <summary>
-/// Reads <see cref="TaruiBlazorOptions"/> from configuration under the <c>Tarui:Blazor:*</c> section.
-/// </summary>
-internal static class TaruiBlazorConfigurationBinder
-{
-    public static void BindFromConfiguration(TaruiBlazorOptions options, IConfiguration configuration)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(configuration);
-
-        var section = configuration.GetSection("Tarui:Blazor");
-        if (!section.Exists())
-        {
-            return;
-        }
-
-        var port = section["Port"];
-        if (!string.IsNullOrWhiteSpace(port) && int.TryParse(port, out var parsedPort))
-        {
-            options.Port = parsedPort;
-        }
-
-        var host = section["Host"];
-        if (!string.IsNullOrWhiteSpace(host))
-        {
-            options.Host = host;
-        }
-
-        var rootPath = section["RootPath"];
-        if (!string.IsNullOrWhiteSpace(rootPath))
-        {
-            options.RootPath = rootPath;
-        }
     }
 }

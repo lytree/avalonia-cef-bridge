@@ -1,6 +1,5 @@
 using Tarui.Hosting;
 using Tarui.Hosting.Blazor;
-using Tarui.Ipc;
 using Tarui.Plugins.Autostart;
 using Tarui.Plugins.Cookie;
 using Tarui.Plugins.Core;
@@ -52,7 +51,7 @@ internal static class Program
         var builder = TaruiHost.CreateApplicationBuilder(args);
 
         builder.UseApplicationIdentity(
-            TaruiApplicationIdentity.FromManifest(ApplicationId, "Tarui Blazor Demo", "0.1.0"));
+            TaruiApplicationIdentity.FromManifest(ApplicationId, "DevBox — Blazor Hybrid 工具箱", "0.2.0"));
 
         builder.Services
             .AddTaruiShell()
@@ -79,21 +78,15 @@ internal static class Program
             .AddUpdaterPlugin()
             .AddCookiePlugin();
 
+        // Blazor Hybrid：组件在进程内渲染，加载 tarui://localhost/index.html，无 HTTP 监听。
         builder.Services.AddTaruiBlazor(options =>
         {
-            // 0 = OS-assigned loopback port; the embedded server's actual URL is published on
-            // TaruiBlazorServer.StartUri and copied onto the main window by UseTaruiBlazorWindow().
-            options.Port = 0;
-            options.Host = "127.0.0.1";
-            options.RootPath = "/";
             options.RootComponent = typeof(Components.App);
         });
 
-        builder.Services.UseTaruiBlazorWindow();
-
         builder.Window.Configure(window =>
         {
-            window.Title = "Tarui Blazor Demo";
+            window.Title = "DevBox — Blazor Hybrid 工具箱";
             window.Width = 1280;
             window.Height = 820;
             window.MinWidth = 900;

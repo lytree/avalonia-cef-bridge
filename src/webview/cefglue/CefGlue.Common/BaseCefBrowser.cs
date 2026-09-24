@@ -171,6 +171,12 @@ namespace Xilium.CefGlue.Common
         public event AsyncUnhandledExceptionEventHandler UnhandledException { add => _adapter.UnhandledException += value; remove => _adapter.UnhandledException -= value; }
 
         public event Action<string> WebMessageReceived { add => _adapter.WebMessageReceived += value; remove => _adapter.WebMessageReceived -= value; }
+
+        /// <summary>
+        /// Event fired when the page sends a message over the hybrid (in-process Blazor) channel —
+        /// the "__taruiHybrid" process message installed by HybridChannelRenderSide.
+        /// </summary>
+        public event Action<string> HybridWebMessageReceived { add => _adapter.HybridWebMessageReceived += value; remove => _adapter.HybridWebMessageReceived -= value; }
         
         /// <summary>
         /// Return the handler for context menus. If no handler is provided the default implementation will be used.

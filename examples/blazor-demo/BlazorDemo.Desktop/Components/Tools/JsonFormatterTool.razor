@@ -1,0 +1,89 @@
+@* JSON 格式化：校验 + 美化/压缩，保留原始键顺序。 *@
+
+@inherits ComponentBase
+
+<div class="settings-row">
+    <label class="setting">模式
+        <select value="@_mode" @onchange="OnModeChanged">
+            <option value="pretty">美化</option>
+            <option value="minify">压缩</option>
+        </select>
+    </label>
+    <label class="setting">缩进
+        <select value="@_indent" @onchange="OnIndentChanged">
+            <option value="2">2 空格</option>
+            <option value="4">4 空格</option>
+            <option value="tab">Tab</option>
+        </select>
+    </label>
+</div>
+
+<ToolCard Title="输入">
+<ChildContent>
+    <textarea class="tool-io" placeholder='{"hello": "world"}' @bind="_input" @bind:event="oninput"></textarea>
+</ChildContent>
+</ToolCard>
+
+<ToolCard Title="输出">
+    <Actions><CopyButton Text="@Output" /></Actions>
+<ChildContent>
+    <textarea class="tool-io output @(_error is null ? "" : "error")" readonly>@Output</textarea>
+</ChildContent>
+</ToolCard>
+
+@code {
+    private string _input = string.Empty;
+    private string _mode = "pretty";
+    private string _indent = "2";
+
+    private void OnModeChanged(ChangeEventArgs args) => _mode = args.Value?.ToString() ?? "pretty";
+
+    private void OnIndentChanged(ChangeEventArgs args) => _indent = args.Value?.ToString() ?? "2";
+
+    private string? _error { get; set; }
+
+    private string Output
+    {
+        get
+        {
+            _error = null;
+            if (_input.Trim().Length == 0)
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                var node = System.Text.Json.Nodes.JsonNode.Parse(_input)
+                    ?? throw new System.Text.Json.JsonException("输入不是有效的 JSON 值。");
+
+                var options = new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = _mode == "pretty",
+                };
+                if (_mode == "pretty")
+                {
+                    options.Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
+                }
+
+                var json = node.ToJsonString(options);
+                if (_mode == "pretty")
+                {
+                    json = _indent switch
+                    {
+                        "4" => json.Replace("\n  ", "\n    "),
+                        "tab" => json.Replace("\n  ", "\n\t"),
+                        _ => json,
+                    };
+                }
+
+                return json;
+            }
+            catch (System.Text.Json.JsonException exception)
+            {
+                _error = $"JSON 无效：{exception.Message}";
+                return _error;
+            }
+        }
+    }
+}

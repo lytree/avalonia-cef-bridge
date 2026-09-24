@@ -1,0 +1,82 @@
+@* 关于页：通过 ITaruiIpc 调用 core:app|get-info，同时展示运行时环境。 *@
+
+@inherits ComponentBase
+@inject ITaruiIpc Ipc
+
+<p class="hint">
+    本应用演示 Tarui 的 Blazor Hybrid 托管：Razor 组件在进程内渲染，通过自定义
+    <code>tarui://</code> scheme 加载，无需任何本地 HTTP 端口；下面的应用信息通过
+    <code>ITaruiIpc</code>（与前端 TypeScript 桥共享同一条命令管线与能力门控）获取。
+</p>
+
+@if (_error is not null)
+{
+    <p class="error-text">@_error</p>
+}
+
+<div class="output-grid" style="max-width:760px">
+    @foreach (var row in Rows)
+    {
+        <div class="output-row">
+            <span class="label">@row.Name</span>
+            <span class="value">@row.Value</span>
+            <CopyButton Text="@row.Value" />
+        </div>
+    }
+</div>
+
+@code {
+    private sealed record InfoRow(string Name, string Value);
+
+    private string? _error;
+    private AppHandshake? _handshake;
+
+    private List<InfoRow> Rows
+    {
+        get
+        {
+            var rows = new List<InfoRow>
+            {
+                new("Blazor 托管", "Blazor Hybrid（WebViewManager + tarui:// scheme，进程内渲染）"),
+                new(".NET 版本", Environment.Version.ToString()),
+                new("操作系统", System.Runtime.InteropServices.RuntimeInformation.OSDescription),
+                new("进程架构", System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture.ToString()),
+            };
+
+            if (_handshake is { } handshake)
+            {
+                rows.Add(new("应用产品", handshake.Product));
+                rows.Add(new("Shell 版本", handshake.ShellVersion));
+                rows.Add(new("桥接协议", handshake.BridgeVersion.ToString()));
+                rows.Add(new("平台", handshake.Platform));
+                rows.Add(new("能力", string.Join(", ", handshake.Capabilities)));
+            }
+            else if (_error is null)
+            {
+                rows.Add(new("应用信息", "加载中…"));
+            }
+
+            return rows;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var result = await Ipc.InvokeAsync<AppHandshake>("core:app|get-info");
+            if (result.Success)
+            {
+                _handshake = result.Value;
+            }
+            else
+            {
+                _error = $"{(result.Error?.Code ?? "ERROR")}: {result.Error?.Message}";
+            }
+        }
+        catch (Exception exception)
+        {
+            _error = exception.Message;
+        }
+    }
+}
