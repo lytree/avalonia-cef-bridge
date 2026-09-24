@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Tarui.Hosting.Blazor</RootNamespace>
+    <AssemblyName>Tarui.Hosting.Blazor</AssemblyName>
+    <!--
+      Blazor hosting package: embeds an ASP.NET Core in-process server that hosts a Blazor Server
+      application, then surfaces its URL through Tarui's window pipeline so the CEF WebView loads
+      the Blazor front-end. No runtime reflection, no assembly scanning — every endpoint and
+      service is wired explicitly via AddTaruiBlazor().
+    -->
+    <RazorLangVersion>latest</RazorLangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\core\Tarui.Contracts\Tarui.Contracts.csproj" />
+    <ProjectReference Include="..\..\core\Tarui.Ipc\Tarui.Ipc.csproj" />
+    <ProjectReference Include="..\Tarui.Hosting\Tarui.Hosting.csproj" />
+    <ProjectReference Include="..\Tarui.Shell\Tarui.Shell.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Tarui.Hosting.Blazor.Tests" />
+  </ItemGroup>
+
+</Project>

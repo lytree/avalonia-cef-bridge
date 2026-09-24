@@ -1,0 +1,44 @@
+@* Tarui Blazor App Shell.
+   Hosts the user's Blazor root component inside the standard HTML head/body layout and wires the
+   Tarui IPC bridge into a cascading value so any descendant component can inject ITaruiIpc.
+
+   The user's root component type is supplied via DI as TaruiBlazorRootComponent so a single
+   component definition is reusable across builds.
+*@
+@using Microsoft.AspNetCore.Components.Routing
+@inherits ComponentBase
+@implements IDisposable
+@inject ITaruiIpc Ipc
+@inject TaruiBlazorRootComponent RootComponent
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="@BaseHref" />
+    <title>@Title</title>
+    <HeadOutlet @rendermode="InteractiveServerRenderMode" />
+</head>
+<body>
+    <CascadingValue Value="Ipc" IsFixed="true">
+        <DynamicComponent Type="@RootComponent.Value" @rendermode="InteractiveServerRenderMode" />
+    </CascadingValue>
+    <script src="_framework/blazor.web.js"></script>
+    <script src="_content/Tarui.Hosting.Blazor/tarui-blazor-bridge.js"></script>
+</body>
+</html>
+
+@code {
+    private static readonly IComponentRenderMode InteractiveServerRenderMode = new InteractiveServerRenderMode(prerender: false);
+
+    [Inject] private NavigationManager NavigationManager { get; set; } = default!;
+
+    private string Title => "Tarui Blazor";
+    private string BaseHref => NavigationManager.BaseUri;
+
+    public void Dispose()
+    {
+        // TaruiIpc subscriptions are owned by their callers; nothing to release here.
+    }
+}

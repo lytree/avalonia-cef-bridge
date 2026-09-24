@@ -5,6 +5,9 @@
     <Platform Name="x86" />
   </Configurations>
   <Folder Name="/examples/" />
+  <Folder Name="/examples/blazor-demo/">
+    <Project Path="examples/blazor-demo/BlazorDemo.Desktop/BlazorDemo.Desktop.csproj" />
+  </Folder>
   <Folder Name="/examples/demo/">
     <Project Path="examples/demo/Demo.Desktop/Demo.Desktop.csproj" />
   </Folder>
@@ -27,6 +30,7 @@
     <Project Path="src/plugins/Tarui.Plugins.Dialog/Tarui.Plugins.Dialog.csproj" />
     <Project Path="src/webview/Tarui.WebView.Abstractions/Tarui.WebView.Abstractions.csproj" />
     <Project Path="src/webview/Tarui.WebView.CefGlueNext/Tarui.WebView.CefGlueNext.csproj" />
+    <Project Path="src/desktop/Tarui.Hosting.Blazor/Tarui.Hosting.Blazor.csproj" />
   </Folder>
   <Folder Name="/src/generators/" />
   <Folder Name="/src/plugins/">

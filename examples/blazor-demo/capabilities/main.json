@@ -1,0 +1,142 @@
+{
+  "identifier": "main",
+  "description": "Main window permissions for the Blazor Demo",
+  "windows": ["main"],
+  "platforms": ["windows", "macos", "linux"],
+  "events": [
+    "window://moved",
+    "window://resized",
+    "window://focus-changed",
+    "window://close-requested",
+    "window://destroyed",
+    "shell://theme-changed",
+    "app://second-instance"
+  ],
+  "permissions": [
+    "core:app|get-info",
+    "core:event|emit",
+    "core:os|info",
+    "core:platform|capabilities",
+    "core:path|resolve",
+    "core:process|exit",
+    "core:process|relaunch",
+    "core:shell|open",
+    "core:clipboard|read-text",
+    "core:clipboard|write-text",
+    "core:window|close",
+    "core:window|minimize",
+    "core:window|maximize",
+    "core:window|unmaximize",
+    "core:window|toggle-maximize",
+    "core:window|hide",
+    "core:window|show",
+    "core:window|focus",
+    "core:window|center",
+    "core:window|set-title",
+    "core:window|set-size",
+    "core:window|set-position",
+    "core:window|set-min-size",
+    "core:window|set-max-size",
+    "core:window|set-always-on-top",
+    "core:window|set-resizable",
+    "core:window|set-decorations",
+    "core:window|set-fullscreen",
+    "core:window|get-state",
+    "core:window|current-monitor",
+    "core:window|primary-monitor",
+    "core:window|monitors",
+    "core:window|list",
+    "plugin:webview|navigate",
+    "plugin:webview|get-state",
+    "plugin:webview|devtools",
+    "plugin:webview|list",
+    "plugin:webview|navigate-other-webview",
+    "plugin:webview|get-state-other-webview",
+    "plugin:dialog|open",
+    "plugin:dialog|save",
+    "plugin:dialog|message",
+    "plugin:dialog|confirm",
+    "plugin:dialog|ask",
+    "plugin:menu|set-window-menu",
+    "plugin:menu|update-item",
+    "plugin:menu|remove-window-menu",
+    "plugin:menu|show-context-menu",
+    "plugin:window-state|save",
+    "plugin:window-state|restore",
+    "plugin:window-state|clear",
+    "plugin:tray|create",
+    "plugin:tray|set-menu",
+    "plugin:tray|set-icon",
+    "plugin:tray|set-tooltip",
+    "plugin:tray|set-visible",
+    "plugin:tray|remove",
+    "plugin:notification|permission-state",
+    "plugin:notification|request-permission",
+    "plugin:notification|show",
+    "plugin:notification|cancel",
+    "plugin:autostart|is-enabled",
+    "plugin:autostart|enable",
+    "plugin:autostart|disable",
+    "plugin:global-shortcut|register",
+    "plugin:global-shortcut|unregister",
+    "plugin:global-shortcut|unregister-all",
+    "plugin:global-shortcut|is-registered",
+    {
+      "identifier": "plugin:store|get",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    {
+      "identifier": "plugin:store|set",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    {
+      "identifier": "plugin:store|has",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    {
+      "identifier": "plugin:store|delete",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    {
+      "identifier": "plugin:store|clear",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    {
+      "identifier": "plugin:store|keys",
+      "allow": [
+        { "base": "appData", "path": "settings.json" },
+        { "base": "appConfig", "path": "**/*.json" }
+      ]
+    },
+    "plugin:log|record",
+    "plugin:deep-link|get-current",
+    "plugin:deep-link|feed",
+    "plugin:http|fetch",
+    "plugin:http|upload",
+    "plugin:shell|spawn",
+    "plugin:shell|stdin",
+    "plugin:shell|kill",
+    "plugin:updater|check",
+    "plugin:updater|download",
+    "plugin:updater|apply",
+    "plugin:cookie|list",
+    "plugin:cookie|set",
+    "plugin:cookie|remove",
+    "plugin:cookie|flush"
+  ]
+}

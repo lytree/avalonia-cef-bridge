@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>BlazorDemo</AssemblyName>
+    <RootNamespace>BlazorDemo</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\desktop\Tarui.Hosting\Tarui.Hosting.csproj" />
+    <ProjectReference Include="..\..\..\src\desktop\Tarui.Shell\Tarui.Shell.csproj" />
+    <ProjectReference Include="..\..\..\src\desktop\Tarui.Hosting.Blazor\Tarui.Hosting.Blazor.csproj" />
+    <ProjectReference Include="..\..\..\src\desktop\Tarui.SingleInstance\Tarui.SingleInstance.csproj" />
+    <ProjectReference Include="..\..\..\src\webview\Tarui.WebView.CefGlueNext\Tarui.WebView.CefGlueNext.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Core\Tarui.Plugins.Core.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Window\Tarui.Plugins.Window.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Webview\Tarui.Plugins.Webview.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.WindowState\Tarui.Plugins.WindowState.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Event\Tarui.Plugins.Event.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Dialog\Tarui.Plugins.Dialog.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.System\Tarui.Plugins.System.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Shell\Tarui.Plugins.Shell.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.FileSystem\Tarui.Plugins.FileSystem.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Menu\Tarui.Plugins.Menu.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Tray\Tarui.Plugins.Tray.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Notification\Tarui.Plugins.Notification.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Autostart\Tarui.Plugins.Autostart.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.GlobalShortcut\Tarui.Plugins.GlobalShortcut.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Store\Tarui.Plugins.Store.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Log\Tarui.Plugins.Log.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Http\Tarui.Plugins.Http.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.DeepLink\Tarui.Plugins.DeepLink.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Updater\Tarui.Plugins.Updater.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Cookie\Tarui.Plugins.Cookie.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\capabilities\*.json" Link="capabilities\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(PlatformTarget)' != 'arm64'">win-x64</TaruiCefRid>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(PlatformTarget)' == 'arm64'">win-arm64</TaruiCefRid>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('Linux')) and '$(PlatformTarget)' != 'arm64'">linux-x64</TaruiCefRid>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('Linux')) and '$(PlatformTarget)' == 'arm64'">linux-arm64</TaruiCefRid>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('OSX')) and '$(PlatformTarget)' != 'arm64'">osx-x64</TaruiCefRid>
+    <TaruiCefRid Condition="$([MSBuild]::IsOSPlatform('OSX')) and '$(PlatformTarget)' == 'arm64'">osx-arm64</TaruiCefRid>
+    <TaruiCefRuntimeRoot Condition="'$(TaruiCefRuntimeRoot)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\..\runtime\cef\$(TaruiCefRid)'))</TaruiCefRuntimeRoot>
+  </PropertyGroup>
+  <ItemGroup Condition="Exists('$(TaruiCefRuntimeRoot)')">
+    <Content Include="$(TaruiCefRuntimeRoot)\**\*" Link="CEF\$(TaruiCefRid)\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

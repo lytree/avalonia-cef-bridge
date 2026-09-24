@@ -1,0 +1,49 @@
+@* Root component for the Tarui Blazor demo. Hosts three pages that exercise the IPC bridge:
+   1. Counter — basic component lifecycle, no IPC.
+   2. App Info — calls `core:app|get-info` through `ITaruiIpc`.
+   3. OS Info — calls `core:os|info` through `ITaruiIpc` and subscribes to `shell://theme-changed`.
+*@
+
+@inherits ComponentBase
+
+<PageTitle>Tarui Blazor Demo</PageTitle>
+
+<div class="tarui-shell">
+    <nav class="tarui-tabs">
+        @foreach (var entry in Pages)
+        {
+            <button class="tarui-tab @(entry.Key == ActivePage ? "is-active" : null)"
+                    @onclick="() => ActivePage = entry.Key">
+                @entry.Title
+            </button>
+        }
+    </nav>
+
+    <main class="tarui-page">
+        @switch (ActivePage)
+        {
+            case "counter":
+                <CounterPage />
+                break;
+            case "app-info":
+                <AppInfoPage />
+                break;
+            case "os-info":
+                <OsInfoPage />
+                break;
+        }
+    </main>
+</div>
+
+@code {
+    private string ActivePage { get; set; } = "counter";
+
+    private record PageEntry(string Key, string Title);
+
+    private static readonly PageEntry[] Pages =
+    [
+        new("counter", "Counter"),
+        new("app-info", "App Info"),
+        new("os-info", "OS Info"),
+    ];
+}
