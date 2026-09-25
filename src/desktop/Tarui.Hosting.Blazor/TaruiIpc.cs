@@ -19,6 +19,10 @@ internal sealed class TaruiIpc : ITaruiIpc
         DefaultIgnoreCondition = TaruiJsonContext.Default.Options.DefaultIgnoreCondition,
     };
 
+    // Cached empty payload. Clone() detaches the element from the parsed document so it stays valid
+    // after the pooled document buffers are released; a per-call Parse would leak them.
+    private static readonly JsonElement EmptyPayload = JsonDocument.Parse("{}").RootElement.Clone();
+
     private readonly IpcDispatcher _dispatcher;
     private readonly EventHub _eventHub;
     private readonly ICapabilityProvider _capabilities;
@@ -33,14 +37,25 @@ internal sealed class TaruiIpc : ITaruiIpc
     }
 
     public ValueTask<TaruiIpcResult<T>> InvokeAsync<T>(string command, CancellationToken cancellationToken = default) =>
-        InvokeAsync<T>(command, JsonDocument.Parse("{}").RootElement, cancellationToken);
+        InvokeAsync<T>(command, EmptyPayload, cancellationToken);
 
     public ValueTask<TaruiIpcResult<Unit>> InvokeAsync(string command, CancellationToken cancellationToken = default) =>
-        InvokeAsync<Unit>(command, JsonDocument.Parse("{}").RootElement, cancellationToken);
+        InvokeAsync<Unit>(command, EmptyPayload, cancellationToken);
 
     public ValueTask<TaruiIpcResult<T>> InvokeAsync<T>(string command, T payload, CancellationToken cancellationToken = default)
     {
-        var element = JsonSerializer.SerializeToElement(payload, SerializerOptions);
+        JsonElement element;
+        try
+        {
+            element = JsonSerializer.SerializeToElement(payload, SerializerOptions);
+        }
+        catch (NotSupportedException)
+        {
+            throw new InvalidOperationException(
+                $"The payload type '{typeof(T).FullName}' has no source-generated JSON metadata. Register it on " +
+                "TaruiJsonContext (Tarui.Contracts) via [JsonSerializable] — Tarui IPC never falls back to runtime reflection.");
+        }
+
         return InvokeAsync<T>(command, element, cancellationToken);
     }
 
@@ -89,6 +104,16 @@ internal sealed class TaruiIpc : ITaruiIpc
         {
             return new TaruiIpcResult<T>(false, default, new IpcError("INVALID_MESSAGE", "Tarui returned a payload that did not match the requested type."));
         }
+        catch (NotSupportedException)
+        {
+            return new TaruiIpcResult<T>(
+                false,
+                default,
+                new IpcError(
+                    "INVALID_MESSAGE",
+                    $"The response type '{typeof(T).FullName}' has no source-generated JSON metadata. Register it on " +
+                    "TaruiJsonContext (Tarui.Contracts) via [JsonSerializable] — Tarui IPC never falls back to runtime reflection."));
+        }
     }
 
     public ValueTask<IAsyncDisposable> ListenAsync<T>(string eventName, Func<T, CancellationToken, ValueTask> handler, CancellationToken cancellationToken = default)
@@ -97,7 +122,18 @@ internal sealed class TaruiIpc : ITaruiIpc
         ArgumentNullException.ThrowIfNull(handler);
         var subscription = _eventHub.Subscribe<JsonElement>(eventName, element =>
         {
-            var typed = JsonSerializer.Deserialize<T>(element.GetRawText(), SerializerOptions);
+            T? typed;
+            try
+            {
+                typed = JsonSerializer.Deserialize<T>(element, SerializerOptions);
+            }
+            catch (NotSupportedException)
+            {
+                throw new InvalidOperationException(
+                    $"The event payload type '{typeof(T).FullName}' has no source-generated JSON metadata. Register it on " +
+                    "TaruiJsonContext (Tarui.Contracts) via [JsonSerializable] — Tarui IPC never falls back to runtime reflection.");
+            }
+
             if (typed is null)
             {
                 return;

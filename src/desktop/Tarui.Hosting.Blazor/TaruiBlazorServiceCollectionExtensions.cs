@@ -1,9 +1,7 @@
-using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Tarui.Hosting;
 using Tarui.Ipc;
-using Tarui.Shell;
 using Tarui.WebView.CefGlueNext;
 
 namespace Tarui.Hosting.Blazor;
@@ -49,10 +47,6 @@ public static class TaruiBlazorServiceCollectionExtensions
         services.AddSingleton<ITaruiIpc, TaruiIpc>();
         services.AddSingleton<TaruiBlazorHybridState>();
 
-        // Expose the in-process IPC façade to components as a cascading value, matching the
-        // experience of the previous Blazor Server-based host.
-        services.AddCascadingValue(sp => sp.GetRequiredService<ITaruiIpc>());
-
         // Replace the web app options so the custom scheme serves Blazor content through the
         // WebViewManager static content pipeline instead of the plain local file resolver. The
         // provider reads the manager out of TaruiBlazorHybridState lazily, so registration order
@@ -68,16 +62,6 @@ public static class TaruiBlazorServiceCollectionExtensions
                 options.ContentSecurityPolicy)));
 
         services.AddHostedService<TaruiBlazorHybridHostedService>();
-        return services;
-    }
-
-    /// <summary>
-    /// Legacy no-op retained for source compatibility: the window URL now falls back to the
-    /// application origin's start URI (the Blazor host page) automatically.
-    /// </summary>
-    public static IServiceCollection UseTaruiBlazorWindow(this IServiceCollection services)
-    {
-        ArgumentNullException.ThrowIfNull(services);
         return services;
     }
 }

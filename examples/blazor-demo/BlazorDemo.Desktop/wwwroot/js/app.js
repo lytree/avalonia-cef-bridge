@@ -1,34 +1,35 @@
+// DevBox — Blazor Hybrid 启动脚本：主题持久化。
+// index.html 在 Blazor 挂载前加载本文件：先把持久化主题写到 <html data-theme>，
+// 避免暗色用户首帧白屏；再暴露 devbox.getTheme / devbox.setTheme 供组件读写。
 (function () {
-    'use strict';
+  'use strict';
 
-    // Restore the persisted theme before Blazor boots so the first paint has no flash.
-    var storedTheme = null;
-    try { storedTheme = localStorage.getItem('devbox-theme'); } catch (e) { /* ignore */ }
-    if (storedTheme) { document.documentElement.dataset.theme = storedTheme; }
+  var STORAGE_KEY = 'devbox.theme';
 
-    window.devbox = {
-        getTheme: function () {
-            try { return localStorage.getItem('devbox-theme') || 'light'; } catch (e) { return 'light'; }
-        },
-        setTheme: function (theme) {
-            try { localStorage.setItem('devbox-theme', theme); } catch (e) { /* ignore */ }
-            document.documentElement.dataset.theme = theme;
-        },
-        clipboard: {
-            copy: function (text) {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    return navigator.clipboard.writeText(String(text));
-                }
-                var area = document.createElement('textarea');
-                area.value = String(text);
-                area.style.position = 'fixed';
-                area.style.opacity = '0';
-                document.body.appendChild(area);
-                area.select();
-                try { document.execCommand('copy'); } catch (e) { /* ignore */ }
-                document.body.removeChild(area);
-                return Promise.resolve();
-            }
-        }
-    };
+  function readTheme() {
+    try {
+      return window.localStorage.getItem(STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+    } catch (error) {
+      return 'light';
+    }
+  }
+
+  function persistTheme(theme) {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, theme);
+    } catch (error) {
+      // localStorage 不可用时主题不持久化，功能不受影响。
+    }
+  }
+
+  document.documentElement.setAttribute('data-theme', readTheme());
+
+  window.devbox = {
+    getTheme: readTheme,
+    setTheme: function (theme) {
+      var normalized = theme === 'dark' ? 'dark' : 'light';
+      persistTheme(normalized);
+      document.documentElement.setAttribute('data-theme', normalized);
+    }
+  };
 })();

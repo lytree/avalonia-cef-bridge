@@ -32,8 +32,4 @@
     <ProjectReference Include="..\..\webview\Tarui.WebView.CefGlueNext\Tarui.WebView.CefGlueNext.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <InternalsVisibleTo Include="Tarui.Hosting.Blazor.Tests" />
-  </ItemGroup>
-
 </Project>
