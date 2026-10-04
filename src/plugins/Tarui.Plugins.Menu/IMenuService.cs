@@ -14,6 +14,15 @@ public interface IMenuService
 
     ValueTask<Unit> UpdateItemAsync(string ownerWindow, MenuUpdateItemOptions options, CancellationToken cancellationToken);
 
+    /// <summary>Appends items to the end of the owner window's root menu level.</summary>
+    ValueTask<Unit> AppendAsync(string ownerWindow, MenuAppendOptions options, CancellationToken cancellationToken);
+
+    /// <summary>Inserts items into the owner window's root menu level at the given index.</summary>
+    ValueTask<Unit> InsertAsync(string ownerWindow, MenuInsertOptions options, CancellationToken cancellationToken);
+
+    /// <summary>Removes the item with the given id (depth-first search) from the owner window's menu.</summary>
+    ValueTask<Unit> RemoveAsync(string ownerWindow, MenuRemoveOptions options, CancellationToken cancellationToken);
+
     ValueTask<Unit> RemoveWindowMenuAsync(string ownerWindow, CancellationToken cancellationToken);
 
     /// <summary>Pops a temporary context menu on the owner window at the requested coordinates.</summary>

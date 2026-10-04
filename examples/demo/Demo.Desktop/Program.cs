@@ -12,11 +12,13 @@ using Tarui.Plugins.Http;
 using Tarui.Plugins.Log;
 using Tarui.Plugins.Menu;
 using Tarui.Plugins.Notification;
+using Tarui.Plugins.Positioner;
 using Tarui.Plugins.Store;
 using Tarui.Plugins.System;
 using Tarui.Plugins.Shell;
 using Tarui.Plugins.Tray;
 using Tarui.Plugins.Updater;
+using Tarui.Plugins.Websocket;
 using Tarui.Plugins.Webview;
 using Tarui.Plugins.Window;
 using Tarui.Plugins.WindowState;
@@ -84,6 +86,8 @@ internal static class Program
             .AddDeepLinkPlugin()
             .AddUpdaterPlugin()
             .AddCookiePlugin()
+            .AddWebsocketPlugin()
+            .AddPositionerPlugin()
             .AddPlugin<DemoChannelPlugin>();
 
         builder.Window.Configure(window =>

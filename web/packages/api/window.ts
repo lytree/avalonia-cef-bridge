@@ -49,6 +49,17 @@ export type WindowOptions = {
   decorations?: boolean
   alwaysOnTop?: boolean
   visible?: boolean
+  /** Renders the window with a translucent backdrop (acrylic blur where the platform supports it). */
+  transparent?: boolean
+  /**
+   * Makes the window a child of the window with this label, which must already exist.
+   * When set, the window becomes the parent's dialog: modal (blocking the parent until it
+   * closes) unless {@link WindowOptions.modal} is explicitly `false`, in which case it is a
+   * plain owned child window.
+   */
+  parent?: string
+  /** Whether a {@link WindowOptions.parent} child blocks its parent; defaults to `true`. */
+  modal?: boolean
 }
 
 export type WindowGeometry = {
@@ -132,6 +143,24 @@ export class Window {
     await invoke('core:window|close', { force, ...this.target() })
   }
 
+  /**
+   * Destroys this window without emitting `window://close-requested`, matching the
+   * semantics of a forced close. Prefer {@link Window.close} (with `force = false`)
+   * when the close should stay interceptable by a close-requested handler.
+   */
+  async destroy(): Promise<void> {
+    await invoke('core:window|close', { force: true, ...this.target() })
+  }
+
+  /**
+   * Cancels the pending forced close the shell schedules after a close
+   * request was observed, keeping the window open when a close handler
+   * decided to veto. No-op once the shell entered the forced-close phase.
+   */
+  async denyClose(): Promise<void> {
+    await invoke('core:window|deny-close', this.target())
+  }
+
   async minimize(): Promise<void> {
     await invoke('core:window|minimize', this.target())
   }
@@ -142,6 +171,10 @@ export class Window {
 
   async unmaximize(): Promise<void> {
     await invoke('core:window|unmaximize', this.target())
+  }
+
+  async unminimize(): Promise<void> {
+    await invoke('core:window|unminimize', this.target())
   }
 
   async toggleMaximize(): Promise<void> {
@@ -186,6 +219,11 @@ export class Window {
 
   async setAlwaysOnTop(value: boolean): Promise<void> {
     await invoke('core:window|set-always-on-top', { value, ...this.target() })
+  }
+
+  /** Shows or hides the window's taskbar button. */
+  async setSkipTaskbar(value: boolean): Promise<void> {
+    await invoke('core:window|set-skip-taskbar', { value, ...this.target() })
   }
 
   /**

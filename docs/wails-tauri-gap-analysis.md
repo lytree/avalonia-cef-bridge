@@ -8,9 +8,9 @@
 
 ## 1. 结论摘要
 
-- Tarui 已完成桌面壳层核心：无反射 IPC、多窗口、CEF 150 WebView（自定义协议/导航与下载策略/文件拖放）、Capability v2 权限模型、Channel 端到端流式 IPC（含 fs 大文件流式读写与 HTTP 流式响应、Shell 子进程 stdio 流）、25 套自测试、25 个前端 API 模块。
-- Tauri v2 桌面相关 25 个官方能力中：已对齐约 18 个（多为 Windows 验证）、部分对齐 5 个、缺失 3 个（sql、stronghold、persisted-scope 等）。
-- Wails v3 桌面能力（多窗口/托盘/菜单/事件/对话框/拖放/frameless）基本具备等价实现；显著差距在开发体验（bindings 自动生成、可取消窗口事件钩子）与托盘窗口附着定位。
+- Tarui 已完成桌面壳层核心：无反射 IPC、多窗口、CEF 150 WebView（自定义协议/导航与下载策略/文件拖放）、Capability v2 权限模型、Channel 端到端流式 IPC（含 fs 大文件流式读写与 HTTP 流式响应、Shell 子进程 stdio 流）、25 套自测试、29 个前端 API 模块。
+- Tauri v2 桌面相关 25 个官方能力中：已对齐约 20 个（多为 Windows 验证）、部分对齐 2 个、缺失 3 个（sql、stronghold、persisted-scope 等）。
+- Wails v3 桌面能力（多窗口/托盘/菜单/事件/对话框/拖放/frameless）基本具备等价实现；父子窗口 + modal、可取消 close 钩子与托盘附着定位（Positioner）已于 2026-10-04 补齐，剩余显著差距在开发体验（bindings 自动生成）。
 - **最高优先缺口（P0）**：已全部落地（Channel 流式 IPC、fs 大文件、HTTP 客户端、Shell 子进程、上下文菜单、Dialog ask、Updater apply + 打包分发）。剩余聚焦**平台补齐**（autostart 三平台已落地，notification/global-shortcut/macOS deep-link 待真机验收）与 P2 按需增强。
 - 平台现实：所有原生能力当前仅 Windows 完成验证；autostart 已有 macOS/Linux 实现，notification/global-shortcut 在非 Windows 为诚实降级并通过 `core:platform|capabilities` 如实暴露。CLI 新增 `app-bundle` target：在 `tarui build --bundle app-bundle` 走 `MacOsBundleBuilder` 产出 `<name>.app` 与 `<name>-<version>-<rid>.app.tar.gz`，`InfoPlistBuilder` 注入 `CFBundleURLTypes`（与运行时 `DeepLinkService.Deliver` 校验规则对齐），为 macOS 真机验收打通了从构建到 AppleEvent 接通的全部链路；签名/公证留待 macOS runner 接入。真机构建管道（macOS runner、`plutil` + `tar` + `shasum` 结构层校验、release 并行打包）见 [docs/adr/0002-macos-real-build-pipeline.md](../adr/0002-macos-real-build-pipeline.md)；签名/公证/硬化运行时/CFBundleDocumentTypes 列入 ADR-0002 §8 前置门禁待解锁。
 
@@ -41,7 +41,7 @@
 | DeepLink（get-current + 事件；Windows cold/warm） | 部分实现 | `Tarui.Plugins.DeepLink`、`Tarui.Shell/DeepLinkService.cs`（macOS/Linux 待真机验收） |
 | Updater（check/download + 签名验证 + SHA-256 + staging、apply、`updater://status`） | 已实现 | `Tarui.Shell/UpdaterService.cs`、`Tarui.Shell/UpdateApplier.cs` |
 | CLI（init / plugin init+pack / info / dev / build） | 已实现 | `src/tarui-cli/Program.cs` |
-| 前端 API（25 模块：ipc/app/window/webview/event/dialog/os/path/platform/process/shell/clipboard/fs/menu/tray/window-state/single-instance/notification/autostart/global-shortcut/store/log/deep-link/updater/http） | 已实现 | `web/packages/api/index.ts` |
+| 前端 API（29 模块：ipc/app/window/webview/event/dialog/os/path/platform/process/shell/clipboard/fs/menu/tray/window-state/single-instance/notification/autostart/global-shortcut/store/log/deep-link/updater/http/cli/cookie/positioner/websocket） | 已实现 | `web/packages/api/index.ts` |
 | Channel 流式 IPC | 已实现 | 端到端链路（Channel→sink→WebviewSession），`core:channel|stream-echo` 验证 |
 | 测试 | 25 套控制台式自测试 | `tests/Tarui.*.Tests`（含 `Tarui.Http.Tests`、`Tarui.ShellPlugin.Tests`） |
 
@@ -55,16 +55,16 @@
 | Channel 流式数据 | ✅ | 端到端流式协议已接线；fs 大文件流式读/分片写与 HTTP 流式响应已解锁 |
 | 多窗口 | ✅ | create/getAll/by label，能力对齐 |
 | 单窗口多 webview | ❌ | Tarui 为窗口↔webview 一对一模型 |
-| 窗口 API 全集 | 🟡 | 已补齐 setIcon/setTheme；缺透明/acrylic 模糊、modal 对话框窗口、父子窗口关联 |
+| 窗口 API 全集 | 🟡 | ✅ 已补齐 setIcon/setTheme、Transparent（acrylic/transparent）、Parent/Modal（ShowDialog 模态 + Owner 关联）、deny-close 可取消关闭、unminimize、set-skip-taskbar、destroy（`Window.destroy()` 语义别名 = `close(force=true)`，不 emit close-requested）、setZoom/print；缺 always-on-bottom、setShadow、setBadgeCount/setProgressBar 等平台项 |
 | 自定义协议 + CSP | ✅ | `tarui://localhost`、CSP、SPA fallback |
 | 导航/下载策略 | ✅ | 策略引擎 + capability 双重授权，语义等价 |
 | 事件 emit/listen（含 once、定向） | ✅ | 等价且多一层接收权限 |
 | DevTools 开关 | ✅ | `plugin:webview|devtools`（Open/Close，CEF `ShowDevTools`，权限门控 + `-other-webview`） |
 | Cookie 管理 | ✅ | `IWebViewCookieManager` + `Tarui.Plugins.Cookie`（list/set/remove/flush，CEF 全局存储；无宿主时诚实降级） |
-| webview 崩溃/渲染进程终止事件 | 🟡 | CEF 事件模型具备，未见对外投递 |
-| `eval_with_callback` | ❌ | 有 `ExecuteScriptAsync`，无回调形式 |
+| webview 崩溃/渲染进程终止事件 | ✅ | `webview://render-process-gone`（CEF OnRenderProcessTerminated → capability 门控 emit，status 映射 crashed/killed/other） |
+| `eval_with_callback` | ✅ | `plugin:webview|eval-with-callback`（包装脚本保留完成值语义 + Promise 解析，经 Channel 回执） |
 | 文件关联（file association） | ❌ | 未实现 |
-| 窗口阴影/圆角/透明 | ❌ | Avalonia `TransparencyLevelHint` 未封装 |
+| 窗口透明 | 🟡 | ✅ Transparent（Avalonia `TransparencyLevelHint` acrylic/transparent + 双背景刷透明）已封装；圆角/阴影（`setShadow`）未封装 |
 
 ### 3.2 官方插件矩阵（桌面相关）
 
@@ -85,7 +85,7 @@
 | Opener | ✅ | shell open 等价 |
 | OS Information | ✅ | 等价 |
 | Persisted Scope | ❌ | 未实现（运行时动态 scope 持久化） |
-| Positioner | ❌ | 无窗口预设定位（托盘附着弹窗的核心依赖） |
+| Positioner | ✅ | `plugin:positioner|set-position`（8 屏幕锚位 + 6 Tray* 锚位诚实回退；`tests/Tarui.Positioner.Tests`） |
 | Process | ✅ | exit/restart 走 Host 协调退出，等价 |
 | Shell（子进程/sidecar） | ✅ | spawn + Channel 流式 stdio（stdout/stderr/`terminated`）+ 退出码 + 程序白名单作用域（默认拒绝） + stdin/kill + 进程树终止 |
 | Single Instance | ✅ | Mutex + 管道/Unix socket + 参数转发事件 |
@@ -94,7 +94,7 @@
 | Stronghold | ❌ | 未实现（加密存储，延后） |
 | Updater | ✅ | check/download + ECDSA(P-384/SHA-384) 签名 + 逐文件 SHA-256 + 受控 staging + `updater://status` 事件；apply（Windows MSIX `Add-AppxPackage` + staging 根域校验 + apply 状态事件）已落地；macOS/Linux 走 `NoOpUpdateApplier` 显式声明 `update-apply-unsupported`，默认 capability 不授权 apply |
 | Upload | ✅ | multipart/form-data 上传（`plugin:http|upload`，URL 作用域默认拒绝 + 重定向复检） |
-| Websocket | ❌ | 未实现 |
+| Websocket | ✅ | `plugin:websocket|connect/send/close`（`ClientWebSocket` + Channel 帧推送，URL scope 复用 `UrlScopeMatcher` 默认拒绝；TS `TaruiWebSocket`；`tests/Tarui.WebSocket.Tests`） |
 | Window State | ✅ | 等价（含显示器拟合） |
 | 移动端插件（barcode/biometric/geolocation/haptics/nfc） | — | 非目标（对齐计划 §1 明确排除） |
 
@@ -103,12 +103,12 @@
 | Wails v3 能力 | Tarui 状态 | 差距说明 |
 | --- | --- | --- |
 | 多窗口（含生命周期、创建/销毁回调） | ✅ | 多窗口 + 事件 + owner 归属校验 |
-| 父子窗口 + modal（macOS sheet） | ❌ | 无 parent/child 关联与模态语义 |
-| 系统托盘（图标、菜单、明暗自适应图标、窗口附着居中） | 🟡 | 图标/菜单/tooltip/事件已有；无"点击托盘在图标旁弹出窗口"（依赖 Positioner 类能力与 `HiddenOnTaskbar` 类选项） |
+| 父子窗口 + modal（macOS sheet） | ✅ | `WindowOptions.Parent`+`Modal`：父窗口存在性校验、`ShowDialog(parent)` 模态、`Show(parent)` Owner 关联（2026-10-04） |
+| 系统托盘（图标、菜单、明暗自适应图标、窗口附着居中） | 🟡 | 图标/菜单/tooltip/事件已有；✅ Positioner 已落地（8 屏幕锚位 + 6 Tray* 锚位，Tray* 无原生任务栏矩形时诚实回退工作区底部槽位）；"点击托盘在图标旁精确弹出"待任务栏矩形原生途径补齐 |
 | 原生菜单（菜单栏 + 上下文菜单） | ✅ | 窗口菜单 + 任意坐标 context menu popup（`menu://item-clicked` 路由） |
-| 事件系统（应用/窗口事件 + RegisterHook 可取消钩子） | 🟡 | 事件 + 权限对齐；无 Web 侧可取消的窗口事件钩子（如拦截 close） |
+| 事件系统（应用/窗口事件 + RegisterHook 可取消钩子） | 🟡 | 事件 + 权限对齐；✅ close 拦截钩子已落地（`window://close-requested` + `core:window|deny-close` 回执 + 强制关闭回退定时器）；其余可取消钩子（move/resize 拦截）未实现 |
 | Services 生命周期（ServiceStartup/Shutdown） | ✅ | .NET `IHostedService` + DI 生态等价且更强 |
-| Bindings 自动生成 | 🟡 | C# 侧 Roslyn 源生成；TS 侧手写模块（24 个），与 Wails 自动生成 JS/TS 绑定的开发体验有差距 |
+| Bindings 自动生成 | 🟡 | C# 侧 Roslyn 源生成；TS 侧手写模块（29 个），与 Wails 自动生成 JS/TS 绑定的开发体验有差距 |
 | 构建系统（wails3 build/task、打包分发） | 🟡 | `tarui dev/build` 已有；无安装包产物（NSIS/MSI）、图标/版本资源嵌入 |
 | Dialogs（message/FileDialog/OpenDirectoryDialog） | ✅ | 等价 |
 | 剪贴板 | ✅ | 文本 + HTML（含回退纯文本）+ 图片（PNG 字节） |
@@ -116,7 +116,7 @@
 | 全局快捷键 | ✅ (Windows) | 等价 |
 | Screen API（屏幕列表、主屏、DPI） | ✅ | 显示器信息已有 |
 | 拖放 + frameless + 拖拽区域 | ✅ | 策略化实现，含 NoDrag 覆盖 |
-| DevTools 集成 | 🟡 | CEF 支持但未暴露 |
+| DevTools 集成 | ✅ | `plugin:webview|devtools`（CEF `ShowDevTools/CloseDevTools`，权限门控 + `-other-webview` 变体；TS `Webview.openDevtools/closeDevtools`） |
 | WML（Wails Markup Language） | — | 不建议跟进（专有 DSL，价值有限） |
 | Linux GTK4/WebKitGTK 栈 | — | Tarui 走 Avalonia + CEF，窗口层天然跨平台；差异为技术栈选择而非缺口 |
 
@@ -142,18 +142,18 @@
 | 9 | fs watch 目录监听 | Tauri fs | ✅ 已完成（`plugin:fs|watch`/`unwatch`：`FileSystemWatcher` + `fs://watch-change` 定向事件） |
 | 10 | Cookie 管理 API | CEF 原生 | ✅ 已完成（`plugin:cookie|list|set|remove|flush`：`CefGlueCookieStore` 组件 + `Tarui.Plugins.Cookie`，无宿主时可读降级） |
 | 11 | DevTools 开关 | 双方均有 | ✅ 已完成（`plugin:webview|devtools`：CEF `ShowDevTools/CloseDevTools`，webview 权限门控 + `-other-webview` 变体） |
-| 12 | 窗口增强：setIcon、setTheme | Tauri window / Wails v3 | 🟡 进展：`core:window|set-icon`、`set-theme` 已落地；transparent/acrylic、modal、父子窗口待后续 |
-| 13 | Positioner（托盘图标旁定位等预设位置） | Tauri positioner / Wails tray attach | 托盘应用标准场景 |
+| 12 | 窗口增强：setIcon、setTheme、transparent、modal/父子窗口 | Tauri window / Wails v3 | ✅ 已完成（`core:window|set-icon`、`set-theme`；`WindowOptions.Transparent` 映射 Avalonia acrylic/transparent；`Parent`+`Modal` 支持 ShowDialog 模态对话框与非模态 Owner 关联） |
+| 13 | Positioner（托盘图标旁定位等预设位置） | Tauri positioner / Wails tray attach | ✅ 已完成（`plugin:positioner|set-position`：8 屏幕锚位纯函数计算 + 6 Tray* 锚位（无任务栏矩形原生途径时诚实回退工作区底部槽位）；`tests/Tarui.Positioner.Tests`） |
 | 14 | macOS/Linux 平台补齐（notification、global-shortcut、deep-link 真机验收） | 双方均跨平台 | 🟡 进展：autostart 已三平台落地；`core:platform|capabilities` 能力矩阵已暴露；macOS deep-link `NSAppleEventManager` `kAEGetURL` 桥（`MacDeepLinkBridge` + 2s 去重窗口）已落地，真机验收待执行；notification / global-shortcut 仍待真机验收 |
 | 15 | 结构化 CLI 参数解析插件 | Tauri cli | ✅ 已完成（`core:cli|parse`：声明式 `--long`/`-x` 选项 + 位置参数，flag/文本/多值/数字类型、必需校验，未知或类型错误诚实失败） |
-| 16 | Web 侧可取消窗口事件钩子（onCloseRequested 拦截） | Tauri / Wails v3 RegisterHook | 事件系统已有，补回执通道 |
+| 16 | Web 侧可取消窗口事件钩子（onCloseRequested 拦截） | Tauri / Wails v3 RegisterHook | ✅ 已完成（2026-10-04。Shell 取消 OS close → emit `window://close-requested` + 强制关闭回退定时器；Web 回执 `core:window|deny-close`（非 ClosePending 时取消回退，幂等）；`Window.denyClose()` TS API；超时兜底强制关闭） |
 
 ### P2 — 按需增强（产品需求驱动，对标中为可选插件）
 
 | # | 缺口 | 对标 |
 | --- | --- | --- |
 | 17 | SQL 插件（SQLite） | Tauri sql |
-| 18 | WebSocket 插件 | Tauri websocket |
+| 18 | WebSocket 插件 | Tauri websocket | ✅ 已完成（2026-10-04。`plugin:websocket|connect/send/close`：`ClientWebSocket` + Channel 帧推送（text/binary/closed），URL scope 复用 `UrlScopeMatcher` 默认拒绝，`ws/wss` 默认端口语义；TS `TaruiWebSocket`；`tests/Tarui.WebSocket.Tests` 含真实 HttpListener 回环握手） |
 | 19 | Upload（multipart） | Tauri upload（依赖 http） | ✅ 已完成（`plugin:http|upload`：multipart/form-data 上传，URL scope 默认拒绝 + 重定向逐跳复检 + inline 上限）。注：HTTP 流式（`plugin:http|fetch` + `onEvent`）与 fs 流式读已落地（见 §6.2） |
 | 20 | Persisted Scope（运行时 scope 变更持久化） | Tauri persisted-scope |
 | 21 | Stronghold 类加密存储 | Tauri stronghold |
@@ -169,7 +169,7 @@
 2. **fs 大文件上限解耦**：✅ 已完成（2026-09-19）。8 MiB 文本单次上限已通过 Channel 流式读/分片写解耦：`plugin:fs|read-file-stream`（meta + chunk 帧）+ `plugin:fs|write-begin|chunk|commit|cancel`（原子替换语义保留）；`read-text-file` 仍为小文件便利 API，大文件走流式。`Tarui.Ipc.Tests` 4 组用例覆盖预算、sink、原子提交、cancel 与乱序拒绝。
 3. **平台可用性元数据**（高价值）✅：`core:platform|capabilities` + `@lytree/api/platform` 已在握手期暴露 notification/global-shortcut/autostart/deep-link 的真实可用性矩阵，前端据此禁用不可用 UI；通知与全局快捷键的非 Windows 平台能力仍为诚实降级并由该矩阵如实反映。
 4. **TS API 代码生成**：24 个手写模块与 C# 契约存在双维护成本；扩展现有 Roslyn 生成器或 CLI（`tarui plugin pack` 流程）从 `TaruiJsonContext` DTO 生成 TS 类型和 invoke 封装，对齐 Wails bindings 开发体验，消除漂移风险。
-5. **菜单局部更新**：Menu 插件目前仅整树 set + 单项 update-item；可补充 append/insert/remove 级增量操作，避免大菜单整树重建（Avalonia `NativeMenu` 支持增量子项操作）。
+5. **菜单局部更新**：✅ 已完成（2026-10-04）。`plugin:menu|append`（根级末尾追加）/`insert`（根级指定位置插入）/`remove`（按 id 深度搜索移除）；复用"定义树 → 整树重建 NativeMenu"模式，新增项与现有树做全局唯一 id 校验；TS `menu.appendItems/insertItems/removeItem`。
 6. **事件广播扇出**：`EventRouter` 定向/广播按窗口遍历投递；多窗口高频事件（如日志流 `log://entry`）下建议评估批量编码或共享序列化快照，避免逐窗口重复序列化。
 7. **IPC 载体评估**：当前 JSON 源生成；对标 Tauri v2 的 raw/JSON 双通道，Channel 流式落地时可一并评估二进制帧格式（仍走源生成元数据，不引入反射）。
 8. **对齐计划文档状态同步**：✅ 已完成（2026-09-19）。`tauri-desktop-alignment-plan.md §15` 状态表已按本文与代码同步刷新：DeepLink/Updater/Shell/HTTP/Cookie/CLI 等 Phase 6 子项均已登记证据；Phase 0–4 列为"已完成（Windows 已验证）"，Phase 5 列为"已完成（待真机 windowed CEF 验收）"，Phase 6 列为"已完成（带缺口）"——Updater apply 仍受"签名 PKI + 升级服务器 + 安装器策略"前置门禁，由 capability 默认不授权控制；macOS/Linux 仅代码已落，真机运行证据待补。
@@ -185,9 +185,9 @@
 3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——✅ 已完成（`plugin:menu|show-context-menu` + `plugin:dialog|ask`）。
 4. **Updater apply + 打包分发**（P0-5/6）——✅ 代码已落地：apply 走 MSIX `Add-AppxPackage` + staging 根域校验 + 状态事件；打包分发为现有 `tarui build` zip/MSIX/`.app.tar.gz`/签名 latest.json，重启由调用方衔接 process relaunch，与 OIDC 发布工作流衔接。macOS 真机构建管道（`ci-macos.yml` + `release.yml#pack-and-build-macos`）见 [docs/adr/0002-macos-real-build-pipeline.md](../adr/0002-macos-real-build-pipeline.md)。**前置门禁**：apply 的 capability 默认不授权，需 PKI + 升级服务器 + 安装器策略齐备后由能力清单显式开启；macOS `.app` 未签名/未公证，分发前需 `codesign --deep` + `notarytool`（ADR-0002 §8）。
 5. **平台补齐（macOS/Linux）**——🟡 进展：autostart 已三平台落地，`core:platform|capabilities` 能力矩阵已暴露；macOS deep-link `NSAppleEventManager` `kAEGetURL` 桥已落地（`MacDeepLinkBridge` + 2s 去重），真机验收待执行；notification / global-shortcut 仍需 macOS/Linux 真机验收后补齐。
-6. **P2 项按产品需求排期**（Cookie API、DevTools 开关、剪贴板扩展、结构化 CLI 解析等）——Upload（multipart）、WebView 运行时配置（UserAgent/Proxy）、fs watch、Cookie API、DevTools 开关、剪贴板扩展（HTML/图片）与结构化 CLI 解析已落地。剩余：SQL、Stronghold、WebSocket、单窗口多 webview、文件关联、`eval_with_callback`、Persisted Scope、Positioner 等按产品需求评估。
-7. **窗口增强 + Positioner**——P1-12：setIcon/setTheme 已完成；transparent/acrylic、modal、父子窗口与托盘图标旁定位待后续。
-8. **可取消窗口事件钩子**（P1-16）——回执通道未实现，与 P1-12 联合推进。
+6. **P2 项按产品需求排期**（Cookie API、DevTools 开关、剪贴板扩展、结构化 CLI 解析等）——Upload（multipart）、WebView 运行时配置（UserAgent/Proxy）、fs watch、Cookie API、DevTools 开关、剪贴板扩展（HTML/图片）、结构化 CLI 解析、WebSocket 插件与 Positioner 已落地（后者 2026-10-04）。剩余：SQL、Stronghold、单窗口多 webview、文件关联、Persisted Scope 等按产品需求评估。
+7. **窗口增强 + Positioner**——✅ 已完成（2026-10-04）：P1-12 `Transparent`/`Parent`/`Modal`（ShowDialog 模态与非模态 Owner 关联）；P1-13 Positioner 插件（8 屏幕锚位 + Tray* 回退）。
+8. **可取消窗口事件钩子**（P1-16）——✅ 已完成（2026-10-04）：`core:window|deny-close` 回执通道 + 强制关闭回退定时器 + 超时兜底。附带完成 `plugin:webview|eval`/`eval-with-callback`（对标 `eval_with_callback`，经 Channel 回执完成值）与 `webview://render-process-gone` 渲染进程崩溃事件。
 9. **CI 平台矩阵扩大**（§6-9）：当前 24 套自测试只跑 Windows；至少应在 macOS/Linux 跑无 UI 的策略/契约/权限类（WebViewEvents、Capabilities、Ipc、Http 等），缩小"未验证"范围。
 10. **Phase 5 真机 windowed CEF 验收**：文件进入/离开/放下、多窗口拖放命中、拖拽区域动态更新、下载/导航外部打开、WebView 反复创建销毁无残留——以真实运行证据替代"代码与门禁"。
 

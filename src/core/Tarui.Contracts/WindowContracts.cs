@@ -16,6 +16,11 @@ public sealed record MonitorInfo(
     bool IsPrimary,
     bool IsCurrent);
 
+/// <summary>
+/// Options for creating a window. When <see cref="Parent"/> names a registered window, the new window
+/// becomes its child; unless <see cref="Modal"/> is <c>false</c> it is shown as a modal dialog of the
+/// parent. <see cref="Transparent"/> opts the window into a translucent (acrylic-blurred) backdrop.
+/// </summary>
 public sealed record WindowOptions(
     string Label,
     string? Url = null,
@@ -32,7 +37,10 @@ public sealed record WindowOptions(
     bool Resizable = true,
     bool Decorations = true,
     bool AlwaysOnTop = false,
-    bool Visible = true);
+    bool Visible = true,
+    bool? Transparent = null,
+    string? Parent = null,
+    bool? Modal = null);
 
 public sealed record WindowStateInfo(
     string Label,

@@ -26,6 +26,8 @@
  * - log             : renderer log forwarding and desktop log event subscription
  * - deep-link       : current launch URL and custom-protocol activation events
  * - updater         : signed update check and download staging
+ * - websocket       : capability-scoped native websocket connections
+ * - positioner      : anchor a window to a screen/work-area slot
  *
  * `dialog.open` and `shell.open` are re-exported as `openDialog` and
  * `openExternal` here to keep the barrel collision-free; the subpath
@@ -228,3 +230,9 @@ export {
   flush as flushCookies,
 } from './cookie'
 export type { Cookie, CookieListOptions, CookieListResult, CookieSetOptions, CookieSetResult, CookieDeleteOptions, CookieDeleteResult } from './cookie'
+
+export { TaruiWebSocket, websocket } from './websocket'
+export type { WsMessageFrame, WsConnectConfig } from './websocket'
+
+export { positioner, setPosition, setTrayPosition } from './positioner'
+export type { PositionerAnchor, PositionerPlacement } from './positioner'

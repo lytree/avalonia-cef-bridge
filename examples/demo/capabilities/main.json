@@ -22,6 +22,7 @@
     "window://file-dropped",
     "webview://download-requested",
     "webview://navigation-requested",
+    "webview://render-process-gone",
     "log://entry",
     "deeplink://tarui",
     "updater://status",
@@ -49,9 +50,11 @@
       "allow": [{ "path": "editor" }]
     },
     "core:window|close",
+    "core:window|deny-close",
     "core:window|minimize",
     "core:window|maximize",
     "core:window|unmaximize",
+    "core:window|unminimize",
     "core:window|toggle-maximize",
     "core:window|hide",
     "core:window|show",
@@ -63,6 +66,7 @@
     "core:window|set-min-size",
     "core:window|set-max-size",
     "core:window|set-always-on-top",
+    "core:window|set-skip-taskbar",
     "core:window|set-icon",
     "core:window|set-theme",
     "core:window|set-resizable",
@@ -77,6 +81,7 @@
     "core:window|minimize-other-window",
     "core:window|maximize-other-window",
     "core:window|unmaximize-other-window",
+    "core:window|unminimize-other-window",
     "core:window|toggle-maximize-other-window",
     "core:window|hide-other-window",
     "core:window|show-other-window",
@@ -88,6 +93,7 @@
     "core:window|set-min-size-other-window",
     "core:window|set-max-size-other-window",
     "core:window|set-always-on-top-other-window",
+    "core:window|set-skip-taskbar-other-window",
     "core:window|set-resizable-other-window",
     "core:window|set-decorations-other-window",
     "core:window|set-fullscreen-other-window",
@@ -98,8 +104,14 @@
     "plugin:webview|get-state",
     "plugin:webview|devtools",
     "plugin:webview|list",
+    "plugin:webview|eval",
+    "plugin:webview|eval-with-callback",
+    "plugin:webview|set-zoom",
+    "plugin:webview|print",
     "plugin:webview|navigate-other-webview",
     "plugin:webview|get-state-other-webview",
+    "plugin:webview|set-zoom-other-webview",
+    "plugin:webview|print-other-webview",
     "plugin:dialog|open",
     "plugin:dialog|save",
     "plugin:dialog|message",
@@ -107,6 +119,9 @@
     "plugin:dialog|ask",
     "plugin:menu|set-window-menu",
     "plugin:menu|update-item",
+    "plugin:menu|append",
+    "plugin:menu|insert",
+    "plugin:menu|remove",
     "plugin:menu|remove-window-menu",
     "plugin:menu|show-context-menu",
     "plugin:window-state|save",
@@ -345,6 +360,16 @@
     "plugin:cookie|list",
     "plugin:cookie|set",
     "plugin:cookie|remove",
-    "plugin:cookie|flush"
+    "plugin:cookie|flush",
+    {
+      "identifier": "plugin:websocket|connect",
+      "allow": [
+        { "path": "wss://echo.websocket.events/**" },
+        { "path": "ws://127.0.0.1:*/**" }
+      ]
+    },
+    "plugin:websocket|send",
+    "plugin:websocket|close",
+    "plugin:positioner|set-position"
   ]
 }

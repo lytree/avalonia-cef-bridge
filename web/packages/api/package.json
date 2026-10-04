@@ -119,6 +119,14 @@
     "./updater": {
       "types": "./dist/updater.d.ts",
       "default": "./dist/updater.js"
+    },
+    "./websocket": {
+      "types": "./dist/websocket.d.ts",
+      "default": "./dist/websocket.js"
+    },
+    "./positioner": {
+      "types": "./dist/positioner.d.ts",
+      "default": "./dist/positioner.js"
     }
   },
   "scripts": {

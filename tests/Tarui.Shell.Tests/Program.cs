@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿using System.Text.Json;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,6 +45,7 @@ internal static class Program
         ExtensionRegistryScopesAndConstructsByLabel();
         CompositionExposesLayeredRegions();
         WindowExtensionContextExposesNativeWindow();
+        ShellWindowMapsTransparencyOption();
         await WindowExtensionContextEmitsToItsWindow();
         await ExtensionClosesNotifyAndDispose();
         WindowCapabilityResolverRejectsTargetThatExpandsAllow();
@@ -52,6 +53,10 @@ internal static class Program
         WindowCapabilityResolverRejectsTargetThatAddsReservedEvent();
         WindowCapabilityResolverAllowsTargetWithinCallersScope();
         WindowCapabilityResolverAllowsCallerWithWildcard();
+        await WebViewHostDeliversRenderProcessGoneToAuthorizedWindow();
+        await WebViewHostSuppressesRenderProcessGoneWithoutCapability();
+        EntryCancelsPendingCloseFallback();
+        BuildsEvalCallbackWrapperScript();
         Console.WriteLine("Tarui.Shell self-tests passed.");
         return 0;
     }
@@ -607,6 +612,33 @@ internal static class Program
             "The surfaced window must be the one attached to the composition.");
     }
 
+    private static void ShellWindowMapsTransparencyOption()
+    {
+        // Headless Linux（CI ubuntu runner）无 X server，Avalonia X11 平台无法初始化；该用例
+        // 依赖真实 ShellWindow 构造，属于平台窗口能力，无显示环境时诚实跳过。
+        if (OperatingSystem.IsLinux() && string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
+        {
+            Console.WriteLine("Skipped: ShellWindowMapsTransparencyOption requires a display (X11) unavailable on headless Linux.");
+            return;
+        }
+
+        EnsureAvaloniaInitialized();
+        var transparent = new ShellWindow(new WindowOptions("main") { Transparent = true });
+        var opaque = new ShellWindow(new WindowOptions("main"));
+
+        Assert(
+            transparent.TransparencyLevelHint.Contains(WindowTransparencyLevel.AcrylicBlur) &&
+            transparent.TransparencyLevelHint.Contains(WindowTransparencyLevel.Transparent),
+            "A transparent window must hint acrylic blur with plain transparency as fallback.");
+        Assert(
+            transparent.Background == Avalonia.Media.Brushes.Transparent &&
+            transparent.TransparencyBackgroundFallback == Avalonia.Media.Brushes.Transparent,
+            "A transparent window must keep every backdrop brush transparent.");
+        Assert(
+            !opaque.TransparencyLevelHint.Contains(WindowTransparencyLevel.Transparent),
+            "A window without the transparent option must keep the default transparency hint.");
+    }
+
     private static async Task WindowExtensionContextEmitsToItsWindow()
     {
         // A native control surfaces its state by emitting an event; it must reach the target window's
@@ -1034,6 +1066,7 @@ internal static class Program
         public event EventHandler<TaruiWebViewDownloadEventArgs>? DownloadRequested;
         public event EventHandler<TaruiWebViewNavigationEventArgs>? NavigationRequested;
         public event EventHandler<TaruiWebViewDragRegionEventArgs>? DragRegionsUpdated;
+        public event EventHandler<TaruiWebViewRenderProcessGoneEventArgs>? RenderProcessGone;
 #pragma warning restore CS0067
 
         public Control Control { get; } = new Border();
@@ -1057,6 +1090,20 @@ internal static class Program
         }
 
         public List<bool> DevToolsCalls { get; } = new();
+
+        public void SetZoom(double factor)
+        {
+            ZoomCalls.Add(factor);
+        }
+
+        public List<double> ZoomCalls { get; } = new();
+
+        public int PrintCallCount { get; private set; }
+
+        public void Print()
+        {
+            PrintCallCount++;
+        }
 
         public ValueTask ExecuteScriptAsync(string script, CancellationToken cancellationToken = default)
         {
@@ -1112,6 +1159,9 @@ internal static class Program
             NavigationRequested?.Invoke(this, args);
             return args;
         }
+
+        public void RaiseRenderProcessGone(TaruiWebViewRenderProcessTermination termination, int errorCode, string error) =>
+            RenderProcessGone?.Invoke(this, new TaruiWebViewRenderProcessGoneEventArgs(termination, errorCode, error));
     }
 
     private sealed class TestShellPlugin : ITaruiPlugin
@@ -1286,6 +1336,92 @@ internal static class Program
 
     private static WindowRegistry.Entry CreateEntry(FakeSink sink, CommandContext context) =>
         new(null!, sink, context);
+
+    private static Task WebViewHostDeliversRenderProcessGoneToAuthorizedWindow()
+    {
+        var capabilities = new CapabilitySet(
+            [],
+            ["webview://render-process-gone"],
+            []);
+        var (host, sink, webView) = CreateWebViewHost(capabilities);
+
+        using (host)
+        {
+            webView.RaiseRenderProcessGone(TaruiWebViewRenderProcessTermination.Crashed, -11, "segfault");
+        }
+
+        Assert(
+            sink.Events.Any(e => e.Event == "webview://render-process-gone"),
+            "A crash must be reported to a window authorized for the event.");
+        var gone = sink.Events.Single(e => e.Event == "webview://render-process-gone");
+        Assert(
+            gone.Payload.GetProperty("status").GetString() == "crashed",
+            "A segfault must map to the crashed status.");
+        Assert(
+            gone.Payload.GetProperty("errorCode").GetInt32() == -11,
+            "The crash payload must carry the platform error code.");
+        Assert(
+            gone.Payload.GetProperty("error").GetString() == "segfault",
+            "The crash payload must carry the renderer error message.");
+        return Task.CompletedTask;
+    }
+
+    private static Task WebViewHostSuppressesRenderProcessGoneWithoutCapability()
+    {
+        var (host, sink, webView) = CreateWebViewHost(new CapabilitySet([], [], []));
+
+        using (host)
+        {
+            webView.RaiseRenderProcessGone(TaruiWebViewRenderProcessTermination.WasKilled, 1, "killed");
+        }
+
+        Assert(
+            sink.Events.Count == 0,
+            "A window without the event capability must never observe renderer terminations.");
+        return Task.CompletedTask;
+    }
+
+    private static void EntryCancelsPendingCloseFallback()
+    {
+        var entry = CreateEntry(new FakeSink(), new CommandContext("main", "main", new CapabilitySet([])));
+        var fallback = new CancellationTokenSource();
+        var token = fallback.Token;
+        entry.CloseFallback = fallback;
+
+        entry.CancelCloseFallback();
+        Assert(token.IsCancellationRequested, "Denying a close must cancel the forced-close fallback.");
+        Assert(entry.CloseFallback is null, "The fallback must be detached after cancellation.");
+
+        entry.CancelCloseFallback();
+        Assert(entry.CloseFallback is null, "Denying close twice must stay idempotent.");
+    }
+
+    private static void BuildsEvalCallbackWrapperScript()
+    {
+        var script = AvaloniaWebviewService.BuildEvalCallbackScript("1 + 1", "chan-3");
+
+        Assert(
+            script.Contains("plugin:webview|eval-callback-complete", StringComparison.Ordinal),
+            "The wrapper must post its completion to the eval-callback-complete command.");
+        Assert(
+            script.Contains("chan-3", StringComparison.Ordinal),
+            "The wrapper must address the caller's channel token.");
+        Assert(
+            script.Contains("window.eval(\"1 + 1\")", StringComparison.Ordinal),
+            "The user script must be embedded as a JSON string literal for window.eval.");
+        Assert(
+            script.Contains("function() {", StringComparison.Ordinal),
+            "Single braces must survive raw-string interpolation.");
+        Assert(
+            script.Contains("deliver(true", StringComparison.Ordinal) &&
+            script.Contains("deliver(false", StringComparison.Ordinal),
+            "The wrapper must deliver both success and failure outcomes.");
+
+        var unbound = AvaloniaWebviewService.BuildEvalCallbackScript("1", null);
+        Assert(
+            unbound.Contains("eval-cb-unbound", StringComparison.Ordinal),
+            "A missing channel token must degrade to the unbound marker.");
+    }
 
     private static void Assert(bool condition, string message)
     {

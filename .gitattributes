@@ -1,1 +1,10 @@
+# 所有文本文件统一 LF；git 自动跳过二进制文件（text=auto）。
+# 跨平台 CI（Windows/macOS/Linux）下避免编辑器 CRLF 回写造成整仓行尾漂移。
+* text=auto eol=lf
+
+# Windows 专用脚本保持 CRLF
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
 src/webview/cefglue/** whitespace=-trailing-space

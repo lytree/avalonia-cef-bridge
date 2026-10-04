@@ -56,6 +56,70 @@ public sealed class AvaloniaMenuService(WindowRegistry registry, EventRouter eve
         return new Unit();
     }
 
+    public async ValueTask<Unit> AppendAsync(
+        string ownerWindow,
+        MenuAppendOptions options,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_definitions.TryGetValue(ownerWindow, out var items))
+        {
+            throw new InvalidOperationException($"No menu is set for window '{ownerWindow}'.");
+        }
+
+        NativeMenuBuilder.ValidateUniqueIds(options.Items);
+        var appended = Merge(items, options.Items);
+        NativeMenuBuilder.ValidateUniqueIds(appended);
+        Rebuild(ownerWindow, appended);
+        return new Unit();
+    }
+
+    public async ValueTask<Unit> InsertAsync(
+        string ownerWindow,
+        MenuInsertOptions options,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_definitions.TryGetValue(ownerWindow, out var items))
+        {
+            throw new InvalidOperationException($"No menu is set for window '{ownerWindow}'.");
+        }
+
+        if (options.Index < 0 || options.Index > items.Length)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                options.Index,
+                $"The insert index {options.Index} is outside the root menu of window '{ownerWindow}'.");
+        }
+
+        NativeMenuBuilder.ValidateUniqueIds(options.Items);
+        var inserted = InsertAt(items, options.Index, options.Items);
+        NativeMenuBuilder.ValidateUniqueIds(inserted);
+        Rebuild(ownerWindow, inserted);
+        return new Unit();
+    }
+
+    public async ValueTask<Unit> RemoveAsync(
+        string ownerWindow,
+        MenuRemoveOptions options,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_definitions.TryGetValue(ownerWindow, out var items))
+        {
+            throw new InvalidOperationException($"No menu is set for window '{ownerWindow}'.");
+        }
+
+        if (!RemoveById(items, options.Id, out var removed))
+        {
+            throw new InvalidOperationException($"Menu item '{options.Id}' was not found on window '{ownerWindow}'.");
+        }
+
+        Rebuild(ownerWindow, removed);
+        return new Unit();
+    }
+
     public async ValueTask<Unit> RemoveWindowMenuAsync(string ownerWindow, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -121,6 +185,55 @@ public sealed class AvaloniaMenuService(WindowRegistry registry, EventRouter eve
             windowLabel,
             ItemClickedEvent,
             JsonSerializer.SerializeToElement(new MenuItemClicked(id, text, isChecked), TaruiJsonContext.Default.MenuItemClicked));
+    }
+
+    private void Rebuild(string ownerWindow, MenuItemDefinition[] items)
+    {
+        var menu = Build(ownerWindow, items);
+        _definitions[ownerWindow] = items;
+        _menus[ownerWindow] = menu;
+        ApplyMenu(ownerWindow, menu);
+    }
+
+    internal static MenuItemDefinition[] Merge(MenuItemDefinition[] items, MenuItemDefinition[] additions)
+    {
+        var result = new MenuItemDefinition[items.Length + additions.Length];
+        items.CopyTo(result, 0);
+        additions.CopyTo(result, items.Length);
+        return result;
+    }
+
+    internal static MenuItemDefinition[] InsertAt(MenuItemDefinition[] items, int index, MenuItemDefinition[] additions)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(index, items.Length);
+        var result = new MenuItemDefinition[items.Length + additions.Length];
+        items.CopyTo(result, 0);
+        additions.CopyTo(result, index);
+        items.AsSpan(index).CopyTo(result.AsSpan(index + additions.Length));
+        return result;
+    }
+
+    internal static bool RemoveById(MenuItemDefinition[] items, string id, out MenuItemDefinition[] removed)
+    {
+        for (var index = 0; index < items.Length; index++)
+        {
+            var node = items[index];
+            if (node.Kind != MenuItemKind.Divider && string.Equals(node.Id, id, StringComparison.Ordinal))
+            {
+                removed = [.. items[..index], .. items[(index + 1)..]];
+                return true;
+            }
+
+            if (node.Items is { Length: > 0 } && RemoveById(node.Items, id, out var removedChild))
+            {
+                removed = [.. items[..index], node with { Items = removedChild }, .. items[(index + 1)..]];
+                return true;
+            }
+        }
+
+        removed = [];
+        return false;
     }
 
     private static MenuItemDefinition[] Replace(MenuItemDefinition[] items, MenuUpdateItemOptions update)

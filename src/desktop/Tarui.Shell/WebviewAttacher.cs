@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
@@ -165,19 +165,17 @@ public sealed partial class WebviewAttacher
             "window://focus-changed",
             JsonSerializer.SerializeToElement(new WindowFocusChanged(false), TaruiJsonContext.Default.WindowFocusChanged)));
 
-        // The close request flow is two-step: the shell cancels the OS close and emits
-        // `window://close-requested` so the front-end can run save/dirty checks, then either confirms
-        // by calling `core:window|close` (force=true) which sets `entry.ClosePending`, or the
-        // configured fallback timeout elapses and we force-close anyway so a hung web view cannot
-        // trap the user behind an unresponsive window.
-        CancellationTokenSource? closeFallback = null;
+        // The close request flow is a cancellable hook with an explicit receipt channel: the shell
+        // cancels the OS close and emits `window://close-requested`, then the front-end answers with
+        // one of two receipts — `core:window|close` (force=true, sets ClosePending) to confirm, or
+        // `core:window|deny-close` to cancel the scheduled force-close so the window stays open for
+        // the next user gesture. If no receipt arrives, the configured fallback timeout force-closes
+        // anyway so a hung web view cannot trap the user behind an unresponsive window.
         window.Closing += (_, eventArgs) =>
         {
             if (entry.ClosePending)
             {
-                closeFallback?.Cancel();
-                closeFallback?.Dispose();
-                closeFallback = null;
+                entry.CancelCloseFallback();
                 return;
             }
 
@@ -186,22 +184,16 @@ public sealed partial class WebviewAttacher
                 new WindowLabelOptions(label),
                 TaruiJsonContext.Default.WindowLabelOptions);
             FireAndForget.Run(_eventRouter.EmitToWindowAsync(label, "window://close-requested", payload));
-            ScheduleCloseFallback(window, entry, label, ref closeFallback);
+            ScheduleCloseFallback(window, entry, label);
         };
         window.Closed += (_, _) =>
         {
-            closeFallback?.Cancel();
-            closeFallback?.Dispose();
-            closeFallback = null;
+            entry.CancelCloseFallback();
             FireAndForget.Run(HandleWindowClosedAsync(label, entry));
         };
     }
 
-    private void ScheduleCloseFallback(
-        Window window,
-        WindowRegistry.Entry entry,
-        string label,
-        ref CancellationTokenSource? closeFallback)
+    private void ScheduleCloseFallback(Window window, WindowRegistry.Entry entry, string label)
     {
         var timeout = _lifecycleOptions.CloseRequestTimeout;
         if (timeout <= TimeSpan.Zero || timeout == Timeout.InfiniteTimeSpan)
@@ -209,10 +201,9 @@ public sealed partial class WebviewAttacher
             return;
         }
 
-        closeFallback?.Cancel();
-        closeFallback?.Dispose();
+        entry.CancelCloseFallback();
         var source = new CancellationTokenSource();
-        closeFallback = source;
+        entry.CloseFallback = source;
         var token = source.Token;
 
         _ = Task.Run(async () =>

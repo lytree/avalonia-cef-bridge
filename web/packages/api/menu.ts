@@ -30,6 +30,22 @@ export interface MenuUpdateItemOptions {
   checked?: boolean | undefined
 }
 
+/** Appends items to the end of the calling window's root menu level. */
+export interface MenuAppendOptions {
+  items: MenuItemDefinition[]
+}
+
+/** Inserts items into the calling window's root menu level at the given index. */
+export interface MenuInsertOptions {
+  index: number
+  items: MenuItemDefinition[]
+}
+
+/** Removes the item with the given id (depth-first search) from the calling window's menu. */
+export interface MenuRemoveOptions {
+  id: string
+}
+
 export interface MenuItemClicked {
   id: string
   text?: string | undefined
@@ -52,6 +68,18 @@ export async function updateItem(options: MenuUpdateItemOptions): Promise<void> 
   await invoke('plugin:menu|update-item', options)
 }
 
+export async function appendItems(options: MenuAppendOptions): Promise<void> {
+  await invoke('plugin:menu|append', options)
+}
+
+export async function insertItems(options: MenuInsertOptions): Promise<void> {
+  await invoke('plugin:menu|insert', options)
+}
+
+export async function removeItem(options: MenuRemoveOptions): Promise<void> {
+  await invoke('plugin:menu|remove', options)
+}
+
 export async function removeWindowMenu(): Promise<void> {
   await invoke('plugin:menu|remove-window-menu', {})
 }
@@ -67,6 +95,9 @@ export async function showContextMenu(options: ContextMenuOptions): Promise<void
 export const menu = {
   setWindowMenu,
   updateItem,
+  appendItems,
+  insertItems,
+  removeItem,
   removeWindowMenu,
   showContextMenu,
 } as const

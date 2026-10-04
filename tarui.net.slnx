@@ -37,10 +37,12 @@
     <Project Path="src/plugins/Tarui.Plugins.GlobalShortcut/Tarui.Plugins.GlobalShortcut.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Log/Tarui.Plugins.Log.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Notification/Tarui.Plugins.Notification.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Positioner/Tarui.Plugins.Positioner.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Shell/Tarui.Plugins.Shell.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Store/Tarui.Plugins.Store.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.System/Tarui.Plugins.System.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Updater/Tarui.Plugins.Updater.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Websocket/Tarui.Plugins.Websocket.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Webview/Tarui.Plugins.Webview.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Window/Tarui.Plugins.Window.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.WindowState/Tarui.Plugins.WindowState.csproj" />
@@ -74,11 +76,13 @@
     <Project Path="tests/Tarui.MenuTray.Tests/Tarui.MenuTray.Tests.csproj" />
     <Project Path="tests/Tarui.Notification.Tests/Tarui.Notification.Tests.csproj" />
     <Project Path="tests/Tarui.Plugins.Tests/Tarui.Plugins.Tests.csproj" />
+    <Project Path="tests/Tarui.Positioner.Tests/Tarui.Positioner.Tests.csproj" />
     <Project Path="tests/Tarui.Shell.Tests/Tarui.Shell.Tests.csproj" />
     <Project Path="tests/Tarui.ShellPlugin.Tests/Tarui.ShellPlugin.Tests.csproj" />
     <Project Path="tests/Tarui.SingleInstance.Tests/Tarui.SingleInstance.Tests.csproj" />
     <Project Path="tests/Tarui.Store.Tests/Tarui.Store.Tests.csproj" />
     <Project Path="tests/Tarui.Updater.Tests/Tarui.Updater.Tests.csproj" />
+    <Project Path="tests/Tarui.WebSocket.Tests/Tarui.WebSocket.Tests.csproj" />
     <Project Path="tests/Tarui.WebView.Tests/Tarui.WebView.Tests.csproj" />
     <Project Path="tests/Tarui.WebView.Tests.CefGlueNext/Tarui.WebView.Tests.CefGlueNext.csproj" />
     <Project Path="tests/Tarui.WebViewEvents.Tests/Tarui.WebViewEvents.Tests.csproj" />

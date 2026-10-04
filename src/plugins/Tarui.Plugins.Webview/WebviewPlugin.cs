@@ -10,7 +10,11 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
     [
         "plugin:webview|navigate",
         "plugin:webview|get-state",
-        "plugin:webview|devtools"
+        "plugin:webview|devtools",
+        "plugin:webview|eval",
+        "plugin:webview|eval-with-callback",
+        "plugin:webview|set-zoom",
+        "plugin:webview|print"
     ];
 
     public void ConfigureCommands(CommandRouterBuilder commands)
@@ -37,6 +41,45 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetDevToolsAsync,
             "plugin:webview|devtools");
+
+        commands.Add(
+            "plugin:webview|eval",
+            TaruiJsonContext.Default.WebviewEvalOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.EvalAsync,
+            "plugin:webview|eval");
+
+        // Eval-with-callback is the callback form of eval: the shell wraps the script so its completion
+        // (JSON-encoded value or error) is posted back through the caller's channel token. The internal
+        // completion command shares the eval-with-callback permission id — only a window that may start
+        // a callback may complete one, and evaluated code runs with the same window's authority.
+        commands.Add(
+            "plugin:webview|eval-with-callback",
+            TaruiJsonContext.Default.WebviewEvalCallbackOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.EvalWithCallbackAsync,
+            "plugin:webview|eval-with-callback");
+
+        commands.Add(
+            "plugin:webview|set-zoom",
+            TaruiJsonContext.Default.WebviewSetZoomOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.SetZoomAsync,
+            "plugin:webview|set-zoom");
+
+        commands.Add(
+            "plugin:webview|print",
+            TaruiJsonContext.Default.WebviewLabelOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.PrintAsync,
+            "plugin:webview|print");
+
+        commands.Add(
+            "plugin:webview|eval-callback-complete",
+            TaruiJsonContext.Default.WebviewEvalCompleteOptions,
+            TaruiJsonContext.Default.Unit,
+            WebviewCommands.EvalCallbackCompleteAsync,
+            "plugin:webview|eval-with-callback");
 
         commands.Add(
             "plugin:webview|list",
@@ -75,6 +118,49 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.SetDevToolsAsync(Resolve(options.Label, context, "plugin:webview|devtools"), options.Open, cancellationToken);
+
+        [TaruiCommand("plugin:webview|eval")]
+        public ValueTask<Unit> EvalAsync(
+            WebviewEvalOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.EvalAsync(Resolve(options.Label, context, "plugin:webview|eval"), options.Script, cancellationToken);
+
+        [TaruiCommand("plugin:webview|eval-with-callback")]
+        public ValueTask<Unit> EvalWithCallbackAsync(
+            WebviewEvalCallbackOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.EvalWithCallbackAsync(
+                Resolve(options.Label, context, "plugin:webview|eval-with-callback"),
+                options.Script,
+                options.OnEvent,
+                cancellationToken);
+
+        [TaruiCommand("plugin:webview|set-zoom")]
+        public ValueTask<Unit> SetZoomAsync(
+            WebviewSetZoomOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.SetZoomAsync(Resolve(options.Label, context, "plugin:webview|set-zoom"), options.Factor, cancellationToken);
+
+        [TaruiCommand("plugin:webview|print")]
+        public ValueTask<Unit> PrintAsync(
+            WebviewLabelOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.PrintAsync(Resolve(options.Label, context, "plugin:webview|print"), cancellationToken);
+
+        [TaruiCommand("plugin:webview|eval-callback-complete")]
+        public static async ValueTask<Unit> EvalCallbackCompleteAsync(
+            WebviewEvalCompleteOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken)
+        {
+            var channel = ChannelContext.Bind<WebviewEvalFrame>(options.Id);
+            await channel.SendAsync(new WebviewEvalFrame(options.Ok, options.Value, options.Error), cancellationToken);
+            return new Unit();
+        }
 
         [TaruiCommand("plugin:webview|list")]
         public async ValueTask<WebviewLabels> ListAsync(

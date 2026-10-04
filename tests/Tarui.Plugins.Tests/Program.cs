@@ -18,6 +18,7 @@ internal static class Program
     {
         await RegistersWindowCommandsWithPermissions();
         await DispatchesWindowCreateWithOptions();
+        await DispatchesWindowCreateWithTransparencyAndModalOptions();
         await FallsBackToContextWindowLabel();
         await SetsWindowIconAndTheme();
         await ReturnsWindowStateAndLabels();
@@ -41,6 +42,9 @@ internal static class Program
         await AllowsOtherWebviewWithPermission();
         await TogglesDevToolsForOwnAndOtherWebview();
         await ReturnsWebviewStateAndLabels();
+        await EvaluatesScriptsThroughWebviewCommands();
+        await CompletesEvalCallbackOnBoundChannel();
+        await DeniesCloseThroughWindowCommand();
         ResolvesCorePluginThroughServiceCollection();
         ResolvesWindowPluginThroughServiceCollection();
         ResolvesEventPluginThroughServiceCollection();
@@ -109,6 +113,50 @@ internal static class Program
         Assert(
             service.Calls.Contains("create|editor|Editor|640x480"),
             "The service must receive the deserialized window options.");
+    }
+
+    private static async Task DispatchesWindowCreateWithTransparencyAndModalOptions()
+    {
+        var service = new FakeWindowService();
+        var router = BuildRouter(service);
+        var response = await router.InvokeAsync(
+            Request(
+                "core:window|create",
+                new WindowOptions("palette")
+                {
+                    Title = "Palette",
+                    Width = 420,
+                    Height = 300,
+                    Transparent = true,
+                    Parent = "editor",
+                    Modal = true,
+                },
+                TaruiJsonContext.Default.WindowOptions),
+            AllowAll());
+
+        Assert(response.Success, "Creating a transparent modal child window must succeed.");
+        Assert(
+            service.Calls.Contains("create|palette|Palette|420x300|transparent|parent:editor|modal:true"),
+            "The service must receive the transparency, parent and modal options.");
+
+        var ownedResponse = await router.InvokeAsync(
+            Request(
+                "core:window|create",
+                new WindowOptions("inspector")
+                {
+                    Title = "Inspector",
+                    Width = 320,
+                    Height = 240,
+                    Parent = "editor",
+                    Modal = false,
+                },
+                TaruiJsonContext.Default.WindowOptions),
+            AllowAll());
+
+        Assert(ownedResponse.Success, "Creating a non-modal owned child window must succeed.");
+        Assert(
+            service.Calls.Contains("create|inspector|Inspector|320x240|parent:editor|modal:false"),
+            "The service must record a non-modal parent association.");
     }
 
     private static async Task FallsBackToContextWindowLabel()
@@ -517,19 +565,27 @@ internal static class Program
             "plugin:webview|navigate",
             "plugin:webview|get-state",
             "plugin:webview|devtools",
+            "plugin:webview|eval",
+            "plugin:webview|eval-with-callback",
+            "plugin:webview|eval-callback-complete",
             "plugin:webview|list",
         };
+        // The internal completion command deliberately reuses the eval-with-callback permission id,
+        // so it is routed as a command but never registered as its own permission.
+        var expectedPermissions = expected.Where(command => command != "plugin:webview|eval-callback-complete");
         var router = builder.Build();
         Assert(
             expected.All(router.Commands.Contains),
             "Every webview command must be routed.");
         Assert(
-            expected.All(builder.RegisteredPermissions.Contains),
+            expectedPermissions.All(builder.RegisteredPermissions.Contains),
             "Every webview command must register its permission.");
         Assert(
             builder.RegisteredPermissions.Contains("plugin:webview|navigate-other-webview") &&
             builder.RegisteredPermissions.Contains("plugin:webview|get-state-other-webview") &&
-            builder.RegisteredPermissions.Contains("plugin:webview|devtools-other-webview"),
+            builder.RegisteredPermissions.Contains("plugin:webview|devtools-other-webview") &&
+            builder.RegisteredPermissions.Contains("plugin:webview|eval-other-webview") &&
+            builder.RegisteredPermissions.Contains("plugin:webview|eval-with-callback-other-webview"),
             "The other-webview permission variants must be registered.");
     }
 
@@ -618,6 +674,100 @@ internal static class Program
                 TaruiJsonContext.Default.WebviewDevToolsOptions),
             new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|devtools"])));
         Assert(!denied.Success, "Addressing another webview without the -other-webview permission must fail.");
+    }
+
+    private static async Task EvaluatesScriptsThroughWebviewCommands()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+
+        var own = await router.InvokeAsync(
+            Request(
+                "plugin:webview|eval",
+                new WebviewEvalOptions("1 + 1"),
+                TaruiJsonContext.Default.WebviewEvalOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|eval"])));
+        Assert(own.Success, "Evaluating a script on the caller's own webview must succeed.");
+        Assert(
+            service.Calls.Contains("eval|editor|1 + 1"),
+            "The script must reach the caller's own webview.");
+
+        var withCallback = await router.InvokeAsync(
+            Request(
+                "plugin:webview|eval-with-callback",
+                new WebviewEvalCallbackOptions("2 + 2", OnEvent: "chan-7"),
+                TaruiJsonContext.Default.WebviewEvalCallbackOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|eval-with-callback"])));
+        Assert(withCallback.Success, "Starting a callback eval on the caller's own webview must succeed.");
+        Assert(
+            service.Calls.Contains("eval-with-callback|editor|chan-7|2 + 2"),
+            "The callback channel token must reach the service.");
+
+        var denied = await router.InvokeAsync(
+            Request(
+                "plugin:webview|eval",
+                new WebviewEvalOptions("1", Label: "main"),
+                TaruiJsonContext.Default.WebviewEvalOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|eval"])));
+        Assert(!denied.Success, "Evaluating on another webview without the -other-webview permission must fail.");
+        Assert(denied.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
+    }
+
+    private static async Task CompletesEvalCallbackOnBoundChannel()
+    {
+        var sink = new RecordingChannelSink();
+        var builder = new CommandRouterBuilder();
+        new WebviewPlugin(new FakeWebviewService()).ConfigureCommands(builder);
+        var router = builder.Build();
+
+        var previous = ChannelSinkContext.Current;
+        ChannelSinkContext.Current = sink;
+        try
+        {
+            var response = await router.InvokeAsync(
+                Request(
+                    "plugin:webview|eval-callback-complete",
+                    new WebviewEvalCompleteOptions("chan-42", Ok: true, Value: "42"),
+                    TaruiJsonContext.Default.WebviewEvalCompleteOptions),
+                new CommandContext("main", "main", new CapabilitySet(["plugin:webview|eval-with-callback"])));
+            Assert(response.Success, "Completing an eval callback must succeed.");
+        }
+        finally
+        {
+            ChannelSinkContext.Current = previous;
+        }
+
+        var frame = sink.Frames.Single();
+        Assert(frame.Id == "chan-42", "The completion frame must address the caller's channel token.");
+        var payload = frame.Payload.Deserialize(TaruiJsonContext.Default.WebviewEvalFrame);
+        Assert(
+            payload is { Ok: true, Value: "42", Error: null },
+            "The completion frame must carry the eval outcome.");
+    }
+
+    private static async Task DeniesCloseThroughWindowCommand()
+    {
+        var service = new FakeWindowService();
+        var router = BuildRouter(service);
+        var response = await router.InvokeAsync(
+            Request("core:window|deny-close", new WindowLabelOptions(), TaruiJsonContext.Default.WindowLabelOptions),
+            new CommandContext("main", "main", new CapabilitySet(["core:window|deny-close"])));
+
+        Assert(response.Success, "Denying a pending close must succeed.");
+        Assert(
+            service.Calls.Contains("deny-close|main"),
+            "A missing label must fall back to the context window label.");
+    }
+
+    private sealed class RecordingChannelSink : IChannelSink
+    {
+        public List<(string Id, JsonElement Payload)> Frames { get; } = [];
+
+        public ValueTask SendAsync(string channelId, JsonElement payload, CancellationToken cancellationToken = default)
+        {
+            Frames.Add((channelId, payload));
+            return ValueTask.CompletedTask;
+        }
     }
 
     private static async Task ReturnsWebviewStateAndLabels()

@@ -11,6 +11,7 @@ using Tarui.Plugins.GlobalShortcut;
 using Tarui.Plugins.Log;
 using Tarui.Plugins.Menu;
 using Tarui.Plugins.Notification;
+using Tarui.Plugins.Positioner;
 using Tarui.Plugins.System;
 using Tarui.Plugins.Tray;
 using Tarui.Plugins.Updater;
@@ -71,6 +72,7 @@ public static class TaruiShellServiceCollectionExtensions
         .AddSingleton<ITrayService>(sp => new AvaloniaTrayService(
             sp.GetRequiredService<WindowRegistry>(),
             sp.GetRequiredService<EventRouter>()))
+        .AddSingleton<IPositionerService, AvaloniaPositionerService>()
         .AddSingleton<IWindowStateStore>(_ => new JsonWindowStateStore(
             Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

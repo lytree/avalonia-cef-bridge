@@ -20,6 +20,10 @@ internal static class Program
             await TrayDispatchForwardsOwnerAndGatesPermissionAsync();
             MenuItemIdsMustBeUniqueAcrossTheTree();
             MenuBuilderRejectsDuplicateNestedIds();
+            AppendItemsRejectsDuplicateIds();
+            AppendItemsRejectsIdsAlreadyInTree();
+            InsertRejectsOutOfRangeIndex();
+            RemoveByIdDeletesNestedItemAndKeepsSiblings();
             TrayIconPathResolvesRootedAndKnownBaseSpecs();
             TrayIconPathRejectsUnknownOrRelativeSpecs();
             ClickEventDtosRoundTripThroughJsonContext();
@@ -47,6 +51,9 @@ internal static class Program
         {
             "plugin:menu|set-window-menu",
             "plugin:menu|update-item",
+            "plugin:menu|append",
+            "plugin:menu|insert",
+            "plugin:menu|remove",
             "plugin:menu|remove-window-menu",
             "plugin:menu|show-context-menu",
         };
@@ -231,6 +238,85 @@ internal static class Program
         Assert(duplicate, "Duplicate ids nested in a submenu must be rejected.");
     }
 
+    private static void AppendItemsRejectsDuplicateIds()
+    {
+        var merged = AvaloniaMenuService.Merge(
+            [new MenuItemDefinition("file", Text: "File")],
+            [new MenuItemDefinition("edit", Text: "Edit")]);
+        NativeMenuBuilder.ValidateUniqueIds(merged);
+
+        var rejected = false;
+        try
+        {
+            NativeMenuBuilder.ValidateUniqueIds(AvaloniaMenuService.Merge(
+                [new MenuItemDefinition("file", Text: "File")],
+                [new MenuItemDefinition("file", Text: "File again")]));
+        }
+        catch (InvalidOperationException)
+        {
+            rejected = true;
+        }
+
+        Assert(rejected, "Appending an id that already exists in the tree must be rejected.");
+    }
+
+    private static void AppendItemsRejectsIdsAlreadyInTree()
+    {
+        var rejected = false;
+        try
+        {
+            NativeMenuBuilder.ValidateUniqueIds(AvaloniaMenuService.Merge(
+                [new MenuItemDefinition("file", Text: "File", Items: [new MenuItemDefinition("open", Text: "Open")])],
+                [new MenuItemDefinition("open", Text: "Open at root")]));
+        }
+        catch (InvalidOperationException)
+        {
+            rejected = true;
+        }
+
+        Assert(rejected, "An appended id that collides with a nested id must be rejected.");
+    }
+
+    private static void InsertRejectsOutOfRangeIndex()
+    {
+        Assert(Throws<ArgumentOutOfRangeException>(() => AvaloniaMenuService.InsertAt(
+            [new MenuItemDefinition("a", Text: "A")],
+            2,
+            [new MenuItemDefinition("b", Text: "B")])),
+            "An insert index past the end of the root level must be rejected.");
+
+        Assert(Throws<ArgumentOutOfRangeException>(() => AvaloniaMenuService.InsertAt(
+            [new MenuItemDefinition("a", Text: "A")],
+            -1,
+            [new MenuItemDefinition("b", Text: "B")])),
+            "A negative insert index must be rejected.");
+
+        var inserted = AvaloniaMenuService.InsertAt(
+            [new MenuItemDefinition("a", Text: "A"), new MenuItemDefinition("c", Text: "C")],
+            1,
+            [new MenuItemDefinition("b", Text: "B")]);
+        Assert(inserted.Select(static item => item.Id).SequenceEqual(["a", "b", "c"]),
+            "A valid insert index must place the items at the requested root position.");
+    }
+
+    private static void RemoveByIdDeletesNestedItemAndKeepsSiblings()
+    {
+        var tree = new MenuItemDefinition("file", Text: "File", Items:
+        [
+            new MenuItemDefinition("open", Text: "Open"),
+            new MenuItemDefinition("save", Text: "Save"),
+        ]);
+
+        var removed = AvaloniaMenuService.RemoveById([tree], "save", out var updated);
+        Assert(removed, "Removing an existing nested id must succeed.");
+        Assert(updated.Length == 1 && updated[0].Id == "file", "The parent node must stay in place.");
+        Assert(updated[0].Items!.Select(static item => item.Id).SequenceEqual(["open"]),
+            "Removing a nested item must keep its siblings.");
+
+        var missingRemoved = AvaloniaMenuService.RemoveById(updated, "missing", out _);
+        Assert(!missingRemoved, "Removing an unknown id must report no match.");
+    }
+
     private static void TrayIconPathResolvesRootedAndKnownBaseSpecs()
     {
         var rooted = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "icon.ico"));
@@ -344,6 +430,20 @@ internal static class Program
         }
     }
 
+    private static bool Throws<TException>(Action action)
+        where TException : Exception
+    {
+        try
+        {
+            action();
+            return false;
+        }
+        catch (TException)
+        {
+            return true;
+        }
+    }
+
     private static void Assert(bool condition, string message)
     {
         if (!condition)
@@ -363,6 +463,24 @@ internal static class Program
         }
 
         public ValueTask<Unit> UpdateItemAsync(string ownerWindow, MenuUpdateItemOptions options, CancellationToken cancellationToken)
+        {
+            Owners.Add(ownerWindow);
+            return ValueTask.FromResult(new Unit());
+        }
+
+        public ValueTask<Unit> AppendAsync(string ownerWindow, MenuAppendOptions options, CancellationToken cancellationToken)
+        {
+            Owners.Add(ownerWindow);
+            return ValueTask.FromResult(new Unit());
+        }
+
+        public ValueTask<Unit> InsertAsync(string ownerWindow, MenuInsertOptions options, CancellationToken cancellationToken)
+        {
+            Owners.Add(ownerWindow);
+            return ValueTask.FromResult(new Unit());
+        }
+
+        public ValueTask<Unit> RemoveAsync(string ownerWindow, MenuRemoveOptions options, CancellationToken cancellationToken)
         {
             Owners.Add(ownerWindow);
             return ValueTask.FromResult(new Unit());

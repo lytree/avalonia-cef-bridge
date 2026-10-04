@@ -31,6 +31,21 @@ public sealed record SetWindowMenuOptions(MenuItemDefinition[] Items);
 
 public sealed record MenuUpdateItemOptions(string Id, string? Text = null, bool? Enabled = null, bool? Checked = null);
 
+/// <summary>
+/// Appends items to the end of the owner window's root menu level. Ids must be unique both inside
+/// <see cref="Items"/> and across the whole existing menu tree.
+/// </summary>
+public sealed record MenuAppendOptions(MenuItemDefinition[] Items);
+
+/// <summary>
+/// Inserts items into the owner window's root menu level at <see cref="Index"/>. Ids must be unique
+/// both inside <see cref="Items"/> and across the whole existing menu tree.
+/// </summary>
+public sealed record MenuInsertOptions(int Index, MenuItemDefinition[] Items);
+
+/// <summary>Removes the item with the given id (depth-first search) from the owner window's menu.</summary>
+public sealed record MenuRemoveOptions(string Id);
+
 public sealed record MenuItemClicked(string Id, string? Text = null, bool? Checked = null);
 
 /// <summary>

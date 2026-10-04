@@ -24,6 +24,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
     private const string FileDroppedEvent = "window://file-dropped";
     private const string DownloadRequestedEvent = "webview://download-requested";
     private const string NavigationRequestedEvent = "webview://navigation-requested";
+    private const string RenderProcessGoneEvent = "webview://render-process-gone";
     private const string BridgeErrorCode = "BRIDGE_ERROR";
 
     private readonly IpcDispatcher _dispatcher;
@@ -60,6 +61,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         _webView.FileDropped += OnFileDropped;
         _webView.DownloadRequested += OnDownloadRequested;
         _webView.NavigationRequested += OnNavigationRequested;
+        _webView.RenderProcessGone += OnRenderProcessGone;
     }
 
     public async ValueTask<string> DispatchMessageAsync(
@@ -191,6 +193,32 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
 
     private bool MayReceive(string eventName) => Context.Capabilities.AllowsEvent(eventName);
 
+    private void OnRenderProcessGone(object? sender, TaruiWebViewRenderProcessGoneEventArgs args)
+    {
+        if (!MayReceive(RenderProcessGoneEvent))
+        {
+            return;
+        }
+
+        // The renderer is gone, so delivery through ExecuteScriptAsync is expected to fail; the emit
+        // is still attempted best-effort so a shell-level observer (or a restarted surface that
+        // re-attaches the sink) can observe the termination instead of it vanishing silently.
+        FireAndForget.Run(_eventRouter.EmitToWebviewAsync(
+            Label,
+            RenderProcessGoneEvent,
+            JsonSerializer.SerializeToElement(
+                new WebViewRenderProcessGoneEvent(
+                    args.Termination switch
+                    {
+                        TaruiWebViewRenderProcessTermination.Crashed => "crashed",
+                        TaruiWebViewRenderProcessTermination.WasKilled => "killed",
+                        _ => "other",
+                    },
+                    args.ErrorCode,
+                    args.ErrorMessage),
+                TaruiJsonContext.Default.WebViewRenderProcessGoneEvent)));
+    }
+
     private WebViewRequestDecision DecideNavigation(Uri url)
     {
         try
@@ -321,5 +349,6 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         _webView.FileDropped -= OnFileDropped;
         _webView.DownloadRequested -= OnDownloadRequested;
         _webView.NavigationRequested -= OnNavigationRequested;
+        _webView.RenderProcessGone -= OnRenderProcessGone;
     }
 }

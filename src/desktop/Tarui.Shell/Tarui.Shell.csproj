@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Autostart\Tarui.Plugins.Autostart.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.GlobalShortcut\Tarui.Plugins.GlobalShortcut.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Notification\Tarui.Plugins.Notification.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Positioner\Tarui.Plugins.Positioner.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.System\Tarui.Plugins.System.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Window\Tarui.Plugins.Window.csproj" />
     <ProjectReference Include="..\..\plugins\Tarui.Plugins.Webview\Tarui.Plugins.Webview.csproj" />

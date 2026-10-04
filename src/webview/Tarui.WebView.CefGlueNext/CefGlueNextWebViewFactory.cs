@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Avalonia.Controls;
 using Tarui.WebView.Abstractions;
 using Tarui.WebView.Avalonia;
+using Xilium.CefGlue;
 
 namespace Tarui.WebView.CefGlueNext;
 
@@ -144,6 +145,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
     private EventHandler<TaruiWebViewDownloadEventArgs>? _downloadRequested;
     private EventHandler<TaruiWebViewNavigationEventArgs>? _navigationRequested;
     private EventHandler<TaruiWebViewDragRegionEventArgs>? _dragRegionsUpdated;
+    private EventHandler<TaruiWebViewRenderProcessGoneEventArgs>? _renderProcessGone;
     private int _disposeState;
 
     public CefGlueNextWebView(TaruiWebViewOptions options)
@@ -158,6 +160,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         _component.NavigationRequested += OnComponentNavigationRequested;
         _component.ExternalNavigationRequested += OnComponentExternalNavigationRequested;
         _component.DragRegionsUpdated += OnComponentDragRegionsUpdated;
+        _component.RenderProcessGone += OnComponentRenderProcessGone;
     }
 
     public Control Control => _component;
@@ -206,6 +209,12 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         remove => _dragRegionsUpdated -= value;
     }
 
+    public event EventHandler<TaruiWebViewRenderProcessGoneEventArgs>? RenderProcessGone
+    {
+        add => _renderProcessGone += value;
+        remove => _renderProcessGone -= value;
+    }
+
     public void Navigate(Uri source) => _component.Navigate(source);
 
     public void SetDevTools(bool open)
@@ -219,6 +228,12 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
             _component.CloseDevTools();
         }
     }
+
+    /// <summary>Sets the page zoom factor (1.0 = 100%, must be finite and positive).</summary>
+    public void SetZoom(double factor) => _component.SetZoom(factor);
+
+    /// <summary>Opens the browser print dialog for this web view.</summary>
+    public void Print() => _component.Print();
 
     public async ValueTask ExecuteScriptAsync(
         string script,
@@ -269,6 +284,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         _component.NavigationRequested -= OnComponentNavigationRequested;
         _component.ExternalNavigationRequested -= OnComponentExternalNavigationRequested;
         _component.DragRegionsUpdated -= OnComponentDragRegionsUpdated;
+        _component.RenderProcessGone -= OnComponentRenderProcessGone;
         _component.Dispose();
         _messageReceived = null;
         _fileDropEntered = null;
@@ -277,6 +293,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         _downloadRequested = null;
         _navigationRequested = null;
         _dragRegionsUpdated = null;
+        _renderProcessGone = null;
     }
 
     public async ValueTask DisposeAsync()
@@ -301,6 +318,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         _component.NavigationRequested -= OnComponentNavigationRequested;
         _component.ExternalNavigationRequested -= OnComponentExternalNavigationRequested;
         _component.DragRegionsUpdated -= OnComponentDragRegionsUpdated;
+        _component.RenderProcessGone -= OnComponentRenderProcessGone;
     }
 
     private void ClearEventHandlers()
@@ -312,6 +330,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         _downloadRequested = null;
         _navigationRequested = null;
         _dragRegionsUpdated = null;
+        _renderProcessGone = null;
     }
 
     private void OnComponentMessageReceived(object? sender, string message) =>
@@ -395,6 +414,22 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
                 region.IsDraggable ? DraggableRegionKind.Drag : DraggableRegionKind.NoDrag))
             .ToArray();
         _dragRegionsUpdated?.Invoke(this, new TaruiWebViewDragRegionEventArgs(regions));
+    }
+
+    private void OnComponentRenderProcessGone(
+        object? sender,
+        CefGlueNextAvaloniaRenderProcessGoneEventArgs args)
+    {
+        var termination = args.Status switch
+        {
+            CefTerminationStatus.ProcessCrashed => TaruiWebViewRenderProcessTermination.Crashed,
+            CefTerminationStatus.ProcessOom => TaruiWebViewRenderProcessTermination.Crashed,
+            CefTerminationStatus.ProcessWasKilled => TaruiWebViewRenderProcessTermination.WasKilled,
+            _ => TaruiWebViewRenderProcessTermination.Other,
+        };
+        _renderProcessGone?.Invoke(
+            this,
+            new TaruiWebViewRenderProcessGoneEventArgs(termination, args.ErrorCode, args.Error));
     }
 }
 

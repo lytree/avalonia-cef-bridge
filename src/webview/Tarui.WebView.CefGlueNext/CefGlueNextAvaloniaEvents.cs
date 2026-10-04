@@ -1,4 +1,5 @@
 using Avalonia;
+using Xilium.CefGlue;
 
 namespace Tarui.WebView.CefGlueNext;
 
@@ -140,6 +141,22 @@ public sealed class CefGlueNextAvaloniaDragRegionsUpdatedEventArgs : EventArgs
     }
 
     public IReadOnlyList<CefGlueNextAvaloniaDraggableRegion> Regions { get; }
+}
+
+public sealed class CefGlueNextAvaloniaRenderProcessGoneEventArgs : EventArgs
+{
+    public CefGlueNextAvaloniaRenderProcessGoneEventArgs(CefTerminationStatus status, int errorCode, string error)
+    {
+        Status = status;
+        ErrorCode = errorCode;
+        Error = error;
+    }
+
+    public CefTerminationStatus Status { get; }
+
+    public int ErrorCode { get; }
+
+    public string Error { get; }
 }
 
 public readonly record struct CefGlueNextAvaloniaDraggableRegion(

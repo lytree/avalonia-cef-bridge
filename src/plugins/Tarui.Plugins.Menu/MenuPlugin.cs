@@ -25,6 +25,27 @@ public sealed class MenuPlugin(IMenuService service) : ITaruiPlugin
             "plugin:menu|update-item");
 
         commands.Add(
+            "plugin:menu|append",
+            TaruiJsonContext.Default.MenuAppendOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.AppendAsync,
+            "plugin:menu|append");
+
+        commands.Add(
+            "plugin:menu|insert",
+            TaruiJsonContext.Default.MenuInsertOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.InsertAsync,
+            "plugin:menu|insert");
+
+        commands.Add(
+            "plugin:menu|remove",
+            TaruiJsonContext.Default.MenuRemoveOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.RemoveAsync,
+            "plugin:menu|remove");
+
+        commands.Add(
             "plugin:menu|remove-window-menu",
             TaruiJsonContext.Default.EmptyArgs,
             TaruiJsonContext.Default.Unit,
@@ -54,6 +75,27 @@ public sealed class MenuPlugin(IMenuService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.UpdateItemAsync(context.WindowLabel, options, cancellationToken);
+
+        [TaruiCommand("plugin:menu|append")]
+        public ValueTask<Unit> AppendAsync(
+            MenuAppendOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.AppendAsync(context.WindowLabel, options, cancellationToken);
+
+        [TaruiCommand("plugin:menu|insert")]
+        public ValueTask<Unit> InsertAsync(
+            MenuInsertOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.InsertAsync(context.WindowLabel, options, cancellationToken);
+
+        [TaruiCommand("plugin:menu|remove")]
+        public ValueTask<Unit> RemoveAsync(
+            MenuRemoveOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.RemoveAsync(context.WindowLabel, options, cancellationToken);
 
         [TaruiCommand("plugin:menu|remove-window-menu")]
         public ValueTask<Unit> RemoveWindowMenuAsync(

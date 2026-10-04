@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Tarui.Contracts;
 
 namespace Tarui.Shell;
@@ -30,6 +31,15 @@ public sealed class ShellWindow : Window
         CanResize = options.Resizable;
         Topmost = options.AlwaysOnTop;
         WindowDecorations = options.Decorations ? WindowDecorations.Full : WindowDecorations.None;
+        if (options.Transparent == true)
+        {
+            // Layered transparency: prefer the platform's acrylic blur and fall back to plain
+            // transparency, keeping every backdrop brush transparent so only the mounted web view
+            // surface paints opaque pixels.
+            TransparencyLevelHint = [WindowTransparencyLevel.AcrylicBlur, WindowTransparencyLevel.Transparent];
+            Background = Brushes.Transparent;
+            TransparencyBackgroundFallback = Brushes.Transparent;
+        }
         _pendingX = options.X;
         _pendingY = options.Y;
         _centerOnStart = options.Center;

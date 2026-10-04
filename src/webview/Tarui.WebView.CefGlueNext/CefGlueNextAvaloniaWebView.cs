@@ -84,6 +84,9 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
 
     public event EventHandler<string>? MessageReceived;
 
+    /// <summary>Raised when the browser's render process terminated (crash, kill or other reason).</summary>
+    public event EventHandler<CefGlueNextAvaloniaRenderProcessGoneEventArgs>? RenderProcessGone;
+
     public bool IsBrowserInitialized => _browser.IsBrowserInitialized;
 
     public bool IsLoading => _browser.IsLoading;
@@ -125,6 +128,34 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
                     _browser.CloseDeveloperTools();
                 }
             }
+        });
+    }
+
+    /// <summary>Sets the page zoom factor (1.0 = 100%, must be finite and positive).</summary>
+    public void SetZoom(double factor)
+    {
+        if (!double.IsFinite(factor) || factor <= 0)
+        {
+            throw new ArgumentException("The zoom factor must be finite and positive.", nameof(factor));
+        }
+
+        ThrowIfDisposed();
+        InvokeOnUiThread(() =>
+        {
+            ThrowIfDisposed();
+            // CEF defines the zoom level as the base-1.2 logarithm of the factor: factor = 1.2^level.
+            _browser.ZoomLevel = Math.Log(factor) / Math.Log(1.2);
+        });
+    }
+
+    /// <summary>Opens the browser print dialog for this web view.</summary>
+    public void Print()
+    {
+        ThrowIfDisposed();
+        InvokeOnUiThread(() =>
+        {
+            ThrowIfDisposed();
+            _browser.ExecuteJavaScript("window.print();", "about:blank", 1);
         });
     }
 
@@ -247,6 +278,13 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
     {
         _dragRegions = regions;
         DragRegionsUpdated?.Invoke(this, new CefGlueNextAvaloniaDragRegionsUpdatedEventArgs(regions));
+    }
+
+    internal void RaiseRenderProcessGone(CefTerminationStatus status, int errorCode, string error)
+    {
+        RenderProcessGone?.Invoke(
+            this,
+            new CefGlueNextAvaloniaRenderProcessGoneEventArgs(status, errorCode, error));
     }
 
     internal Point LastDragPosition => _lastDragPosition;
@@ -421,6 +459,15 @@ internal sealed class CefGlueNextAvaloniaNavigationHandler : RequestHandler
         }
 
         return decision != CefGlueNextAvaloniaNavigationDecision.Allow;
+    }
+
+    protected override void OnRenderProcessTerminated(
+        CefBrowser browser,
+        CefTerminationStatus status,
+        int errorCode,
+        string error)
+    {
+        _owner.RaiseRenderProcessGone(status, errorCode, error);
     }
 }
 

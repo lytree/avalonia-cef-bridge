@@ -4,6 +4,38 @@ public sealed record TaruiWebViewOptions(Uri InitialSource);
 
 public sealed record TaruiWebMessage(string Message);
 
+/// <summary>The reason a browser render process terminated, normalized across browser backends.</summary>
+public enum TaruiWebViewRenderProcessTermination
+{
+    /// <summary>The render process crashed.</summary>
+    Crashed,
+
+    /// <summary>The render process was killed by the system or a user action.</summary>
+    WasKilled,
+
+    /// <summary>Any other termination reason reported by the browser backend.</summary>
+    Other,
+}
+
+public sealed class TaruiWebViewRenderProcessGoneEventArgs : EventArgs
+{
+    public TaruiWebViewRenderProcessGoneEventArgs(
+        TaruiWebViewRenderProcessTermination termination,
+        int errorCode,
+        string? errorMessage)
+    {
+        Termination = termination;
+        ErrorCode = errorCode;
+        ErrorMessage = errorMessage;
+    }
+
+    public TaruiWebViewRenderProcessTermination Termination { get; }
+
+    public int ErrorCode { get; }
+
+    public string? ErrorMessage { get; }
+}
+
 public interface ITaruiWebView : IDisposable
 {
     Uri? Source { get; }
@@ -25,6 +57,9 @@ public interface ITaruiWebView : IDisposable
     /// <summary>Raised when the renderer publishes draggable region rectangles.</summary>
     event EventHandler<TaruiWebViewDragRegionEventArgs>? DragRegionsUpdated;
 
+    /// <summary>Raised when the browser's render process terminated (crash or kill).</summary>
+    event EventHandler<TaruiWebViewRenderProcessGoneEventArgs>? RenderProcessGone;
+
     void Navigate(Uri source);
 
     /// <summary>
@@ -33,6 +68,12 @@ public interface ITaruiWebView : IDisposable
     /// whose browser has not been initialized yet no-ops until the surface is ready.
     /// </summary>
     void SetDevTools(bool open);
+
+    /// <summary>Sets the page zoom factor (1.0 = 100%, must be finite and positive).</summary>
+    void SetZoom(double factor);
+
+    /// <summary>Opens the browser print dialog for this web view.</summary>
+    void Print();
 
     /// <summary>
     /// Evaluates <paramref name="script"/> in the renderer's main frame. The current implementation
