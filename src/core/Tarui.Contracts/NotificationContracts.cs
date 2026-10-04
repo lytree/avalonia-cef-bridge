@@ -13,17 +13,27 @@ public static class NotificationPermissionState
 }
 
 /// <summary>
+/// An interactive button rendered on a toast notification. <see cref="Id"/> is echoed back in the
+/// <see cref="NotificationEvent.Action"/> field of the <c>notification://activated</c> event so the
+/// app can tell which button the user pressed (a plain click on the toast body reports
+/// <see cref="NotificationEvent.Action"/> null).
+/// </summary>
+public sealed record NotificationAction(string Id, string Label);
+
+/// <summary>
 /// Options for <c>plugin:notification|show</c>. <see cref="Id"/> is app-defined and used to cancel
 /// the notification and to correlate <c>notification://activated</c>/<c>notification://dismissed</c>
 /// events. <see cref="Icon"/> is an optional file path resolved against the well-known <c>base:</c>
 /// identifiers; <see cref="Sound"/> requests an audible alert when the platform honours it.
+/// <see cref="Actions"/> optionally renders up to five interactive buttons on toast-capable platforms.
 /// </summary>
 public sealed record NotificationOptions(
     string Id,
     string Title,
     string Body,
     string? Icon = null,
-    bool Sound = false);
+    bool Sound = false,
+    IReadOnlyList<NotificationAction>? Actions = null);
 
 /// <summary>
 /// Result of a permission query/request. <see cref="Supported"/> is false when the running platform

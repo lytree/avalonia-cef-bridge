@@ -1,4 +1,5 @@
 using Tarui.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Tarui.Ipc;
 using Tarui.Plugins.Autostart;
 using Tarui.Plugins.Cookie;
@@ -12,6 +13,7 @@ using Tarui.Plugins.Http;
 using Tarui.Plugins.Log;
 using Tarui.Plugins.Menu;
 using Tarui.Plugins.Notification;
+using Tarui.Plugins.PersistedScope;
 using Tarui.Plugins.Positioner;
 using Tarui.Plugins.Store;
 using Tarui.Plugins.System;
@@ -23,6 +25,7 @@ using Tarui.Plugins.Webview;
 using Tarui.Plugins.Window;
 using Tarui.Plugins.WindowState;
 using Tarui.Shell;
+using Tarui.Shell.Toast;
 using Tarui.SingleInstance;
 using Tarui.WebView.CefGlueNext;
 
@@ -63,6 +66,10 @@ internal static class Program
 
         builder.Services
             .AddTaruiShell()
+            // Upgrade balloon notifications to real Windows toasts (Action Center + interactive
+            // action buttons + activated/dismissed events). On hosts resolving the non-Windows
+            // flavor the toast service transparently degrades back to the balloon backend.
+            .AddWindowsToastNotifications(sp => sp.GetRequiredService<WindowsNotificationService>())
             .AddWindowExtensionRegistrar<DemoWindowExtensions>()
             .AddSingleInstance(new SingleInstanceIdentity(ApplicationId, SingleInstanceChannel))
             .AddCefGlueWebView()
@@ -87,6 +94,7 @@ internal static class Program
             .AddUpdaterPlugin()
             .AddCookiePlugin()
             .AddWebsocketPlugin()
+            .AddPersistedScopePlugin()
             .AddPositionerPlugin()
             .AddPlugin<DemoChannelPlugin>();
 

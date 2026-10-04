@@ -32,6 +32,7 @@ internal static class InfoPlistBuilder
         var shortVersion = ToShortVersion(product.Version);
 
         var urlTypes = BuildUrlTypes(macOs.Schemes);
+        var documentTypes = BuildDocumentTypes(manifest.Bundle.FileAssociations);
 
         var builder = new StringBuilder(1024);
         builder.Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
@@ -51,6 +52,7 @@ internal static class InfoPlistBuilder
         AppendKeyValue(builder, "NSHighResolutionCapable", "true", indent: 1);
         AppendKeyValue(builder, "NSPrincipalClass", "NSApplication", indent: 1);
         AppendRaw(builder, urlTypes, indent: 1);
+        AppendRaw(builder, documentTypes, indent: 1);
         builder.AppendLine("</dict>");
         builder.AppendLine("</plist>");
         return builder.ToString();
@@ -88,6 +90,42 @@ internal static class InfoPlistBuilder
             builder.AppendLine("        <array>");
             builder.Append(CultureInfo.InvariantCulture, $"          <string>{XmlEscape(scheme)}</string>");
             builder.AppendLine();
+            builder.AppendLine("        </array>");
+            builder.AppendLine("      </dict>");
+        }
+
+        builder.Append("    </array>");
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// Renders the <c>CFBundleDocumentTypes</c> array for the configured file associations; empty
+    /// when none are configured. Local UTI declarations (<c>UTImportedTypeDeclarations</c> +
+    /// <c>LSItemContentTypes</c>) are out of scope for now, so entries use the legacy
+    /// <c>CFBundleTypeExtensions</c> form with <c>CFBundleTypeName</c> / <c>CFBundleTypeRole</c>,
+    /// which Launch Services still honors.
+    /// </summary>
+    internal static string BuildDocumentTypes(IReadOnlyList<AppManifestFileAssociation> associations)
+    {
+        if (associations.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine();
+        builder.AppendLine("    <key>CFBundleDocumentTypes</key>");
+        builder.AppendLine("    <array>");
+        foreach (var association in associations)
+        {
+            builder.AppendLine("      <dict>");
+            builder.AppendLine("        <key>CFBundleTypeName</key>");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"        <string>{XmlEscape(association.Name)}</string>");
+            builder.AppendLine("        <key>CFBundleTypeRole</key>");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"        <string>{XmlEscape(association.Role ?? "Editor")}</string>");
+            builder.AppendLine("        <key>CFBundleTypeExtensions</key>");
+            builder.AppendLine("        <array>");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"          <string>{XmlEscape(association.Ext)}</string>");
             builder.AppendLine("        </array>");
             builder.AppendLine("      </dict>");
         }

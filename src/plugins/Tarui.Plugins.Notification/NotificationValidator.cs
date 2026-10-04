@@ -12,6 +12,8 @@ public static class NotificationValidator
     public const int MaxTitleLength = 128;
     public const int MaxBodyLength = 512;
     public const int MaxArgsPerNotification = 4;
+    public const int MaxActionsPerNotification = 5;
+    public const int MaxActionTextLength = 64;
 
     public static void Validate(Tarui.Contracts.NotificationOptions options)
     {
@@ -28,6 +30,23 @@ public static class NotificationValidator
         if (options.Body is null || string.IsNullOrWhiteSpace(options.Body) || options.Body.Length > MaxBodyLength)
         {
             throw new InvalidPayloadException();
+        }
+
+        if (options.Actions is not null)
+        {
+            if (options.Actions.Count > MaxActionsPerNotification)
+            {
+                throw new InvalidPayloadException();
+            }
+
+            foreach (var action in options.Actions)
+            {
+                if (string.IsNullOrWhiteSpace(action.Id) || action.Id.Length > MaxActionTextLength
+                    || string.IsNullOrWhiteSpace(action.Label) || action.Label.Length > MaxActionTextLength)
+                {
+                    throw new InvalidPayloadException();
+                }
+            }
         }
     }
 }

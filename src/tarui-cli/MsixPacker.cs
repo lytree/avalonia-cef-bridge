@@ -152,6 +152,7 @@ internal static class MsixPacker
         var publisher = manifest.Bundle.Msix?.Publisher ?? "CN=Tarui";
         var publisherDisplay = ParseInlineSubject(publisher) ?? product.Name;
         var version = ToFourPartVersion(product.Version);
+        var fileTypeAssociations = BuildFileTypeAssociationExtensions(manifest.Bundle.FileAssociations);
 
         return
             $$"""
@@ -182,7 +183,7 @@ internal static class MsixPacker
                 <Application Id="App" Executable="{{XmlEscape(appExe)}}" EntryPoint="Windows.FullTrustApplication">
                   <uap:VisualElements DisplayName="{{XmlEscape(product.Name)}}"
                                       Description="{{XmlEscape(description)}}"
-                                      BackgroundColor="transparent" />
+                                      BackgroundColor="transparent" />{{fileTypeAssociations}}
                 </Application>
               </Applications>
               <Extensions>
@@ -192,6 +193,45 @@ internal static class MsixPacker
               </Extensions>
             </Package>
             """;
+    }
+
+    /// <summary>
+    /// Renders the per-application <c>uap:Extension Category="windows.fileTypeAssociation"</c>
+    /// block for the configured file associations; empty when none are configured. Each extension
+    /// gets one <c>uap:FileType</c> entry, carrying the configured MIME type as
+    /// <c>ContentType</c> when present. <c>uap</c> is already declared on the package root and
+    /// listed in <c>IgnorableNamespaces</c>.
+    /// </summary>
+    internal static string BuildFileTypeAssociationExtensions(
+        IReadOnlyList<AppManifestFileAssociation> associations)
+    {
+        if (associations.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder();
+        builder.AppendLine();
+        builder.AppendLine("                  <Extensions>");
+        builder.AppendLine("                    <uap:Extension Category=\"windows.fileTypeAssociation\">");
+        foreach (var association in associations)
+        {
+            builder.AppendLine(
+                CultureInfo.InvariantCulture,
+                $"                      <uap:FileTypeAssociation Name=\"{XmlEscape(association.Name)}\" DisplayName=\"{XmlEscape(association.Name)}\">");
+            builder.AppendLine("                        <uap:SupportedFileTypes>");
+            var fileType = string.IsNullOrEmpty(association.MimeType)
+                ? $"                          <uap:FileType>{XmlEscape(association.Ext)}</uap:FileType>"
+                : $"                          <uap:FileType ContentType=\"{XmlEscape(association.MimeType)}\">{XmlEscape(association.Ext)}</uap:FileType>";
+            builder.AppendLine(fileType);
+            builder.AppendLine("                        </uap:SupportedFileTypes>");
+            builder.AppendLine("                      </uap:FileTypeAssociation>");
+        }
+
+        builder.Append("                    </uap:Extension>");
+        builder.AppendLine();
+        builder.Append("                  </Extensions>");
+        return builder.ToString();
     }
 
     private static List<(string RelativePath, string FilePath, long Size)> EnumeratePayload(string binDir)

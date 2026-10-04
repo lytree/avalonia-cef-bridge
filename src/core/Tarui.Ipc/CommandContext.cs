@@ -3,7 +3,8 @@ namespace Tarui.Ipc;
 public sealed record CommandContext(
     string WindowLabel,
     string WebViewLabel,
-    CapabilitySet Capabilities);
+    CapabilitySet Capabilities,
+    IRuntimeScopeOverlay? ScopeOverlay = null);
 
 public sealed class CommandNotFoundException(string command)
     : Exception($"Command '{command}' is not registered.");

@@ -136,8 +136,19 @@ internal sealed class JsonCommandInvoker<TArgs, TResult>(
 
         if (scopeAuthorizer is not null && context.Capabilities.TryGetScope(permission, out var scope))
         {
+            // The runtime overlay only extends scopes the capability manifest already declared:
+            // deny entries always take effect and allow entries are appended, but a permission
+            // without a declared scope never gains checks from the overlay (least surprise).
+            var allow = scope.Allow;
+            var deny = scope.Deny;
+            if (context.ScopeOverlay is not null && context.ScopeOverlay.TryGetOverlay(permission, out var extraAllow, out var extraDeny))
+            {
+                allow = allow.Count == 0 ? extraAllow : [.. allow, .. extraAllow];
+                deny = deny.Count == 0 ? extraDeny : [.. deny, .. extraDeny];
+            }
+
             // deny wins over allow; the authorizer observes both lists and decides.
-            if (!scopeAuthorizer(args, scope.Allow, scope.Deny))
+            if (!scopeAuthorizer(args, allow, deny))
             {
                 throw new ScopeDeniedException(request.Command);
             }

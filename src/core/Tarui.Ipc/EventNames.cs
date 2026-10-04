@@ -29,7 +29,8 @@ public static class EventNames
         "fs://",
         "updater://",
         "log://",
-        "deeplink://"
+        "deeplink://",
+        "scope://"
     ];
 
     /// <summary>Returns <see langword="true"/> when the event belongs to the <c>user://</c> namespace.</summary>

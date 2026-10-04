@@ -28,6 +28,7 @@
  * - updater         : signed update check and download staging
  * - websocket       : capability-scoped native websocket connections
  * - positioner      : anchor a window to a screen/work-area slot
+ * - persisted-scope : runtime fs/http scope entries persisted across restarts
  *
  * `dialog.open` and `shell.open` are re-exported as `openDialog` and
  * `openExternal` here to keep the barrel collision-free; the subpath
@@ -236,3 +237,13 @@ export type { WsMessageFrame, WsConnectConfig } from './websocket'
 
 export { positioner, setPosition, setTrayPosition } from './positioner'
 export type { PositionerAnchor, PositionerPlacement } from './positioner'
+
+export {
+  persistedScope,
+  scopeAllow,
+  scopeDeny,
+  scopeReset,
+  onScopeChanged,
+  PERSISTED_SCOPE_CHANGED_EVENT,
+} from './persisted-scope'
+export type { PersistedPathScope, PersistedScopeOptions, PersistedScopeChangedEvent } from './persisted-scope'

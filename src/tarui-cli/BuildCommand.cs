@@ -98,6 +98,17 @@ internal sealed class BuildCommand
             "--self-contained", "true",
             "-o", binDir
         };
+
+        // A desktop project may ship dual flavors (plain TFM + a windows TFM that links the WinRT
+        // toast engine). When bundling for a Windows RID, publish that flavor so notifications get
+        // Action Center integration; single-flavor projects keep publishing their only TFM.
+        var windowsTargetFramework = ResolveWindowsTargetFramework(desktopProject);
+        if (windowsTargetFramework is not null && rid.StartsWith("win-", StringComparison.OrdinalIgnoreCase))
+        {
+            arguments.AddRange(["-f", windowsTargetFramework]);
+            _console.Info($"  framework: {windowsTargetFramework} (windows flavor for WinRT notifications)");
+        }
+
         var result = await ProcessRunner.RunAsync(
             "dotnet",
             arguments,
@@ -110,6 +121,30 @@ internal sealed class BuildCommand
         }
 
         return binDir;
+    }
+
+    /// <summary>
+    /// Reads the desktop project's <c>TargetFrameworks</c>/<c>TargetFramework</c> and returns the
+    /// windows flavor when the project declares one, so the publish can opt into it for win-* RIDs.
+    /// Returns <see langword="null"/> for single-flavor or unreadable projects (publish then uses
+    /// the project default).
+    /// </summary>
+    private static string? ResolveWindowsTargetFramework(string desktopProject)
+    {
+        try
+        {
+            var document = System.Xml.Linq.XDocument.Load(desktopProject);
+            var frameworks = document.Descendants()
+                .Where(element => element.Name.LocalName is "TargetFrameworks" or "TargetFramework")
+                .SelectMany(element => element.Value.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                .Where(framework => framework.Contains("-windows", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            return frameworks.Count > 0 ? frameworks[0] : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     private void ValidateCefRuntime(string rid, CliPaths paths)

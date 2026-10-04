@@ -27,6 +27,7 @@
     "deeplink://tarui",
     "updater://status",
     "fs://watch-change",
+    "scope://changed",
   ],
   "permissions": [
     "core:app|get-info",
@@ -370,6 +371,9 @@
     },
     "plugin:websocket|send",
     "plugin:websocket|close",
-    "plugin:positioner|set-position"
+    "plugin:positioner|set-position",
+    "plugin:persisted-scope|scope-allow",
+    "plugin:persisted-scope|scope-deny",
+    "plugin:persisted-scope|scope-reset"
   ]
 }

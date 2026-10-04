@@ -20,6 +20,7 @@ internal static class Program
             PluginPack();
             SchemaSynthesis();
             Msix();
+            FileAssociations();
         }
         catch (Exception exception)
         {
@@ -1126,6 +1127,189 @@ internal static class Program
         var errors = AppManifestValidator.Validate(manifest, ".");
         Assert(Has(errors, "'app-bundle'"),
             "bundle.macOS without an app-bundle target must be reported.");
+    }
+
+    private static void FileAssociations()
+    {
+        ManifestParsesFileAssociations();
+        ManifestWithoutAssociationsYieldsEmptyList();
+        ValidatorRejectsBadFileAssociation();
+        ValidAssociationsHaveNoErrors();
+        MsixManifestContainsFileTypeAssociation();
+        MsixManifestOmitsFileTypeAssociationWithoutConfiguration();
+        InfoPlistEmitsDocumentTypesForEveryAssociation();
+    }
+
+    private static void ManifestParsesFileAssociations()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "my-app", "version": "0.1.0", "identifier": "com.example.app" },
+              "build": { "frontendDist": "web/dist" },
+              "bundle": {
+                "targets": ["msix"],
+                "fileAssociations": [
+                  { "ext": " tdoc ", "name": "  Tarui Doc  ", "description": "  ", "mimeType": " application/x-tdoc ", "role": " Viewer " },
+                  { "ext": ".tkey", "name": "Tarui Key" }
+                ]
+              }
+            }
+            """);
+        Assert(manifest.Bundle.FileAssociations.Count == 2, "Both file associations must be parsed.");
+        var first = manifest.Bundle.FileAssociations[0];
+        Assert(first.Ext == ".tdoc", $"The ext must be trimmed and normalized to a leading dot, got '{first.Ext}'.");
+        Assert(first.Name == "Tarui Doc", $"The name must be trimmed, got '{first.Name}'.");
+        Assert(first.Description is null, "A whitespace-only description must collapse to null.");
+        Assert(first.MimeType == "application/x-tdoc", $"The mimeType must be trimmed, got '{first.MimeType}'.");
+        Assert(first.Role == "Viewer", $"An explicit role must be trimmed and preserved, got '{first.Role}'.");
+        var second = manifest.Bundle.FileAssociations[1];
+        Assert(second.Ext == ".tkey", "A dotted ext must pass through unchanged.");
+        Assert(second.Description is null, "An omitted description must default to null.");
+        Assert(second.MimeType is null, "An omitted mimeType must default to null.");
+        Assert(second.Role == "Editor", "An omitted role must default to Editor.");
+    }
+
+    private static void ManifestWithoutAssociationsYieldsEmptyList()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            { "product": { "name": "a", "version": "0.1.0", "identifier": "a" }, "build": { "frontendDist": "d" }, "bundle": { "targets": ["zip"] } }
+            """);
+        Assert(manifest.Bundle.FileAssociations.Count == 0,
+            "A manifest without fileAssociations must yield an empty list.");
+    }
+
+    private static void ValidatorRejectsBadFileAssociation()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "a", "version": "0.1.0", "identifier": "a" },
+              "build": { "frontendDist": "d" },
+              "bundle": {
+                "targets": ["zip"],
+                "fileAssociations": [
+                  { "ext": ".ok", "name": "  ", "description": "d" },
+                  { "ext": "   ", "name": "Blank Ext" },
+                  { "ext": ".dup", "name": "Dup" },
+                  { "ext": ".DUP", "name": "Dup Upper" },
+                  { "ext": ".longexttoofarfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "name": "Too Long" },
+                  { "ext": ".mime", "name": "Bad Mime", "mimeType": "not-a-mime" },
+                  { "ext": ".role", "name": "Bad Role", "role": "Wizard" },
+                  { "ext": ".desc", "name": "Long Description", "description": "x" }
+                ]
+              }
+            }
+            """);
+        var associations = manifest.Bundle.FileAssociations.ToArray();
+        associations[^1] = associations[^1] with { Description = new string('x', 513) };
+        manifest = manifest with { Bundle = manifest.Bundle with { FileAssociations = associations } };
+        var errors = AppManifestValidator.Validate(manifest, ".");
+        Assert(Has(errors, "fileAssociations[0].name"), "A whitespace-only name must be reported.");
+        Assert(Has(errors, "fileAssociations[1].ext"), "A blank extension (normalized to '.') must be reported.");
+        Assert(Has(errors, "fileAssociations[3].ext") && Has(errors, "duplicates"),
+            "A case-insensitive duplicate extension must be reported.");
+        Assert(Has(errors, "fileAssociations[4].ext") && Has(errors, "64 characters"),
+            "An extension longer than 64 characters must be reported.");
+        Assert(Has(errors, "fileAssociations[5].mimeType"), "A malformed mimeType must be reported.");
+        Assert(Has(errors, "fileAssociations[6].role"), "A role outside Editor/Viewer/Shell/None must be reported.");
+        Assert(Has(errors, "fileAssociations[7].description"), "A description longer than 512 characters must be reported.");
+        Assert(errors.All(error => error.Contains("fileAssociations", StringComparison.Ordinal)),
+            "Every file-association error must name the fileAssociations field.");
+    }
+
+    private static void ValidAssociationsHaveNoErrors()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "a", "version": "0.1.0", "identifier": "a" },
+              "build": { "frontendDist": "d" },
+              "bundle": {
+                "targets": ["zip"],
+                "fileAssociations": [
+                  { "ext": ".tdoc", "name": "Tarui Doc", "description": "Docs", "mimeType": "application/x-tdoc", "role": "Editor" },
+                  { "ext": ".TKEY", "name": "Tarui Key" }
+                ]
+              }
+            }
+            """);
+        var errors = AppManifestValidator.Validate(manifest, ".");
+        Assert(errors.Count == 0, $"A valid association set must have no errors, got: {string.Join("; ", errors)}");
+    }
+
+    private static void MsixManifestContainsFileTypeAssociation()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "my-app", "version": "0.1.0", "identifier": "com.example.app" },
+              "build": { "frontendDist": "web/dist" },
+              "bundle": {
+                "targets": ["msix"],
+                "fileAssociations": [
+                  { "ext": ".tdoc", "name": "Tarui Demo Document", "mimeType": "application/x-tdoc" },
+                  { "ext": ".tkey", "name": "Tarui Key" }
+                ]
+              }
+            }
+            """);
+        var xml = MsixPacker.BuildAppxManifest(manifest, "MyApp.exe", "win-x64");
+        Assert(xml.Contains("Category=\"windows.fileTypeAssociation\"", StringComparison.Ordinal),
+            "The appx manifest must declare the fileTypeAssociation category.");
+        Assert(xml.Contains("Name=\"Tarui Demo Document\"", StringComparison.Ordinal),
+            "The association name must become the FileTypeAssociation Name.");
+        Assert(xml.Contains("ContentType=\"application/x-tdoc\"", StringComparison.Ordinal),
+            "A configured mimeType must become the FileType ContentType.");
+        Assert(xml.Contains(">.tdoc</uap:FileType>", StringComparison.Ordinal),
+            "Each extension must appear as one FileType entry.");
+        Assert(xml.Contains(">.tkey</uap:FileType>", StringComparison.Ordinal),
+            "A second association must emit its own FileType entry.");
+        Assert(!xml.Contains("ContentType=\"\"", StringComparison.Ordinal),
+            "A FileType without a mimeType must not carry an empty ContentType attribute.");
+    }
+
+    private static void MsixManifestOmitsFileTypeAssociationWithoutConfiguration()
+    {
+        var manifest = ManifestForMsix();
+        var xml = MsixPacker.BuildAppxManifest(manifest, "MyApp.exe", "win-x64");
+        Assert(!xml.Contains("windows.fileTypeAssociation", StringComparison.Ordinal),
+            "Without configured associations the appx manifest must not declare fileTypeAssociation.");
+        Assert(xml.Contains("windows.fullTrustProcess", StringComparison.Ordinal),
+            "The package-level fullTrustProcess extension must remain.");
+    }
+
+    private static void InfoPlistEmitsDocumentTypesForEveryAssociation()
+    {
+        var manifest = AppManifestLoader.Parse(
+            """
+            {
+              "product": { "name": "my-app", "version": "0.1.0", "identifier": "com.example.app" },
+              "build": { "frontendDist": "web/dist" },
+              "bundle": {
+                "targets": ["app-bundle"],
+                "macOS": { "bundleId": "com.example.app" },
+                "fileAssociations": [
+                  { "ext": ".tdoc", "name": "Tarui Demo Document", "role": "Editor" },
+                  { "ext": ".tkey", "name": "Tarui Key" }
+                ]
+              }
+            }
+            """);
+        var infoPlist = InfoPlistBuilder.Build(manifest, "osx-arm64");
+        Assert(infoPlist.Contains("<key>CFBundleDocumentTypes</key>", StringComparison.Ordinal),
+            "Info.plist must declare CFBundleDocumentTypes when associations are configured.");
+        Assert(infoPlist.Contains("<string>Tarui Demo Document</string>", StringComparison.Ordinal),
+            "CFBundleTypeName must carry the association name.");
+        Assert(infoPlist.Contains("<string>Editor</string>", StringComparison.Ordinal),
+            "CFBundleTypeRole must carry the configured role.");
+        Assert(infoPlist.Contains("<string>.tdoc</string>", StringComparison.Ordinal) &&
+               infoPlist.Contains("<string>.tkey</string>", StringComparison.Ordinal),
+            "CFBundleTypeExtensions must list every configured extension.");
+        var bare = InfoPlistBuilder.Build(ManifestForAppBundle(), "osx-arm64");
+        Assert(!bare.Contains("CFBundleDocumentTypes", StringComparison.Ordinal),
+            "Without associations Info.plist must not declare CFBundleDocumentTypes.");
     }
 
     private static int CountOccurrences(string haystack, string needle)

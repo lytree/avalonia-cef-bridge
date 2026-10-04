@@ -65,8 +65,71 @@ internal static class AppManifestValidator
 
         ValidateMsix(manifest, errors);
         ValidateMacOs(manifest, errors);
+        ValidateFileAssociations(manifest, errors);
 
         return errors;
+    }
+
+    private static void ValidateFileAssociations(AppManifest manifest, List<string> errors)
+    {
+        var associations = manifest.Bundle.FileAssociations;
+        if (associations.Count == 0)
+        {
+            return;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < associations.Count; index++)
+        {
+            var association = associations[index];
+            var prefix = $"bundle.fileAssociations[{index}]";
+
+            if (string.IsNullOrWhiteSpace(association.Name))
+            {
+                errors.Add($"{prefix}.name is required.");
+            }
+
+            if (string.IsNullOrWhiteSpace(association.Ext) ||
+                !System.Text.RegularExpressions.Regex.IsMatch(association.Ext, "^\\.[A-Za-z0-9][A-Za-z0-9._-]*$"))
+            {
+                errors.Add(
+                    $"{prefix}.ext must match '^\\.[A-Za-z0-9][A-Za-z0-9._-]*$', got '{association.Ext}'.");
+            }
+            else
+            {
+                if (association.Ext.Length > 64)
+                {
+                    errors.Add(
+                        $"{prefix}.ext must be at most 64 characters, got '{association.Ext}'.");
+                }
+
+                if (!seen.Add(association.Ext))
+                {
+                    errors.Add(
+                        $"{prefix}.ext duplicates an earlier file association '{association.Ext}'.");
+                }
+            }
+
+            if (association.Description is not null && association.Description.Length > 512)
+            {
+                errors.Add($"{prefix}.description must be at most 512 characters.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(association.MimeType) &&
+                !System.Text.RegularExpressions.Regex.IsMatch(
+                    association.MimeType,
+                    "^[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*/[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*$"))
+            {
+                errors.Add($"{prefix}.mimeType must be a type/subtype pair, got '{association.MimeType}'.");
+            }
+
+            if (association.Role is not null &&
+                association.Role is not ("Editor" or "Viewer" or "Shell" or "None"))
+            {
+                errors.Add(
+                    $"{prefix}.role must be one of Editor, Viewer, Shell or None, got '{association.Role}'.");
+            }
+        }
     }
 
     private static void ValidateMsix(AppManifest manifest, List<string> errors)

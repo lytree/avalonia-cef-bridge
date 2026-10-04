@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Multi-target: the net10.0 asset carries the managed service without WinRT projections
+         (every operation degrades to the injected fallback backend) so net10.0 hosts and Linux
+         builds keep working; the windows asset additionally compiles the WinRT toast engine
+         under Windows/*. EnableWindowsTargeting keeps the windows flavor buildable on Linux. -->
+    <TargetFrameworks>net10.0;net10.0-windows10.0.19041.0</TargetFrameworks>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <DefineConstants Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">$(DefineConstants);TARUI_TOAST_WINRT</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\core\Tarui.Contracts\Tarui.Contracts.csproj" />
+    <ProjectReference Include="..\..\plugins\Tarui.Plugins.Notification\Tarui.Plugins.Notification.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The SDK default glob would pick Windows/ up for every flavor; it is windows-only. -->
+    <Compile Remove="Windows\**\*.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">
+    <Compile Include="Windows\**\*.cs" />
+  </ItemGroup>
+</Project>

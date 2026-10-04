@@ -10,6 +10,12 @@ export const notificationPermissionState = {
 
 export type NotificationPermission = (typeof notificationPermissionState)[keyof typeof notificationPermissionState]
 
+/** An interactive button rendered on toast-capable platforms; `id` is echoed back in `action` of the activation event. */
+export interface NotificationAction {
+  id: string
+  label: string
+}
+
 /** Options for `plugin:notification|show`. */
 export interface NotificationOptions {
   /** App-defined id used to cancel the notification and correlate events. */
@@ -20,6 +26,8 @@ export interface NotificationOptions {
   icon?: string | undefined
   /** Requests an audible alert when the platform honours it. */
   sound?: boolean
+  /** Optional interactive buttons (up to 5) on toast-capable platforms. */
+  actions?: NotificationAction[] | undefined
 }
 
 /** Result of a permission query/request. */

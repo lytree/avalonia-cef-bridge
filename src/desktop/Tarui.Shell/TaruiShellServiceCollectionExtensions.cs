@@ -93,7 +93,9 @@ public static class TaruiShellServiceCollectionExtensions
                 : new WindowsAutostartService();
         })
         .AddSingleton<IGlobalShortcutService>(sp => new WindowsGlobalShortcutService(sp.GetRequiredService<EventRouter>()))
-        .AddSingleton<INotificationService, WindowsNotificationService>()
+        .AddSingleton<WindowsNotificationService>()
+        .AddSingleton<INotificationService>(sp => sp.GetRequiredService<WindowsNotificationService>())
+        .AddSingleton<INotificationEventSink, NotificationEventBridge>()
         .AddSingleton<DeepLinkService>(sp => new DeepLinkService(
             GetStartupArgs(),
             DeepLinkConfiguration.ReadSchemes(sp.GetService<IConfiguration>()),
@@ -102,6 +104,7 @@ public static class TaruiShellServiceCollectionExtensions
         .AddSingleton<ISecondActivationSink>(sp => sp.GetRequiredService<DeepLinkService>())
         .AddSingleton<IMacDeepLinkUrlExtractor, NoOpMacDeepLinkUrlExtractor>()
         .AddHostedService<DeepLinkRegistrarHostedService>()
+        .AddHostedService<FileAssociationRegistrarHostedService>()
         .AddSingleton<HttpClient>()
         .AddSingleton<IUpdateApplier>(_ => OperatingSystem.IsWindows()
             ? new WindowsMsixUpdateApplier()

@@ -17,7 +17,16 @@
     "targets": [
       "zip"
     ],
-    "shortDescription": "A Tarui desktop application"
+    "shortDescription": "A Tarui desktop application",
+    "fileAssociations": [
+      {
+        "ext": ".tdoc",
+        "name": "Tarui Demo Document",
+        "description": "Demo document owned by the Tarui demo app",
+        "mimeType": "application/x-tdoc",
+        "role": "Editor"
+      }
+    ]
   },
   "app": {
     "capabilities": [

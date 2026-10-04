@@ -1,6 +1,7 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -57,6 +58,8 @@ internal static class Program
         await WebViewHostSuppressesRenderProcessGoneWithoutCapability();
         EntryCancelsPendingCloseFallback();
         BuildsEvalCallbackWrapperScript();
+        RegistrarBuildsRegistryShape();
+        FileAssociationConfigurationReadsSegments();
         Console.WriteLine("Tarui.Shell self-tests passed.");
         return 0;
     }
@@ -1421,6 +1424,50 @@ internal static class Program
         Assert(
             unbound.Contains("eval-cb-unbound", StringComparison.Ordinal),
             "A missing channel token must degrade to the unbound marker.");
+    }
+
+    private static void RegistrarBuildsRegistryShape()
+    {
+        Assert(
+            WindowsFileAssociationRegistrar.BuildProgId("Tarui Demo Document", ".tdoc") == "tarui.Tarui-Demo-Document.tdoc",
+            "The ProgID must prefix 'tarui.' and turn non [letter/digit/dot] characters into '-'.");
+        Assert(
+            WindowsFileAssociationRegistrar.BuildProgId("App!", ".TKEY") == "tarui.App-.TKEY",
+            "The ProgID must sanitize the name but keep the extension as-is.");
+        Assert(
+            WindowsFileAssociationRegistrar.BuildShellOpenCommand(@"C:\Apps\demo.exe") == "\"C:\\Apps\\demo.exe\" \"%1\"",
+            "The shell open command must quote the executable and the %1 document placeholder.");
+        Assert(
+            WindowsFileAssociationRegistrar.BuildDefaultIcon(@"C:\Apps\demo.exe") == "\"C:\\Apps\\demo.exe\",0",
+            "The DefaultIcon must quote the executable and reference icon index 0.");
+    }
+
+    private static void FileAssociationConfigurationReadsSegments()
+    {
+        var data = new Dictionary<string, string?>
+        {
+            ["Tarui:FileAssociations:0:Ext"] = ".tdoc",
+            ["Tarui:FileAssociations:0:Name"] = "Tarui Demo Document",
+            ["Tarui:FileAssociations:0:Description"] = "  Demo doc  ",
+            ["Tarui:FileAssociations:1:Ext"] = "tkey",
+            ["Tarui:FileAssociations:1:Name"] = "Tarui Key",
+            ["Tarui:FileAssociations:2:Ext"] = ".TDOC",
+            ["Tarui:FileAssociations:2:Name"] = "Duplicate",
+            ["Tarui:FileAssociations:3:Name"] = "Missing Ext",
+        };
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(data)
+            .Build();
+
+        var associations = FileAssociationConfiguration.ReadAssociations(configuration).ToArray();
+        Assert(associations.Length == 2, $"Dotted extensions and duplicates must collapse, got {associations.Length} entries.");
+        Assert(associations[0].Ext == ".tdoc", "The first entry must keep its normalized extension.");
+        Assert(associations[0].Name == "Tarui Demo Document", "The name must be read from the segment.");
+        Assert(associations[0].Description == "Demo doc", "The description must be trimmed.");
+        Assert(associations[1].Ext == ".tkey", "A dot-less extension must be normalized to a leading dot.");
+
+        Assert(FileAssociationConfiguration.ReadAssociations(null).Count == 0,
+            "A missing configuration must yield no associations.");
     }
 
     private static void Assert(bool condition, string message)

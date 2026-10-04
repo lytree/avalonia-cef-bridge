@@ -60,7 +60,7 @@ Tarui 的目标不是逐行复刻 Tauri 的 Rust 内部实现，而是在 .NET�
 | File System | 已实现(Windows) | 16 条命令（9 条基础 + `read-file-stream` + `write-begin|chunk|commit|cancel` + `watch|unwatch`）；流式读突破 8 MiB 单次上限，分片写保持原子替换语义；目录 watch 以 `fs://watch-change` 定向投递 |
 | Menu / Tray | 已实现(Windows) | Menu 三命令 + Tray 六命令 + 上下文菜单 popup（`plugin:menu|show-context-menu`）；owner 窗口生命周期挂钩，Host 退出时显式释放 |
 | Single Instance | 已实现(Windows) | Mutex + 命名管道/Unix socket 转发，主窗口未就绪入队、`Flush()` 补投 `app://second-instance`；macOS/Linux 路径已写但未运行验证 |
-| Notification | 已实现(Windows) | permission-state/request/show/cancel + `notification://activated/dismissed`；Windows `Shell_NotifyIcon` 气球实现（待升级 Toast）；非 Windows 诚实降级 |
+| Notification | 已实现(Windows) | permission-state/request/show/cancel + `notification://activated/dismissed`；Windows Toast 载体（`Tarui.Shell.Toast`：操作按钮 + 通知中心 AUMID 注册 + WinRT 生命周期事件，balloon 自动回退）；非 Windows 诚实降级 |
 | Autostart | 已实现(Windows/macOS/Linux) | Windows registry / macOS LaunchAgents / Linux `.desktop` 三平台落地，平台感知 DI 选择；命令与可执行路径校验 |
 | Global Shortcut | 已实现(Windows) | register/unregister/unregister-all/is-registered + `global-shortcut://triggered` 事件；accelerator 归一化 + scope glob；非 Windows 降级 |
 | Window State | 已实现(Windows) | save/restore/clear + 显示器拟合（`WindowStateFit.ClampToMonitors`）；scope 限制 appData/appConfig |

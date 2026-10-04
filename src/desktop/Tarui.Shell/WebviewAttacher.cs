@@ -30,6 +30,7 @@ public sealed partial class WebviewAttacher
     private readonly IAppShutdownCoordinator _shutdownCoordinator;
     private readonly WindowExtensionRegistry _extensionRegistry;
     private readonly WindowLifecycleOptions _lifecycleOptions;
+    private readonly IRuntimeScopeOverlay? _scopeOverlay;
     private readonly ILogger<WebviewAttacher> _logger;
 
     public WebviewAttacher(
@@ -42,6 +43,7 @@ public sealed partial class WebviewAttacher
         IAppShutdownCoordinator shutdownCoordinator,
         WindowExtensionRegistry extensionRegistry,
         WindowLifecycleOptions lifecycleOptions,
+        IRuntimeScopeOverlay? scopeOverlay = null,
         ILogger<WebviewAttacher>? logger = null)
     {
         _services = services;
@@ -53,6 +55,7 @@ public sealed partial class WebviewAttacher
         _shutdownCoordinator = shutdownCoordinator;
         _extensionRegistry = extensionRegistry;
         _lifecycleOptions = lifecycleOptions;
+        _scopeOverlay = scopeOverlay;
         _logger = logger ?? NullLogger<WebviewAttacher>.Instance;
     }
 
@@ -61,7 +64,7 @@ public sealed partial class WebviewAttacher
         var capability = callerContext is null
             ? _capabilityResolver.Resolve(options.Label)
             : _capabilityResolver.ResolveForCreate(options.Label, callerContext);
-        var context = new CommandContext(options.Label, options.Label, capability);
+        var context = new CommandContext(options.Label, options.Label, capability, _scopeOverlay);
 
         // The web view factory and dispatcher resolve lazily: windows are only assembled after the
         // dispatcher is fully built, so a window can be created even if a web view backend is absent.

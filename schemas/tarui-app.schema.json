@@ -43,6 +43,42 @@
         },
         "icon": { "type": "string" },
         "shortDescription": { "type": "string" },
+        "fileAssociations": {
+          "type": "array",
+          "description": "Document types this app claims (Tauri-aligned). Injected into the MSIX AppxManifest (windows.fileTypeAssociation), Info.plist CFBundleDocumentTypes, and registered per-user by the runtime on Windows for portable builds.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ext", "name"],
+            "properties": {
+              "ext": {
+                "type": "string",
+                "pattern": "^\\.[A-Za-z0-9][A-Za-z0-9._-]*$",
+                "maxLength": 64,
+                "description": "File extension including the leading dot, e.g. '.tdoc'."
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Association display name (ProgID display name / CFBundleTypeName)."
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 512
+              },
+              "mimeType": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*/[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*$",
+                "description": "Optional type/subtype MIME type emitted as the MSIX FileType ContentType."
+              },
+              "role": {
+                "type": "string",
+                "enum": ["Editor", "Viewer", "Shell", "None"],
+                "description": "macOS CFBundleTypeRole. Defaults to Editor."
+              }
+            }
+          }
+        },
         "macOS": {
           "type": "object",
           "description": "macOS application bundle options. Consumed by tarui build --bundle app-bundle; ignored otherwise. Schemes are injected into Info.plist CFBundleURLTypes so the OS hands deep-link activations to this app.",

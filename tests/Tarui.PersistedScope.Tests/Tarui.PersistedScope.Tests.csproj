@@ -7,7 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\core\Tarui.Contracts\Tarui.Contracts.csproj" />
     <ProjectReference Include="..\..\src\core\Tarui.Ipc\Tarui.Ipc.csproj" />
-    <ProjectReference Include="..\..\src\desktop\Tarui.Shell.Toast\Tarui.Shell.Toast.csproj" />
-    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Notification\Tarui.Plugins.Notification.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.PersistedScope\Tarui.Plugins.PersistedScope.csproj" />
   </ItemGroup>
 </Project>

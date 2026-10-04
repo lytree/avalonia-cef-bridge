@@ -24,7 +24,17 @@ internal sealed record AppManifestBundle(
     string? Icon,
     string? ShortDescription,
     AppManifestMsix? Msix,
-    AppManifestMacOs? MacOs);
+    AppManifestMacOs? MacOs,
+    IReadOnlyList<AppManifestFileAssociation> FileAssociations);
+
+/// <summary>
+/// One bundle file association (Tauri-aligned <c>bundle.fileAssociations</c>). <see cref="Ext"/> is
+/// normalized to a leading dot by the loader; <see cref="Role"/> defaults to <c>Editor</c> and must
+/// be one of Editor / Viewer / Shell / None (validated by <see cref="AppManifestValidator"/>).
+/// Consumed by the MSIX packer (<c>uap:FileTypeAssociation</c>) and the macOS
+/// <c>CFBundleDocumentTypes</c> injection, plus the runtime Windows per-user registrar.
+/// </summary>
+internal sealed record AppManifestFileAssociation(string Ext, string Name, string? Description, string? MimeType, string? Role);
 
 /// <summary>MSIX bundle configuration (design §5.5 / W5). Signing stays optional:
 /// the packer emits a structurally valid package, and Authenticode signing runs when
@@ -83,6 +93,16 @@ internal sealed class AppManifestBundleDto
     [JsonPropertyName("shortDescription")] public string? ShortDescription { get; set; }
     [JsonPropertyName("msix")] public AppManifestMsixDto? Msix { get; set; }
     [JsonPropertyName("macOS")] public AppManifestMacOsDto? MacOs { get; set; }
+    [JsonPropertyName("fileAssociations")] public List<AppManifestFileAssociationDto>? FileAssociations { get; set; }
+}
+
+internal sealed class AppManifestFileAssociationDto
+{
+    [JsonPropertyName("ext")] public string? Ext { get; set; }
+    [JsonPropertyName("name")] public string? Name { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("mimeType")] public string? MimeType { get; set; }
+    [JsonPropertyName("role")] public string? Role { get; set; }
 }
 
 internal sealed class AppManifestMacOsDto
@@ -150,11 +170,47 @@ internal static class AppManifestLoader
                 dto.Bundle?.Icon,
                 dto.Bundle?.ShortDescription,
                 ToMsix(dto.Bundle?.Msix),
-                ToMacOs(dto.Bundle?.MacOs)),
+                ToMacOs(dto.Bundle?.MacOs),
+                ToFileAssociations(dto.Bundle?.FileAssociations)),
             dto.App is null
                 ? null
                 : new AppManifestApp(dto.App.Capabilities ?? []));
     }
+
+    private static AppManifestFileAssociation[] ToFileAssociations(List<AppManifestFileAssociationDto>? dtos)
+    {
+        if (dtos is null || dtos.Count == 0)
+        {
+            return [];
+        }
+
+        // Normalize every field up front: extensions always carry a leading dot, whitespace-only
+        // optional fields collapse to null, and a missing role defaults to Editor. Semantic rules
+        // (grammar, duplicates, allowed roles) stay in AppManifestValidator.
+        return [.. dtos
+            .Where(static dto => dto is not null)
+            .Select(static dto => new AppManifestFileAssociation(
+                NormalizeExtension(dto.Ext),
+                dto.Name?.Trim() ?? string.Empty,
+                NullIfWhitespace(dto.Description?.Trim()),
+                NullIfWhitespace(dto.MimeType?.Trim()),
+                NormalizeRole(dto.Role)))];
+    }
+
+    private static string NormalizeExtension(string? ext)
+    {
+        var trimmed = ext?.Trim() ?? string.Empty;
+        return trimmed.StartsWith('.') ? trimmed : $".{trimmed}";
+    }
+
+    private static string NormalizeRole(string? role)
+    {
+        var trimmed = role?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? "Editor" : trimmed;
+    }
+
+    private static string? NullIfWhitespace(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value;
 
     private static AppManifestMsix? ToMsix(AppManifestMsixDto? dto)
     {
