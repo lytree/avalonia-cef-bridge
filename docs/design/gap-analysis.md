@@ -3,7 +3,7 @@
 > 状态：分析基线
 > 基线日期：2026-09-19
 > 对比对象：Tauri v2 官方插件与核心 API、Wails v3（alpha）
-> 姊妹文档：[tauri-desktop-alignment-plan.md](./tauri-desktop-alignment-plan.md)（实施步骤与状态跟踪的权威入口，本文不重复其阶段门禁）
+> 姊妹文档：[tauri-desktop-alignment-plan.md](./alignment-plan.md)（实施步骤与状态跟踪的权威入口，本文不重复其阶段门禁）、[`./architecture.md`](architecture.md)（架构总览）
 > 本文目的：静态盘点当前仓库实际能力，对照两个对标框架输出缺口清单与可优化项，供排期决策。
 
 ## 1. 结论摘要
@@ -199,4 +199,4 @@
 - Tauri v2 核心与发布说明：<https://tauri.app/release/tauri/v2.11.0/>
 - Wails v3 What's New（多窗口/托盘/事件/WML）：<https://v3.wails.io/whats-new/>
 - Wails v3 多窗口与生命周期：<https://v3.wails.io/features/windows/multiple/>、<https://v3.wails.io/concepts/lifecycle/>
-- 仓库内基线：[tauri-desktop-alignment-plan.md](./tauri-desktop-alignment-plan.md)（2026-08-21 基线，本文为其增量盘点）
+- 仓库内基线：[tauri-desktop-alignment-plan.md](./alignment-plan.md)（2026-08-21 基线，本文为其增量盘点）

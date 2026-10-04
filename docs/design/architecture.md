@@ -1,4 +1,6 @@
-# tarui.net Architecture
+# Architecture
+
+> 仓库内的所有权边界、分层依赖、模块生命周期。
 
 ## Ownership boundaries
 
@@ -24,11 +26,37 @@ Tarui.WebView.CefGlueNext --------+--> CefGlueNext component layer
 
 `Tarui.WebView.Abstractions` must not reference Avalonia or Xilium assemblies. `Tarui.Shell` and `Tarui.Hosting` may use Avalonia for native UI, but must not reference Xilium CefGlue. The vendored projects under `src/webview/cefglue` are implementation inputs consumed only by `Tarui.WebView.CefGlueNext`; they are not application-facing package dependencies.
 
+## Project layers
+
+| 项目 | 关键类型 | 职责 |
+| --- | --- | --- |
+| `Tarui.Contracts` | DTO record、`TaruiJsonContext`(`JsonSerializerContext`) | 跨进程序列化契约,零运行时依赖 |
+| `Tarui.Ipc` | `ITaruiPlugin`、`AddPlugin<T>()`、`CommandRouterBuilder`、`IpcDispatcher` | 插件抽象、命令路由器、权限登记(`RegisteredPermissions`) |
+| `Tarui.Shell` | `AddTaruiShell`、`WindowRegistry`、`EventRouter`、`CapabilitySetProvider`、`ShellWindowFactory`、`MainWindowLauncher`、`IpcDispatcher` 接入 | 声明式组合,所有插件均 `ProjectReference` 引入 |
+| `Tarui.Hosting` | `TaruiHost.CreateApplicationBuilder`、`TaruiApplicationBuilder`、`TaruiApplication`、`TaruiAvaloniaApp`、`TaruiLifetimeBridge`、`HostShutdownWatcher` | 注入 M.E.Hosting、Avalonia lifecycle 桥接 |
+| `Tarui.SingleInstance` | `SingleInstanceGuard`、`SingleInstanceIdentity`、`InstanceRole` | 二次启动参数转发到主进程 |
+| `Tarui.WebView.Abstractions` | `IWebViewHost`、`INavigationRequest`、`IDownloadRequest` | UI 中立契约,无 Avalonia/CefGlue |
+| `Tarui.WebView.Avalonia` | `TaruiWebView`(Avalonia Control) | Control 承载层 |
+| `Tarui.WebView.CefGlueNext` | `AddCefGlueWebView()`、`CefGlueNextWebAppOptions`、`CefGlueNextAvaloniaWebView`、`CefGlueNextAvaloniaRuntime` | Tarui 事件/策略/Capability 适配 + 浏览器组件实现,nupkg 内嵌 Xilium CefGlue DLL(原 `CefGlue.Next.Avalonia` 已并入) |
+| `Tarui.Ipc.Generators` | `IIncrementalGenerator` | 源生成 TaruiJsonContext 与强类型 invoker |
+
+依赖方向(强约束,被架构门禁检查):
+
+```text
+Hosting  →  Shell  →  (Ipc, Contracts, WebView.Abstractions, WebView.Avalonia, 插件接口)
+                          ↑
+              CefGlueNext  →  (WebView.Abstractions, WebView.Avalonia)
+                          ↑
+                  Tarui.WebView.CefGlueNext(包内嵌 5 个 Xilium DLL)
+```
+
+`Hosting` 和 `Shell` 都不引用 Xilium CefGlue 程序集;`Tarui.WebView.CefGlueNext` 是唯一接触 CefGlue 实现类型的项目;`webview/cefglue/*` 只能被 `Tarui.WebView.CefGlueNext` 引用。
+
 ## Hosting
 
 `Tarui.Hosting` owns the host layer: `TaruiHost.CreateApplicationBuilder()` returns a `TaruiApplicationBuilder` (`Configuration`, `Logging`, `Services`, `Window`) built on `Microsoft.Extensions.Hosting`. The content root is fixed to `AppContext.BaseDirectory`, so `appsettings.json` and the copied `capabilities/*.json` resolve from the application output. `TaruiApplication.Run()` starts the host, uses the Avalonia classic desktop lifetime as the blocking run loop, and stops and disposes the host on exit. `IHostApplicationLifetime.StopApplication()` (including the Ctrl+C console-lifetime semantics) closes the UI through `TaruiLifetimeBridge` and `HostShutdownWatcher`; closing the window lets Avalonia exit and stops the host cooperatively.
 
-`examples/demo` (the `Demo` app) is the composition root: it registers the shell and plugins explicitly through `AddTaruiShell()` and the `Add*Plugin()` extensions, and configures the main window through `builder.Window`, merged over the `Tarui:Window:*` configuration keys (defaults < configuration < code). `tests/Tarui.Hosting.Tests` covers the builder, configuration merging, and the lifetime bridge. See `docs/hosting.md` for the full design and the configuration key table.
+`examples/demo` (the `Demo` app) is the composition root: it registers the shell and plugins explicitly through `AddTaruiShell()` and the `Add*Plugin()` extensions, and configures the main window through `builder.Window`, merged over the `Tarui:Window:*` configuration keys (defaults < configuration < code). `tests/Tarui.Hosting.Tests` covers the builder, configuration merging, and the lifetime bridge. See [`hosting.md`](hosting.md) for the full design and the configuration key table.
 
 ## Managed browser stack
 
@@ -41,17 +69,6 @@ The browser stack is compiled from projects under `src/webview/cefglue` and publ
 - `CefGlue.Avalonia`: Avalonia 12 native control host, embedded in the component package.
 
 The `Tarui.WebView.CefGlueNext` nupkg contains `Tarui.WebView.CefGlueNext.dll` plus all five required `Xilium.CefGlue*.dll` assemblies. Its nuspec declares Avalonia but no Xilium/CefGlue package dependency. No other Tarui project may reference the vendored CefGlue projects directly.
-
-## IPC
-
-The renderer injects `window.invokeCSharpAction(json)`. Calls become a fixed `__taruiIpc` CEF process message, are raised by the adapter as `TaruiWebMessage`, then flow through the DI-composed `CommandRouter`. Host responses use encoded JavaScript dispatch through the existing WebView abstraction.
-
-- Command: request/response work.
-- Event: low-frequency notifications.
-- Channel: ordered progress messages owned by a command.
-- Capability: command allow-list for a window or WebView.
-
-The upstream reflection-based ObjectBinding and generic JavaScript serializer were removed from the vendored source. Wire DTOs use `JsonSerializerContext`; commands use explicit or generated strongly typed invokers.
 
 ## Shell composition
 
@@ -68,25 +85,13 @@ The upstream reflection-based ObjectBinding and generic JavaScript serializer we
 
 `AvaloniaWindowService` implements the 24 `core:window|*` commands over `WindowRegistry` and `ShellWindow`, including monitor discovery. `AvaloniaDialogService` and `AvaloniaClipboardService` resolve the owner window from the registry so dialogs and clipboard access stay attached to the requesting window.
 
-Window lifecycle events are wired per entry: `window://moved`, `window://resized`, `window://focus-changed`, and `window://close-requested` are routed to the owning window's Webview; `window://destroyed` and `shell://theme-changed` broadcast to all windows. Closing is cooperative — the OS close request is cancelled and surfaced as `window://close-requested`; only `core:window|close` (which sets the entry's close-pending flag) actually destroys the window.
+Window lifecycle events are wired per entry: `window://moved`, `window://resized`, `window://focus-changed`, and `window://close-requested` are routed to the owning window's Webview; `window://destroyed` and `shell://theme-changed` broadcast to all windows. Closing is cooperative — the OS close request is cancelled and surfaced as `window://close-requested`; only `core:window|close` (which sets the entry's close-pending flag) actually destroys the window. `core:window|deny-close` is the Web-side receipt that cancels the force-close fallback timer (front-end never confirms). The timeout is configurable via `Tarui:Window:CloseRequestTimeout` (seconds; `0` requires explicit `core:window|close force=true`).
 
 Reserved native events are delivered to a window only when its capability `events` list authorizes receiving them (`capabilities/*.json` declares `window://*` and `shell://theme-changed` for the demo windows); `user://` events carry no native data and reach any window. This prevents second-instance arguments, file paths, and notification actions from leaking to unauthorized windows.
 
-## Plugin command surface
-
-| Plugin | Commands |
-| --- | --- |
-| Core | `core:app|get-info` |
-| Window | `core:window|create/close/minimize/maximize/unmaximize/toggle-maximize/hide/show/focus/center/set-title/set-size/set-position/set-min-size/set-max-size/set-always-on-top/set-resizable/set-decorations/set-fullscreen/get-state/current-monitor/primary-monitor/monitors/list` |
-| Event | `core:event|emit` |
-| Dialog | `plugin:dialog|open`, `plugin:dialog|save`, `plugin:dialog|message`, `plugin:dialog|confirm` |
-| System | `core:path|resolve`, `core:os|info`, `core:process|exit`, `core:process|relaunch`, `core:shell|open`, `core:clipboard|read-text`, `core:clipboard|write-text` |
-
-Adding a command means: DTO record in `Tarui.Contracts` (plus `TaruiJsonContext` registration), a handler wired in the plugin class's `ConfigureCommands(CommandRouterBuilder)`, a `commands.Add` entry with its permission, and the permission listed in the target capability file.
-
 ## Frontend bridge
 
-`@lytree/api` mirrors the plugin contracts as typed TypeScript modules (`ipc`, `app`, `window`, `event`, `dialog`, `os`, `path`, `process`, `shell`, `clipboard`). The `Window` class addresses the current Webview's window when label-less and a specific window via `getByLabel`; lifecycle subscriptions (`onMoved`, `onResized`, `onFocusChanged`, `onCloseRequested`, `onDestroyed`) wrap the shared `listen` registry. Responses resolve through the base64 dispatch channel installed by `WebViewHost`; failures reject with `IpcCommandError` carrying the router's error code.
+`@lytree/api` mirrors the plugin contracts as typed TypeScript modules (`ipc`, `app`, `window`, `event`, `dialog`, `os`, `path`, `process`, `shell`, `clipboard`, ...). The `Window` class addresses the current Webview's window when label-less and a specific window via `getByLabel`; lifecycle subscriptions (`onMoved`, `onResized`, `onFocusChanged`, `onCloseRequested`, `onDestroyed`, `denyClose`) wrap the shared `listen` registry. Responses resolve through the base64 dispatch channel installed by `WebViewHost`; failures reject with `IpcCommandError` carrying the router's error code.
 
 ## Process model
 
@@ -97,15 +102,6 @@ Adding a command means: DTO record in `Tarui.Contracts` (plus `TaruiJsonContext`
 CEF native binaries are installed with `eng/cef/install-runtime.ps1` into `runtime/cef/<rid>`. They are downloaded from the official CEF automated build endpoint, checksum verified, and copied into application output when present. This keeps large binaries out of normal Git history without introducing a NuGet runtime dependency.
 
 The managed component and native runtime have separate distribution responsibilities: `Tarui.WebView.CefGlueNext` carries managed CefGlue assemblies, while the application supplies the matching native CEF distribution. A future RID runtime package can replace the repository installer without changing the Avalonia component API.
-
-## Web resource transport
-
-`CefGlueNextWebAppOptions` (built from the `Tarui:Web:*` configuration keys, with `TARUI_WEB_*` environment variables as fallback) selects one of two explicit modes before CEF initialization:
-
-- HTTP: navigate to an exact `http://` or `https://` origin, primarily for Vite development or a managed local server.
-- Scheme: register `tarui://localhost` in browser and renderer processes and serve packaged files directly through `CefSchemeHandlerFactory`. No HTTP listener is created.
-
-Scheme requests accept GET and HEAD only. Resolution validates the exact origin, rejects userinfo, ports, traversal encodings, control characters, colon/device paths and reparse points, applies a file-size limit, sends strict MIME types and CSP, and enables SPA fallback only for missing extensionless main-frame navigation. Static resource misses remain 404. Registration failures terminate startup.
 
 ## Rendering scope
 

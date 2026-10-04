@@ -1,8 +1,8 @@
 # Tarui 开发模式与分发体系设计（对齐 Tauri 工作流）
 
 > 状态：设计稿（已实施 W0 打包基线 / W1 前端 SDK 构建化 / W2 CLI MVP / W3 应用模板与 init，状态见 §11 各行标注）
-> 基线：2026-08-22，仓库处于 `tauri-desktop-alignment-plan.md` Phase 6 之后（Deep Link 已交付，Windows 已验证）
-> 关联文档：`docs/tauri-desktop-alignment-plan.md`（能力对齐主线）、`docs/architecture.md`、`docs/hosting.md`
+> 基线：2026-08-22，仓库处于 `alignment-plan.md` Phase 6 之后（Deep Link 已交付，Windows 已验证）
+> 关联文档：[`./architecture.md`](architecture.md)（架构总览）、[`./hosting.md`](hosting.md)（Hosting 层详解）、[`./plugin-system.md`](plugin-system.md)（插件契约）、[`./alignment-plan.md`](alignment-plan.md)（能力对齐主线）、[`./ipc.md`](ipc.md)（IPC 模型）
 
 ## 1. 目的与范围
 

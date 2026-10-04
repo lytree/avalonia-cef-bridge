@@ -1,10 +1,8 @@
-# tarui.net 环境初始化文档
+# 环境初始化
 
-> 面向第一次接触仓库的开发者或 CI 维护者:从零准备 Windows / Linux / macOS 开发与发布环境。
+> 从零准备 Windows / Linux / macOS 开发与发布环境。
 >
-> 配套文档:[`USAGE.md`](USAGE.md)(使用文档)、[`DEV.md`](DEV.md)(开发文档)、[`architecture.md`](architecture.md)(架构总览)。
-
----
+> 配套文档:[`../usage/`](../usage/README.md)、[`./codebase-map.md`](codebase-map.md)、[`./ci-cd.md`](ci-cd.md)。
 
 ## 1. 主机操作系统要求
 
@@ -15,8 +13,6 @@
 | macOS 12+ (Intel / Apple Silicon) | ✅ CEF 原生包就绪 | 需要 Xcode 命令行工具;代码签名需本机证书 |
 
 仓库未启用跨平台 CI,但所有产物的 nuspec 与脚本都按三平台设计,本地未验证的路径请按"复现 CI"的思路逐项核实。
-
----
 
 ## 2. 必备工具链
 
@@ -41,8 +37,6 @@ pwsh -Command '$PSVersionTable.PSVersion'  # 期望 7.4+
 git --version
 tar --version | Select-String -Pattern 'bsdtar|gnu tar'
 ```
-
----
 
 ## 3. Windows 全流程初始化
 
@@ -131,8 +125,6 @@ dotnet run --project tests/Tarui.Architecture.Tests --no-build
 dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj
 ```
 
----
-
 ## 4. Linux 初始化(以 Ubuntu 22.04+ 为例)
 
 ```bash
@@ -167,8 +159,6 @@ dotnet build tarui.net.slnx --no-restore
 
 Wayland 需 Avalonia 12.1.1 启用 X11 后端或对接 XWayland。
 
----
-
 ## 5. macOS 初始化
 
 ```bash
@@ -201,7 +191,7 @@ security find-identity -v -p codesigning
 # notarytool 需要 App Store Connect API Key 或 Apple ID
 ```
 
----
+macOS 真机构建管道与签名/公证前置门禁见 [`../adr/0002-macos-real-build-pipeline.md`](../adr/0002-macos-real-build-pipeline.md)。
 
 ## 6. 仓库内结构与关键文件
 
@@ -211,17 +201,20 @@ security find-identity -v -p codesigning
 F:\Code\tauri.net\
   global.json                   # .NET SDK 10.0.400 latestPatch
   NuGet.Config                  # 仅 nuget.org
-  Directory.Build.props         # TaruiVersion=0.3.0 / TreatWarningsAsErrors
-  tarui.net.slnx                # 56 个项目,21 个 *.Tests
+  Directory.Build.props         # TaruiVersion / TreatWarningsAsErrors
+  tarui.net.slnx                # 全量项目 + 自测试
   runtime/cef/win-x64/          # CEF 原生运行时(由脚本生成)
   artifacts/nuget/              # dotnet pack 产物(可选)
-  docs/USAGE.md / DEV.md / ENVIRONMENT.md  # 本次新增的三份中文文档
+  docs/
+    design/                     # 架构 / IPC / 插件系统 / 对齐进度表
+    dev/                        # 环境 / 代码库 / 测试 / CI / 本地流程
+    usage/                      # 应用开发者:脚手架 / 配置 / 能力清单 / CLI
+    adr/                        # 架构决策记录
   .github/workflows/
-    ci.yml                      # PR 门禁:build / pack / 架构 / 自测试 / 前端
+    ci.yml                      # PR 门禁
+    ci-macos.yml                # macOS 真机门禁
     release.yml                 # tag 触发:pack / build / publish / release
 ```
-
----
 
 ## 7. GitHub Actions 复用
 
@@ -233,22 +226,22 @@ CI 与 Release 的关键步骤都设计为本地可复现:
 | `dotnet restore --configfile NuGet.Config` | 同上 |
 | `dotnet build -c Release --no-restore` | `dotnet build tarui.net.slnx -c Release --no-restore` |
 | `dotnet pack` + 校验 | `dotnet pack tarui.net.slnx -c Release --no-build -o artifacts/nuget` |
-| `Architecture.Tests --require-package --package` | `dotnet run --project tests/Tarui.Architecture.Tests -c Release --no-build -- --require-package --package artifacts/nuget/Tarui.WebView.CefGlueNext.0.3.0.nupkg` |
+| `Architecture.Tests --require-package --package` | `dotnet run --project tests/Tarui.Architecture.Tests -c Release --no-build -- --require-package --package artifacts/nuget/Tarui.WebView.CefGlueNext.<version>.nupkg` |
 | 外部 NuGet 消费者冒烟 | 复制 `.github/workflows/ci.yml` 中 "External NuGet consumer smoke" 步骤到本地 |
 | 版本一致性 | `pnpm exec node -e "console.log(require('./web/packages/api/package.json').version)"` 应等于 `<TaruiVersion>` |
 | `./eng/test-all.ps1 -BaselineCount 21` | 同左 |
 | `Tarui.Architecture.Tests`(无参) | `dotnet run --project tests/Tarui.Architecture.Tests -c Release --no-build` |
 | `pnpm install --frozen-lockfile` + `lint` + `build` | `cd web; pnpm install --frozen-lockfile; pnpm lint; pnpm build` |
+| macOS 真机 | `tarui info` + `tarui build --bundle app-bundle --rid osx-arm64` + `plutil -lint` + `tarui dev` |
 
 发布 secrets(在 GitHub `release` 环境):
 
 - `NUGET_USER`:nuget.org 用户名(profile name,而非 email)。
 - `NPM_USER`:与 npm trusted-publisher 关联的 GitHub 用户名。
 - `WINDOWS_CERT_BASE64` / `WINDOWS_CERT_PUBLISHER` / `WINDOWS_CERT_PASSWORD` / `WINDOWS_CERT_TIMESTAMP`(可选):MSIX Authenticode 签名。
+- `MACOS_CODESIGN_IDENTITY` / `MACOS_NOTARY_KEY_ID` / `MACOS_NOTARY_ISSUER_ID`(可选):macOS 真机发版前解锁,见 [`../adr/0002-macos-real-build-pipeline.md`](../adr/0002-macos-real-build-pipeline.md) §8。
 
 nuget.org 与 npmjs.com 上需预先配置 trusted publishing(OIDC),允许 `release` 环境 + `release.yml` 工作流文件名,**无需长寿命 API key**。
-
----
 
 ## 8. 常见环境问题
 
@@ -266,8 +259,6 @@ nuget.org 与 npmjs.com 上需预先配置 trusted publishing(OIDC),允许 `rele
 | Avalonia 启动黑屏 | 确认 `runtime/cef/<rid>/` 已安装,Scheme 模式下确认 `frontendDist` 已构建 |
 | 测试被标 `[skip]` | 项目根 `.requires-env.txt` 列出的环境变量未设置;补齐后重跑 |
 | `eng/test-all.ps1` 报 `Passed count below baseline` | 检查是否有项目被无意中删除;新加测试需要同步调整 Baseline |
-
----
 
 ## 9. 清理与重置
 
@@ -289,8 +280,6 @@ dotnet nuget locals all --clear
 
 重新初始化:回到 §3 从 `dotnet restore` 开始。
 
----
-
 ## 10. 推荐 IDE 配置
 
 - **Visual Studio 2022 17.12+**(或 VS 2026 预览):装 ".NET 10"、"Avalonia for Visual Studio"、".NET Async Tooling" 工作负载。
@@ -298,8 +287,6 @@ dotnet nuget locals all --clear
 - **VS Code**:装 C# Dev Kit、Avalonia for VS Code、ESLint、Oxlint、Vitest Explorer 扩展。
 
 `.vscode/launch.json` / `tasks.json` 已存在模板,首次打开会询问是否信任;`.editorconfig` 统一 4 空格缩进、C# 文件范围命名空间。
-
----
 
 ## 11. 验证清单(完成后逐项确认)
 
