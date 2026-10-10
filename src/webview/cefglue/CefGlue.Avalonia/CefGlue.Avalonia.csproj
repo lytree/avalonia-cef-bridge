@@ -11,7 +11,7 @@
     <NoWarn>$(NoWarn);CS0649</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia" Version="12.1.4" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="AvaloniaRenderSurface.cs" />
