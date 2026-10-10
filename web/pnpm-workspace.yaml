@@ -1,5 +1,16 @@
+# pnpm 工作区配置（pnpm 11：设置统一在此，package.json#pnpm 与 .npmrc 均不再读取）。
 packages:
   - "apps/*"
   - "packages/*"
+
+# 原 .npmrc 迁移项：工作区内部包优先按 workspace 协议链接。
+linkWorkspacePackages: true
+preferWorkspacePackages: true
+
+# 构建脚本审批（取代 v10 的 onlyBuiltDependencies）。依赖的 postinstall 默认不执行。
+#
+# esbuild: false —— vite 8 已用 Rolldown 内化 esbuild，平台二进制由可选依赖
+#   @esbuild/<platform> 直接提供，其 postinstall 仅做校验，无需执行。
+#   若将来引入确实需要 esbuild postinstall 的工具链，再改为 true。
 allowBuilds:
   esbuild: false
