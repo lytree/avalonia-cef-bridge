@@ -108,6 +108,10 @@
       "types": "./dist/store.d.ts",
       "default": "./dist/store.js"
     },
+    "./sql": {
+      "types": "./dist/sql.d.ts",
+      "default": "./dist/sql.js"
+    },
     "./log": {
       "types": "./dist/log.d.ts",
       "default": "./dist/log.js"

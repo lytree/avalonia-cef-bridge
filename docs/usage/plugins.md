@@ -35,7 +35,8 @@ builder.Services
     .AddCookiePlugin()
     .AddWebsocketPlugin()
     .AddPersistedScopePlugin()
-    .AddPositionerPlugin();
+    .AddPositionerPlugin()
+    .AddSqlPlugin();
 ```
 
 注册后,命令 ID 出现在 `CommandRouter.RegisteredPermissions`,Capability 才能授权。
@@ -58,6 +59,7 @@ builder.Services
 | `Tarui.Plugins.Autostart` | `plugin:autostart|*` | `is-enabled` / `enable` / `disable` | 开机自启(三平台) |
 | `Tarui.Plugins.GlobalShortcut` | `plugin:global-shortcut|*` | `register` / `unregister` / `unregister-all` / `is-registered` | 系统级快捷键 |
 | `Tarui.Plugins.Store` | `plugin:store|*` | `get` / `set` / `has` / `delete` / `clear` / `keys` | KV 持久化 |
+| `Tarui.Plugins.Sql` | `plugin:sql|*` | `load` / `select` / `execute` / `close` | SQLite 查询(参数化绑定 + scope 授权) |
 | `Tarui.Plugins.Log` | `plugin:log|*` | `record` | 日志落盘 |
 | `Tarui.Plugins.DeepLink` | `plugin:deep-link|*` | `get-current` / `feed` | 自定义 scheme 路由 |
 | `Tarui.Plugins.Updater` | `plugin:updater|*` | `check` / `download` / `apply` | 应用更新(签名 + SHA-256 + MSIX 安装) |
@@ -100,6 +102,42 @@ await store.set('settings', { theme: 'dark' });
 ```
 
 详细见 [`./frontend-bridge.md`](frontend-bridge.md)。
+
+## 4.1 SQL 插件用法
+
+`plugin:sql` 内置 SQLite 驱动。连接串的 scheme 选择驱动,`sqlite://<name>.db` 打开 `appData` 下的文件,`sqlite::memory:` 打开不落盘的内存库。
+
+**授权要求(与 fs/store 不同)**:`load` 会创建数据库文件,因此**空 allow 列表拒绝一切文件库**,必须在 capability 里显式列出数据库文件:
+
+```json
+{
+  "identifier": "plugin:sql|allow-load",
+  "allow": [{ "base": "appData", "path": "notes.db" }]
+}
+```
+
+其余三条权限按读写分离授权:`plugin:sql|allow-select`(查询)、`plugin:sql|allow-execute`(写入)、`plugin:sql|allow-close`(关句柄)。
+
+前端用 `openDatabase` 拿句柄,值一律走 `?` 占位符绑定(**永不拼接**):
+
+```ts
+import { openDatabase, text, integer, textValue } from '@lytree/api/sql';
+
+const db = await openDatabase('sqlite://notes.db');
+try {
+  await db.execute('CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY, body TEXT)');
+  await db.insert('INSERT INTO notes (body) VALUES (?)', [text('hello')]);
+
+  const rows = await db.select('SELECT body FROM notes WHERE id = ?', [integer(1)]);
+  console.log(textValue(rows[0].cells[0]));  // "hello"
+} finally {
+  await db.close();  // 幂等,可重复调用
+}
+```
+
+单元格以「值 + 存储类 + `isNull`」承载,因此能区分 SQL `NULL`、空串、整数、实数与 blob(blob 走 base64)。读取用 `textValue` / `integerValue` / `realValue` / `blobValue`,对 `NULL` 返回 `null`。
+
+需要 PostgreSQL / MySQL 时实现 `ISqlDriverResolver` 并 `services.AddSqlDriver<MyDriver>()`,不引入反射或程序集扫描。
 
 ## 5. 第三方插件接入流程
 

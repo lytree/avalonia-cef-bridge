@@ -48,6 +48,7 @@
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Notification\Tarui.Plugins.Notification.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.PersistedScope\Tarui.Plugins.PersistedScope.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Positioner\Tarui.Plugins.Positioner.csproj" />
+    <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Sql\Tarui.Plugins.Sql.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Store\Tarui.Plugins.Store.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.System\Tarui.Plugins.System.csproj" />
     <ProjectReference Include="..\..\..\src\plugins\Tarui.Plugins.Shell\Tarui.Plugins.Shell.csproj" />

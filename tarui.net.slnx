@@ -41,6 +41,7 @@
     <Project Path="src/plugins/Tarui.Plugins.PersistedScope/Tarui.Plugins.PersistedScope.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Positioner/Tarui.Plugins.Positioner.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Shell/Tarui.Plugins.Shell.csproj" />
+    <Project Path="src/plugins/Tarui.Plugins.Sql/Tarui.Plugins.Sql.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Store/Tarui.Plugins.Store.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.System/Tarui.Plugins.System.csproj" />
     <Project Path="src/plugins/Tarui.Plugins.Updater/Tarui.Plugins.Updater.csproj" />
@@ -83,6 +84,7 @@
     <Project Path="tests/Tarui.Shell.Tests/Tarui.Shell.Tests.csproj" />
     <Project Path="tests/Tarui.ShellPlugin.Tests/Tarui.ShellPlugin.Tests.csproj" />
     <Project Path="tests/Tarui.SingleInstance.Tests/Tarui.SingleInstance.Tests.csproj" />
+    <Project Path="tests/Tarui.Sql.Tests/Tarui.Sql.Tests.csproj" />
     <Project Path="tests/Tarui.Store.Tests/Tarui.Store.Tests.csproj" />
     <Project Path="tests/Tarui.Updater.Tests/Tarui.Updater.Tests.csproj" />
     <Project Path="tests/Tarui.WebSocket.Tests/Tarui.WebSocket.Tests.csproj" />

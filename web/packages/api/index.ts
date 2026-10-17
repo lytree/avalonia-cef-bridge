@@ -29,6 +29,7 @@
  * - websocket       : capability-scoped native websocket connections
  * - positioner      : anchor a window to a screen/work-area slot
  * - persisted-scope : runtime fs/http scope entries persisted across restarts
+ * - sql            : scoped SQL database access (SQLite by default)
  *
  * `dialog.open` and `shell.open` are re-exported as `openDialog` and
  * `openExternal` here to keep the barrel collision-free; the subpath
@@ -193,6 +194,26 @@ export {
   storeBaseIdentifiers,
 } from './store'
 export type { StoreBaseId, StoreFileOptions, StoreKeyOptions, StoreSetOptions, StoreGetResult, StoreHasResult, StoreKeysResult } from './store'
+
+export {
+  sql,
+  load as loadSql,
+  select as sqlSelect,
+  execute as sqlExecute,
+  close as closeSql,
+  openDatabase,
+  SqlDatabaseHandle,
+  NULL as SQL_NULL,
+  integer as sqlInteger,
+  real as sqlReal,
+  text as sqlText,
+  blob as sqlBlob,
+  textValue as sqlTextValue,
+  integerValue as sqlIntegerValue,
+  realValue as sqlRealValue,
+  blobValue as sqlBlobValue,
+} from './sql'
+export type { SqlValue, SqlValueType, SqlRow, SqlSelectResult, SqlExecuteResult, SqlCloseResult, SqlLoadOptions, SqlExecuteOptions } from './sql'
 
 export {
   log,

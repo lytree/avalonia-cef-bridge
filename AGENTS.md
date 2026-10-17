@@ -2,7 +2,7 @@
 
 ## 项目结构与模块组织
 
-主解决方案为 `tarui.net.slnx`。生产代码位于 `src/`：`core/` 存放契约与无反射 IPC，`desktop/` 存放 Hosting、Shell 和应用宿主，`plugins/` 存放原生能力插件，`generators/` 存放 Roslyn 生成器，`webview/` 存放浏览器抽象及仓库内维护的 CefGlue 源码。可执行自测试位于 `tests/Tarui.*.Tests`。仓库内的演示应用位于 `examples/demo/`（组合根 + 前端 + capabilities）。前端 pnpm 工作区位于 `web/`，React/Vite 应用在 `apps/Tarui.Web`，类型化桥接包在 `packages/api`，`examples/demo/web` 以 `workspace:*` 引用 `packages/api`。能力清单、工程脚本和文档分别位于 `capabilities/`、`eng/` 和 `docs/`。
+主解决方案为 `tarui.net.slnx`。生产代码位于 `src/`：`core/` 存放契约与无反射 IPC，`desktop/` 存放 Hosting、Shell 和应用宿主，`plugins/` 存放原生能力插件，`generators/` 存放 Roslyn 生成器，`webview/` 存放浏览器抽象及仓库内维护的 CefGlue 源码。可执行自测试位于 `tests/Tarui.*.Tests`。仓库内的演示应用位于 `examples/demo/`（组合根 + 前端 + capabilities）。前端 pnpm 工作区位于 `web/`，React/Vite 应用在 `apps/Tarui.Web`，类型化桥接包在 `packages/api`，`examples/demo/web` 以 `workspace:*` 引用 `packages/api`。能力清单、工程脚本、架构测试门禁和文档分别位于 `examples/demo/capabilities/`、`eng/`、`tests/Tarui.Architecture.Tests` 和 `docs/`。仓库根的 `capabilities/` 是空占位目录，不承载任何清单；**能力清单的唯一权威位置是各应用自己的 `capabilities/` 目录**（演示应用即 `examples/demo/capabilities/`），构建时随内容复制到输出目录。
 
 ## 文档结构（按受众划分）
 

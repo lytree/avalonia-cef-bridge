@@ -372,6 +372,15 @@
     "plugin:websocket|send",
     "plugin:websocket|close",
     "plugin:positioner|set-position",
+    {
+      "identifier": "plugin:sql|allow-load",
+      "allow": [
+        { "base": "appData", "path": "notes.db" }
+      ]
+    },
+    "plugin:sql|allow-select",
+    "plugin:sql|allow-execute",
+    "plugin:sql|allow-close",
     "plugin:persisted-scope|scope-allow",
     "plugin:persisted-scope|scope-deny",
     "plugin:persisted-scope|scope-reset"

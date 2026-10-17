@@ -18,6 +18,7 @@ using Tarui.Plugins.Positioner;
 using Tarui.Plugins.Store;
 using Tarui.Plugins.System;
 using Tarui.Plugins.Shell;
+using Tarui.Plugins.Sql;
 using Tarui.Plugins.Tray;
 using Tarui.Plugins.Updater;
 using Tarui.Plugins.Websocket;
@@ -96,6 +97,7 @@ internal static class Program
             .AddWebsocketPlugin()
             .AddPersistedScopePlugin()
             .AddPositionerPlugin()
+            .AddSqlPlugin()
             .AddPlugin<DemoChannelPlugin>();
 
         builder.Window.Configure(window =>
