@@ -1,6 +1,6 @@
 # Tarui 与 Tauri v3 差异分析与改造方案
 
-> 状态：分析基线 + 改造方案；**V3-0（运行时身份与扩展表面）已于 2026-10-17 实施完成**，其余阶段待排期
+> 状态：分析基线 + 改造方案；**V3-0（运行时身份与扩展表面）与 V3-1（单窗口多 WebView）已于 2026-10-17 实施完成**，其余阶段待排期
 > 基线日期：2026-10-17
 > 对比对象：Tauri **3.0.0-alpha.0 … alpha.5**（2026-09-13 至 2026-10-14，GitHub Releases `tauri-v3.0.0-alpha.*`；稳定线为 2.12.4）、`tauri-runtime-wry` / `tauri-runtime-cef` 3.0.0-alpha、`@tauri-apps/cli` 3.0.0-alpha.4/5
 > 姊妹文档：[`alignment-plan.md`](alignment-plan.md)（v2 对齐实施，继续有效）、[`gap-analysis.md`](gap-analysis.md)（v2 / Wails v3 缺口；其 §5 P0-0 与本文 V3-1 对应）、[`webview.md`](webview.md)、[`web-resource-mode.md`](web-resource-mode.md)
@@ -41,13 +41,13 @@
 | D10 | T8 macOS 私有 API 退役 | 透明窗口走 Avalonia `TransparencyLevelHint`，Tarui 从未有 `macos-private-api` 类开关 | 不适用 | — |
 | D11 | T8 specta 类型化 bindings | `@lytree/api` 32 个模块全部手写；`Tarui.Ipc.Generators` 只生成 C# 侧 `GeneratedCommandCatalog`，不覆盖 TS。gap-analysis §4 已把 bindings 自动生成列为 Wails v3 对照下的显著差距，v3 将其升级为官方方向 | 中（DX 高价值） | V3-3 |
 | D12 | T8 `tauri migrate` / NSIS 键名 / MSRV | Tarui 无历史版本迁移负担；产物为 zip / MSIX / `.app` / `.app.tar.gz`，无 NSIS；MSRV 是 Rust 侧概念 | 不适用 | — |
-| D13 | 单窗口多 WebView（v2 既有模型，v3 保留 Window/Webview 独立实体） | **架构级缺口**（gap-analysis §3.1 / §5 P0-0）：`WindowOptions`→`IWebViewFactory` 为窗口↔webview 一对一强绑定。`Tarui.Plugins.Webview` 的 `IWebviewService` 契约已声明"webview 与宿主窗口解耦、可按 `webviewLabel` 独立寻址"（`navigate/get-state/devtools/set-zoom/print/eval/eval-with-callback/list` 命令 + own/other-webview 权限），即**插件层寻址已就绪，缺底层多 WebView 挂载** | **高** | V3-1 |
+| D13 | 单窗口多 WebView（v2 既有模型，v3 保留 Window/Webview 独立实体） | **架构级缺口**（gap-analysis §3.1 / §5 P0-0）：`WindowOptions`→`IWebViewFactory` 为窗口↔webview 一对一强绑定。`Tarui.Plugins.Webview` 的 `IWebviewService` 契约已声明"webview 与宿主窗口解耦、可按 `webviewLabel` 独立寻址"（`navigate/get-state/devtools/set-zoom/print/eval/eval-with-callback/list` 命令 + own/other-webview 权限），即**插件层寻址已就绪，缺底层多 WebView 挂载** | **高**（已实施 V3-1） | V3-1 |
 | D14 | T8 tracing 观测 | `Tarui.Plugins.Log` 已实现 renderer→MEL 双向桥接，等价 | 小/已等价 | — |
 | D15 | Android 绑定宏迁移（`android_binding!` 移至 wry 运行时） | 移动端为对齐计划 §1 明确非目标 | 不适用 | — |
 
 ## 3. 差异汇总
 
-- **架构级（P0）**：D1（运行时身份未显式化）、D13（单窗口多 WebView）。D13 已是 v2 对齐遗留的唯一架构级缺口，v3 延续该模型，改造一并进行。
+- **架构级（P0）**：D1（运行时身份未显式化，已实施 V3-0）、D13（单窗口多 WebView，已实施 V3-1）。D13 曾是 v2 对齐遗留的唯一架构级缺口，v3 延续该模型，本次一并完成。
 - **结构级（P1）**：D2（运行时特有表面）、D9（权限集合与清单精简）。
 - **增强级（P2）**：D3（CDP 通道）、D5（版本暴露）、D11（bindings 生成）、D8（resourceDir 评估）。
 - **已等价或超出**：D4（双资源模式 > `custom_scheme_url` 单一方案）、D14。
@@ -104,6 +104,14 @@
 ### 4.2 Phase V3-1：单窗口多 WebView（承接 gap-analysis §5 P0-0）
 
 **目标**：Window 与 WebView 实体分离，一窗口可挂多个 webview。分两步交付：
+
+**实施状态（2026-10-17，V3-1 两步已交付）**：
+
+- **Step 1 实体分离（已交付）**：新增 `WebviewRegistry`（主索引 webview label → `WebviewEntry`，副索引 window label → webview label 列表），独立于 `WindowRegistry`；窗口条目以窗口级 fan-out sink（`WindowEventFanout`）替换单槽 `Webview`，`IWindowSinkRegistry` / `EventRouter` 签名零变更；`WebviewSession` 暴露独立 `WebviewLabel` / `WindowLabel`；`AvaloniaWebviewService` 经 `WebviewRegistry` 解析会话、`ListAsync` 枚举 webview 而非窗口；窗口关闭释放全部托管 webview。旧 1:1 路径行为不变（全部自测试通过）。
+- **Step 2 挂载能力（已交付）**：`plugin:webview|create`（`parentWindow` + `bounds` + 独立 origin，宿主窗口继承 capability）、`plugin:webview|set-bounds`、`plugin:webview|destroy`；Avalonia 侧 `ShellWindowComposition.Content` 改为 `WebviewSurfaceHost`（无 bounds 填满窗口、有 bounds 按 rect 定位），`WebviewPresenter.SurfaceBounds` 承载布局；跨窗口 attach 需 `plugin:webview|create-other-window`，跨 webview 操作用 `-other-webview` 变体。前端 `@lytree/api/webview` 增加 `Webview.create` / `setBounds` / `destroy`。
+- **偏差登记**：capability 仍按宿主窗口 profile 继承（webview 无独立 capability 维度，见 §6 风险）；resize 联动由 `WebviewSurfaceHost` 的布局（无 bounds 自动填满）承担，无需显式 resize 监听。
+
+实施步骤（原文）：
 
 1. **实体分离**（无行为变化的重构）：
    - 新增 `WebviewRegistry`（label → webview 会话）独立于窗口注册表；窗口持有 webview 集合，现有 1:1 成为"单子视图"特例；

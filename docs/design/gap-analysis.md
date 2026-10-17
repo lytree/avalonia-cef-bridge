@@ -11,7 +11,7 @@
 - Tarui 已完成桌面壳层核心：无反射 IPC、多窗口、CEF 150 WebView（自定义协议/导航与下载策略/文件拖放）、Capability v2 权限模型、Channel 端到端流式 IPC（含 fs 大文件流式读写与 HTTP 流式响应、Shell 子进程 stdio 流）、**27 套自测试**、**32 个前端 API 模块**。
 - Tauri v2 桌面相关 25 个官方能力中：已对齐约 **23 个**（多为 Windows 验证）、部分对齐 1 个（deep-link 待真机验收）；**SQL 已于 2026-10-16 落地**，剩余缺失仅 **stronghold**（加密存储）。
 - Wails v3 桌面能力（多窗口/托盘/菜单/事件/对话框/拖放/frameless）基本具备等价实现；父子窗口 + modal、可取消 close 钩子与托盘附着定位（Positioner）已补齐，剩余显著差距在开发体验（bindings 自动生成）。
-- **最高优先缺口（P0）**：桌面框架核心能力已全部落地。当前唯一的**架构级缺口**是**单窗口多 WebView**（Tarui 为窗口↔webview 一对一模型，Tauri v2 的 Window 与 Webview 是独立实体）；其余为平台真机验收与 P2 按需增强。
+- **最高优先缺口（P0）**：桌面框架核心能力已全部落地。原唯一的**架构级缺口**（单窗口多 WebView）已于 2026-10-17 完成（V3-1：窗口/WebView 实体分离 + 多 surface 挂载，见 [`tauri-v3-alignment.md`](tauri-v3-alignment.md) §4.2）；其余为平台真机验收与 P2 按需增强。
 - 平台现实：所有原生能力当前仅 Windows 完成验证；autostart 已有 macOS/Linux 实现，notification/global-shortcut 在非 Windows 为诚实降级并通过 `core:platform|capabilities` 如实暴露。CLI 新增 `app-bundle` target 产出 `.app` / `.app.tar.gz`，`InfoPlistBuilder` 注入 `CFBundleURLTypes`，为 macOS 真机验收打通链路；签名/公证留待 macOS runner 接入（[ADR-0002](../adr/0002-macos-real-build-pipeline.md)）。
 
 ### 1.1 本次复核方法与修正记录（2026-10-16）
@@ -67,7 +67,7 @@
 | invoke 命令调用 | ✅ | 等价（无反射 + 源生成元数据，语义一致） |
 | Channel 流式数据 | ✅ | 端到端流式协议已接线；fs 大文件流式读/分片写与 HTTP 流式响应已解锁 |
 | 多窗口 | ✅ | create/getAll/by label，能力对齐 |
-| 单窗口多 webview | ❌ | **唯一架构级缺口**。Tauri 的 Window 与 Webview 是两个独立实体，一个窗口可挂多个 WebView；Tarui 从 `WindowOptions` 到 `IWebViewFactory` 为窗口↔WebView 强绑定的一对一模型。后果：「主窗口 + 侧边浮层 webview」「标签页多视图」「托盘气泡窗」等形态需绕开框架自建；`plugin:webview|*` 隐式绑定调用窗口，缺按 webview label 独立寻址。详见 §5 P0-0 |
+| 单窗口多 webview | ✅ | 已实现（2026-10-17，V3-1）。`WebviewRegistry`（webview label → 会话）独立于 `WindowRegistry`，窗口经 `WindowEventFanout` 向托管的全部 webview 投递 `window://` 事件、`webview://*` 按 label 定向；`plugin:webview|create` / `set-bounds` / `destroy` 在既有窗口内按 bounds 挂载/定位/卸载多个 surface；`plugin:webview|*` 按 webview label 独立寻址（own/other-webview + 跨窗口 `-other-window`）。详见 [`tauri-v3-alignment.md`](tauri-v3-alignment.md) §4.2 |
 | 窗口 API 全集 | 🟡 | ✅ 已补齐 setIcon/setTheme、Transparent（acrylic/transparent）、Parent/Modal（ShowDialog 模态 + Owner 关联）、deny-close 可取消关闭、unminimize、set-skip-taskbar、destroy（`Window.destroy()` 语义别名 = `close(force=true)`，不 emit close-requested）、setZoom/print；缺 always-on-bottom、setShadow、setBadgeCount/setProgressBar 等平台项 |
 | 自定义协议 + CSP | ✅ | `tarui://localhost`、CSP、SPA fallback |
 | 导航/下载策略 | ✅ | 策略引擎 + capability 双重授权，语义等价 |
@@ -139,7 +139,7 @@
 
 | # | 缺口 | 对标 | 依赖/前置 |
 | --- | --- | --- | --- |
-| 0 | **单窗口多 WebView**（Window 与 Webview 解耦、webview label 独立寻址） | Tauri v2 `WebviewWindowBuilder` | 🟡 **当前唯一架构级缺口**，需先出设计稿：拆分 `WindowRegistry` 的窗口↔WebView 一对一假设、`ShellWindow` 的单 WebView 宿主模型、`IWebViewFactory` 的创建签名，并重定义 `plugin:webview|*` 的寻址语义。影响面覆盖窗口/权限/IPC/前端，属重构而非加插件，建议优先出设计再动手 |
+| 0 | **单窗口多 WebView**（Window 与 Webview 解耦、webview label 独立寻址） | Tauri v2 `WebviewWindowBuilder` | ✅ 已完成（2026-10-17，V3-1）。拆分 `WindowRegistry` 的 1:1 假设、`ShellWindow` 单 surface 宿主模型（`WebviewSurfaceHost` 无 bounds 填满/有 bounds 定位）、`plugin:webview|*` 寻址语义（webview label + `-other-webview` / `-other-window`）。详见 [`tauri-v3-alignment.md`](tauri-v3-alignment.md) §4.2 |
 | 1 | HTTP 客户端插件（受限 fetch：URL scope、流式响应、超时） | Tauri http-client | ✅ 已完成（`Tarui.Plugins.Http`） |
 | 2 | Shell 子进程执行（spawn + stdio + 退出码 + sidecar） | Tauri shell | ✅ 已完成（`Tarui.Plugins.Shell`：程序白名单作用域默认拒绝 + Channel 流式 stdio + 退出码 + 进程树终止） |
 | 3 | 上下文菜单（context menu popup，任意坐标弹出） | Tauri Menu::popup / Wails menus | ✅ 已完成（`plugin:menu|show-context-menu`，Popup + Menu 复用声明式 items + 点击路由） |
@@ -200,12 +200,12 @@
 3. **上下文菜单 + Dialog ask**（P0-3、P1-7）——✅ 已完成（`plugin:menu|show-context-menu` + `plugin:dialog|ask`）。
 4. **Updater apply + 打包分发**（P0-5/6）——✅ 代码已落地：apply 走 MSIX `Add-AppxPackage` + staging 根域校验 + 状态事件；打包分发为现有 `tarui build` zip/MSIX/`.app.tar.gz`/签名 latest.json，重启由调用方衔接 process relaunch，与 OIDC 发布工作流衔接。macOS 真机构建管道（`ci-macos.yml` + `release.yml#pack-and-build-macos`）见 [docs/adr/0002-macos-real-build-pipeline.md](../adr/0002-macos-real-build-pipeline.md)。**前置门禁**：apply 的 capability 默认不授权，需 PKI + 升级服务器 + 安装器策略齐备后由能力清单显式开启；macOS `.app` 未签名/未公证，分发前需 `codesign --deep` + `notarytool`（ADR-0002 §8）。
 5. **平台补齐（macOS/Linux）**——🟡 进展：autostart 已三平台落地，`core:platform|capabilities` 能力矩阵已暴露；macOS deep-link `NSAppleEventManager` `kAEGetURL` 桥已落地（`MacDeepLinkBridge` + 2s 去重），真机验收待执行；notification / global-shortcut 仍需 macOS/Linux 真机验收后补齐。
-6. **P2 项按产品需求排期**——✅ 已落地：Upload（multipart）、WebView 运行时配置（UserAgent/Proxy）、fs watch、Cookie API、DevTools 开关、剪贴板扩展（HTML/图片）、结构化 CLI 解析、WebSocket、Positioner、文件关联、Persisted Scope（均 2026-10-04）、**SQL（2026-10-16）**。剩余：**Stronghold**（加密存储）、**单窗口多 WebView**（架构级，见 P0-0）、SQL 非 SQLite 驱动。
+6. **P2 项按产品需求排期**——✅ 已落地：Upload（multipart）、WebView 运行时配置（UserAgent/Proxy）、fs watch、Cookie API、DevTools 开关、剪贴板扩展（HTML/图片）、结构化 CLI 解析、WebSocket、Positioner、文件关联、Persisted Scope（均 2026-10-04）、**SQL（2026-10-16）**。剩余：**Stronghold**（加密存储）、SQL 非 SQLite 驱动。**单窗口多 WebView** 已于 2026-10-17 完成（见 P0-0/V3-1）。
 7. **窗口增强 + Positioner**——✅ 已完成（2026-10-04）：P1-12 `Transparent`/`Parent`/`Modal`（ShowDialog 模态与非模态 Owner 关联）；P1-13 Positioner 插件（8 屏幕锚位 + Tray* 回退）。
 8. **可取消窗口事件钩子**（P1-16）——✅ 已完成（2026-10-04）：`core:window|deny-close` 回执通道 + 强制关闭回退定时器 + 超时兜底。附带完成 `plugin:webview|eval`/`eval-with-callback`（对标 `eval_with_callback`，经 Channel 回执完成值）与 `webview://render-process-gone` 渲染进程崩溃事件。
 9. **CI 平台矩阵扩大**（§6-9）：当前 27 套自测试只跑 Windows；至少应在 macOS/Linux 跑无 UI 的策略/契约/权限类（WebViewEvents、Capabilities、Ipc、Http、Sql 等），缩小"未验证"范围。
 10. **Phase 5 真机 windowed CEF 验收**：文件进入/离开/放下、多窗口拖放命中、拖拽区域动态更新、下载/导航外部打开、WebView 反复创建销毁无残留——以真实运行证据替代"代码与门禁"。
-11. **单窗口多 WebView 设计稿（P0-0，当前最高优先）**：先出设计再动手，需覆盖 ①窗口与 WebView 的注册与生命周期解耦；②`plugin:webview|*` 按 webview label 寻址的语义与权限边界；③多 WebView 共享窗口事件与 capability 的隔离规则；④前端 `webview.ts` 与窗口 API 的对应关系调整。
+11. **单窗口多 WebView（P0-0）**——✅ 已完成（2026-10-17，V3-1）：窗口/WebView 实体分离（`WebviewRegistry`）+ `plugin:webview|create`/`set-bounds`/`destroy` 多 surface 挂载 + 前端 `Webview.create/setBounds/destroy`。详见 [`tauri-v3-alignment.md`](tauri-v3-alignment.md) §4.2。
 
 每项仍须遵循既有模板：`Contracts DTO → 显式插件注册 → Shell/平台实现 → Capability 授权 → @lytree/api 模块 → 控制台式自测试 → 文档同步`。
 

@@ -19,8 +19,8 @@ public sealed class ShellWindowComposition
     /// <summary>Four-sided dock region. Native panels are docked here; <see cref="Content"/> fills the rest.</summary>
     public DockPanel Docks { get; } = new();
 
-    /// <summary>The web view content slot. Extensions must not replace or clear its children.</summary>
-    public Panel Content { get; } = new();
+    /// <summary>The web view content slot: an unbounded surface fills it, bounded surfaces are positioned.</summary>
+    public Panel Content { get; } = new WebviewSurfaceHost();
 
     /// <summary>Top-most overlay region spanning the whole window; hit-testing is disabled by default.</summary>
     public Panel Overlay { get; } = new() { IsHitTestVisible = false };

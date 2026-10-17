@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.Configuration;
@@ -20,7 +20,17 @@ internal static class Program
     public static async Task<int> Main()
     {
         await RegistryTracksWindowEntries();
-        EntryCarriesWebviewSessionAsSink();
+        WindowEntryHoldsWindowFanoutSink();
+        WebviewRegistryIndexesByWebviewAndWindowLabel();
+        WebviewRegistryRemoveWindowDetachesEveryHostedWebview();
+        WebviewRegistryCapabilitiesFollowSessionContext();
+        await WindowFanoutDeliversWindowEventsToEveryHostedWebview();
+        await WindowFanoutWithoutWebviewsIsNoOp();
+        WebviewSessionExposesSeparateWindowAndWebviewLabels();
+        await ClosingWindowDisposesEveryHostedWebview();
+        WebviewSurfaceHostFillsUnboundedAndPositionsBounded();
+        AttachWebviewRegistersInWebviewRegistry();
+        await RepeatedWebviewChurnLeavesNoResidue();
         await RouterDeliversEventsToTargetWindows();
         await RouterBroadcastsToAllWindows();
         await RouterNotifiesHubSubscribers();
@@ -371,6 +381,11 @@ internal static class Program
         Assert(
             provider.GetRequiredService<CommandRouter>() is not null,
             "AddTaruiShell must register the command router.");
+        Assert(
+            ReferenceEquals(
+                provider.GetRequiredService<IWebviewSinkRegistry>(),
+                provider.GetRequiredService<WebviewRegistry>()),
+            "AddTaruiShell must register the web view registry and expose it through IWebviewSinkRegistry.");
     }
 
     private static async Task AutostartPlatformServicesRoundTripLaunchEntries()
@@ -782,17 +797,256 @@ internal static class Program
             context.Composition.Dock(new Border(), Dock.Right);
     }
 
-    private static void EntryCarriesWebviewSessionAsSink()
+    private static void WindowEntryHoldsWindowFanoutSink()
     {
         // The window entry is decoupled from any particular presentation: its event sink is the
-        // UI-neutral web view session it references, so window and webview stay addressable separately.
+        // window-level fan-out that forwards to every hosted web view, so window and web view stay
+        // addressable separately (the web views themselves live in WebviewRegistry).
         var context = new CommandContext("main", "main", new CapabilitySet([], [], []));
-        var (session, _, _) = CreateWebViewHost(new CapabilitySet([], [], []));
+        var webviews = new WebviewRegistry();
 
-        var entry = new WindowRegistry.Entry(null!, session, context);
+        var entry = new WindowRegistry.Entry(null!, new WindowEventFanout("main", webviews), context);
 
-        Assert(ReferenceEquals(entry.Sink, session), "The entry sink must be its web view session.");
+        Assert(
+            entry.Sink is WindowEventFanout,
+            "The entry sink must be the window-level fan-out, not a single web view session.");
         Assert(entry.Context == context, "The entry must retain its command context.");
+    }
+
+    private static void WebviewRegistryIndexesByWebviewAndWindowLabel()
+    {
+        var registry = new WebviewRegistry();
+        registry.Add(CreateWebviewEntry("main", "main").Entry);
+        registry.Add(CreateWebviewEntry("side", "main").Entry);
+        registry.Add(CreateWebviewEntry("editor", "editor").Entry);
+
+        Assert(
+            registry.WebviewLabels.OrderBy(static label => label, StringComparer.Ordinal).SequenceEqual(["editor", "main", "side"]),
+            "The registry must expose every web view label.");
+        Assert(
+            registry.WebviewLabelsFor("main").OrderBy(static label => label, StringComparer.Ordinal).SequenceEqual(["main", "side"]),
+            "A window's index must list every web view it hosts.");
+        Assert(
+            registry.WebviewLabelsFor("editor").SequenceEqual(["editor"]),
+            "A single-surface window must list exactly one web view.");
+        Assert(registry.WebviewLabelsFor("missing").Count == 0, "An unknown window hosts no web views.");
+
+        var duplicate = false;
+        try
+        {
+            registry.Add(CreateWebviewEntry("main", "editor").Entry);
+        }
+        catch (InvalidOperationException)
+        {
+            duplicate = true;
+        }
+
+        Assert(duplicate, "A duplicate web view label must be rejected.");
+    }
+
+    private static void WebviewRegistryRemoveWindowDetachesEveryHostedWebview()
+    {
+        var registry = new WebviewRegistry();
+        registry.Add(CreateWebviewEntry("main", "main").Entry);
+        registry.Add(CreateWebviewEntry("side", "main").Entry);
+        registry.Add(CreateWebviewEntry("editor", "editor").Entry);
+
+        var removed = registry.RemoveWindow("main");
+
+        Assert(removed.Count == 2, "Removing a window must detach every web view it hosted.");
+        Assert(!registry.TryGet("main", out _) && !registry.TryGet("side", out _), "Removed web views must be gone.");
+        Assert(registry.TryGet("editor", out _), "Web views of other windows must survive.");
+        Assert(registry.WebviewLabelsFor("main").Count == 0, "The window index must be cleared.");
+        Assert(registry.RemoveWindow("main").Count == 0, "Removing an empty window must be a no-op.");
+    }
+
+    private static void WebviewRegistryCapabilitiesFollowSessionContext()
+    {
+        var capabilities = new CapabilitySet(["plugin:webview|navigate"], ["window://moved"], []);
+        var registry = new WebviewRegistry();
+        registry.Add(CreateWebviewEntry("side", "main", capabilities).Entry);
+
+        Assert(
+            registry.TryGetCapabilities("side", out var resolved) && ReferenceEquals(resolved, capabilities),
+            "A web view's capability must come from its session context.");
+        Assert(
+            registry.TryGetSink("side", out var sink) && sink is WebviewSession,
+            "The web view registry must resolve the session as the event sink.");
+    }
+
+    private static async Task WindowFanoutDeliversWindowEventsToEveryHostedWebview()
+    {
+        var registry = new WebviewRegistry();
+        var (mainEntry, mainView) = CreateWebviewEntry("main", "main");
+        var (sideEntry, sideView) = CreateWebviewEntry("side", "main");
+        registry.Add(mainEntry);
+        registry.Add(sideEntry);
+
+        var fanout = new WindowEventFanout("main", registry);
+        await fanout.SendEventAsync(
+            "window://moved",
+            JsonSerializer.SerializeToElement(new WindowGeometry(1, 2, 3, 4), TaruiJsonContext.Default.WindowGeometry));
+
+        Assert(
+            mainView.ExecutedScripts.Count == 1 && sideView.ExecutedScripts.Count == 1,
+            "A window event must reach every web view the window hosts.");
+    }
+
+    private static Task WindowFanoutWithoutWebviewsIsNoOp()
+    {
+        var registry = new WebviewRegistry();
+        var (entry, otherView) = CreateWebviewEntry("editor", "editor");
+        registry.Add(entry);
+
+        var fanout = new WindowEventFanout("main", registry);
+        var delivery = fanout.SendEventAsync(
+            "window://moved",
+            JsonSerializer.SerializeToElement(new WindowGeometry(0, 0, 0, 0), TaruiJsonContext.Default.WindowGeometry));
+
+        Assert(delivery.IsCompletedSuccessfully, "A window with no web views must not block on delivery.");
+        Assert(
+            otherView.ExecutedScripts.Count == 0,
+            "An event to a window with no web views must not reach another window's surfaces.");
+        return Task.CompletedTask;
+    }
+
+    private static void WebviewSessionExposesSeparateWindowAndWebviewLabels()
+    {
+        var context = new CommandContext("main", "side", new CapabilitySet([], [], []));
+        var (session, _, _) = CreateWebViewHost(new CapabilitySet([], [], []), context: context);
+
+        Assert(session.WindowLabel == "main", "The session must report its host window label.");
+        Assert(session.WebviewLabel == "side", "The session must report its own web view label.");
+    }
+
+    private static async Task ClosingWindowDisposesEveryHostedWebview()
+    {
+        var registry = new WebviewRegistry();
+        var (mainEntry, mainView) = CreateWebviewEntry("main", "main");
+        var (sideEntry, sideView) = CreateWebviewEntry("side", "main");
+        registry.Add(mainEntry);
+        registry.Add(sideEntry);
+
+        var removed = registry.RemoveWindow("main");
+        await WebviewAttacher.DisposeWebviewsAsync(removed);
+
+        Assert(
+            mainView.DisposeAsyncCallCount == 1 && sideView.DisposeAsyncCallCount == 1,
+            "Closing a window must dispose every web view it hosted.");
+        await WebviewAttacher.DisposeWebviewsAsync(removed);
+        Assert(mainView.DisposeAsyncCallCount == 1, "Web view disposal must be idempotent.");
+    }
+
+    private static void WebviewSurfaceHostFillsUnboundedAndPositionsBounded()
+    {
+        var (mainEntry, _) = CreateWebviewEntry("main", "main");
+        var (sideEntry, _) = CreateWebviewEntry("side", "main");
+
+        var host = new WebviewSurfaceHost();
+        host.Children.Add(mainEntry.Presenter);
+        host.Children.Add(sideEntry.Presenter);
+        sideEntry.Presenter.SetBounds(new WebviewBounds(10, 20, 100, 50));
+
+        host.Measure(new Size(800, 600));
+        host.Arrange(new Rect(0, 0, 800, 600));
+
+        Assert(
+            mainEntry.Presenter.Bounds == new Rect(0, 0, 800, 600),
+            "An unbounded surface must fill the host slot.");
+        Assert(
+            sideEntry.Presenter.Bounds == new Rect(10, 20, 100, 50),
+            "A bounded surface must be positioned and sized at its rect.");
+
+        sideEntry.Presenter.SetBounds(null);
+        host.InvalidateArrange();
+        host.Measure(new Size(800, 600));
+        host.Arrange(new Rect(0, 0, 800, 600));
+        Assert(
+            sideEntry.Presenter.Bounds == new Rect(0, 0, 800, 600),
+            "Clearing the bounds must restore window fill.");
+    }
+
+    private static void AttachWebviewRegistersInWebviewRegistry()
+    {
+        var (provider, attacher, webviews, _, shell) = CreateAttacherHarness();
+        using (provider)
+        {
+            var webview = attacher.AttachWebview(
+                shell,
+                "main",
+                "side",
+                new Uri("http://127.0.0.1:5173/"),
+                new WebviewBounds(10, 20, 100, 50));
+
+            Assert(webviews.TryGet("side", out var stored), "An attached web view must be registered.");
+            Assert(
+                stored.WebviewLabel == "side" && stored.WindowLabel == "main",
+                "The entry must carry both the web view and host window labels.");
+            Assert(webviews.WebviewLabelsFor("main").Contains("side"), "The window index must include the attached surface.");
+            Assert(shell.Composition.Content.Children.Contains(webview.Presenter), "The surface must be mounted on the window.");
+            Assert(webview.Presenter.SurfaceBounds is not null, "A bounded surface must keep its bounds.");
+        }
+    }
+
+    private static async Task RepeatedWebviewChurnLeavesNoResidue()
+    {
+        var (provider, attacher, webviews, _, shell) = CreateAttacherHarness();
+        using (provider)
+        {
+            for (var index = 0; index < 100; index++)
+            {
+                var label = $"dyn-{index}";
+                attacher.AttachWebview(shell, "main", label, new Uri("http://127.0.0.1:5173/"), new WebviewBounds(0, 0, 10, 10));
+                await attacher.DestroyWebviewAsync(label);
+            }
+
+            Assert(webviews.WebviewLabelsFor("main").Count == 0, "No dynamic web view may remain registered after churn.");
+            Assert(shell.Composition.Content.Children.Count == 0, "No surface may remain mounted after churn.");
+            await attacher.DestroyWebviewAsync("dyn-0");
+            Assert(webviews.WebviewLabels.Count == 0, "Destroying an already-removed web view must stay a no-op.");
+        }
+    }
+
+    private static (ServiceProvider Provider, WebviewAttacher Attacher, WebviewRegistry Webviews, WindowRegistry Registry, ShellWindow Shell)
+        CreateAttacherHarness()
+    {
+        // Mounting surfaces touches a real ShellWindow, so the Avalonia windowing platform must be up.
+        EnsureAvaloniaInitialized();
+
+        var services = new ServiceCollection();
+        services.AddTaruiShell();
+        services.AddSingleton(new TaruiAppOrigin(new Uri("http://127.0.0.1:5173/")));
+        services.AddSingleton(new WindowOptions("main"));
+        services.AddSingleton<ITaruiAvaloniaWebViewFactory>(new NewWebViewFactory());
+
+        var provider = services.BuildServiceProvider();
+        var registry = provider.GetRequiredService<WindowRegistry>();
+        var shell = ShellWindowFactory.Create(new WindowOptions("main"));
+        registry.Add("main", new WindowRegistry.Entry(
+            shell,
+            new FakeSink(),
+            new CommandContext("main", "main", new CapabilitySet([]))));
+
+        return (
+            provider,
+            provider.GetRequiredService<WebviewAttacher>(),
+            provider.GetRequiredService<WebviewRegistry>(),
+            registry,
+            shell);
+    }
+
+    private static (WebviewEntry Entry, FakeWebView WebView) CreateWebviewEntry(string webviewLabel, string windowLabel)
+        => CreateWebviewEntry(webviewLabel, windowLabel, new CapabilitySet([], [], []));
+
+    private static (WebviewEntry Entry, FakeWebView WebView) CreateWebviewEntry(
+        string webviewLabel,
+        string windowLabel,
+        CapabilitySet capabilities)
+    {
+        var (session, _, webView) = CreateWebViewHost(
+            capabilities,
+            context: new CommandContext(windowLabel, webviewLabel, capabilities));
+        return (new WebviewEntry(webviewLabel, windowLabel, session, new WebviewPresenter(session)), webView);
     }
 
     private static Task WebViewHostRejectsFileDropWithoutCapability()
@@ -1031,7 +1285,8 @@ internal static class Program
 
     private static (WebviewSession Host, FakeSink Sink, FakeWebView WebView) CreateWebViewHost(
         CapabilitySet capabilities,
-        WebViewRequestPolicy? policy = null)
+        WebViewRequestPolicy? policy = null,
+        CommandContext? context = null)
     {
         var registry = new FakeSinkRegistry();
         var sink = registry.Add("main", capabilities);
@@ -1048,7 +1303,7 @@ internal static class Program
                 ["https:*"],
                 [],
                 WebViewRequestDecision.Deny)),
-            new CommandContext("main", "main", capabilities),
+            context ?? new CommandContext("main", "main", capabilities),
             new Uri("http://127.0.0.1:5173/"));
 
         return (host, sink, webView);
@@ -1057,6 +1312,12 @@ internal static class Program
     private sealed class FixedWebViewFactory(ITaruiAvaloniaWebView webView) : ITaruiAvaloniaWebViewFactory
     {
         public ITaruiAvaloniaWebView Create(TaruiWebViewOptions options) => webView;
+    }
+
+    /// <summary>Creates a fresh <see cref="FakeWebView"/> per call, so each mounted surface owns its control.</summary>
+    private sealed class NewWebViewFactory : ITaruiAvaloniaWebViewFactory
+    {
+        public ITaruiAvaloniaWebView Create(TaruiWebViewOptions options) => new FakeWebView();
     }
 
     private sealed class FakeWebView : ITaruiAvaloniaWebView, IAsyncDisposable

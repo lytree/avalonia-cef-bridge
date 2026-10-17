@@ -43,6 +43,10 @@ internal static class Program
         await TogglesDevToolsForOwnAndOtherWebview();
         await ReturnsWebviewStateAndLabels();
         await ReportsWebviewRuntimeInfo();
+        await CreatesWebviewInsideCallerWindow();
+        await DeniesCrossWindowCreateWithoutPermission();
+        await SetsAndClearsWebviewBoundsViaCommand();
+        await DestroysWebviewThroughCommand();
         await EvaluatesScriptsThroughWebviewCommands();
         await CompletesEvalCallbackOnBoundChannel();
         await DeniesCloseThroughWindowCommand();
@@ -571,6 +575,9 @@ internal static class Program
             "plugin:webview|eval-callback-complete",
             "plugin:webview|list",
             "plugin:webview|runtime-info",
+            "plugin:webview|create",
+            "plugin:webview|set-bounds",
+            "plugin:webview|destroy",
         };
         // The internal completion command deliberately reuses the eval-with-callback permission id,
         // so it is routed as a command but never registered as its own permission.
@@ -589,6 +596,11 @@ internal static class Program
             builder.RegisteredPermissions.Contains("plugin:webview|eval-other-webview") &&
             builder.RegisteredPermissions.Contains("plugin:webview|eval-with-callback-other-webview"),
             "The other-webview permission variants must be registered.");
+        Assert(
+            builder.RegisteredPermissions.Contains("plugin:webview|set-bounds-other-webview") &&
+            builder.RegisteredPermissions.Contains("plugin:webview|destroy-other-webview") &&
+            builder.RegisteredPermissions.Contains("plugin:webview|create-other-window"),
+            "The cross-surface and cross-window permission variants must be registered.");
     }
 
     private static async Task NavigatesOwnWebviewWithoutOtherPermission()
@@ -817,6 +829,116 @@ internal static class Program
             Request("plugin:webview|runtime-info", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
             new CommandContext("main", "main", new CapabilitySet(["plugin:webview|list"])));
         Assert(!denied.Success, "Runtime info must be denied without its own permission.");
+        Assert(denied.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
+    }
+
+    private static async Task CreatesWebviewInsideCallerWindow()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+
+        var response = await router.InvokeAsync(
+            Request(
+                "plugin:webview|create",
+                new WebviewCreateOptions("side", Url: "tarui://side"),
+                TaruiJsonContext.Default.WebviewCreateOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|create"])));
+
+        Assert(response.Success, "Creating a web view in the caller's own window must succeed.");
+        Assert(
+            service.Calls.Contains("create|editor|side"),
+            "A missing window label must fall back to the caller's window.");
+
+        var state = Result(response, TaruiJsonContext.Default.WebviewStateInfo);
+        Assert(state.Label == "side", "The created state must report the new web view label.");
+
+        var denied = await router.InvokeAsync(
+            Request(
+                "plugin:webview|create",
+                new WebviewCreateOptions("another"),
+                TaruiJsonContext.Default.WebviewCreateOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|list"])));
+        Assert(!denied.Success, "Creating a web view must be denied without its permission.");
+        Assert(denied.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
+    }
+
+    private static async Task DeniesCrossWindowCreateWithoutPermission()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+
+        var denied = await router.InvokeAsync(
+            Request(
+                "plugin:webview|create",
+                new WebviewCreateOptions("side", "main"),
+                TaruiJsonContext.Default.WebviewCreateOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|create"])));
+        Assert(!denied.Success, "Attaching to another window without -other-window must fail.");
+        Assert(denied.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
+        Assert(
+            !service.Calls.Any(call => call.StartsWith("create|", StringComparison.Ordinal)),
+            "A denied create must never reach the service.");
+
+        var allowed = await router.InvokeAsync(
+            Request(
+                "plugin:webview|create",
+                new WebviewCreateOptions("side", "main"),
+                TaruiJsonContext.Default.WebviewCreateOptions),
+            new CommandContext(
+                "editor",
+                "editor",
+                new CapabilitySet(["plugin:webview|create", "plugin:webview|create-other-window"])));
+        Assert(allowed.Success, "Attaching to another window must succeed with -other-window.");
+        Assert(service.Calls.Contains("create|main|side"), "The resolved window label must reach the service.");
+    }
+
+    private static async Task SetsAndClearsWebviewBoundsViaCommand()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+
+        var withBounds = await router.InvokeAsync(
+            Request(
+                "plugin:webview|set-bounds",
+                new WebviewSetBoundsOptions(new WebviewBounds(10, 20, 300, 200)),
+                TaruiJsonContext.Default.WebviewSetBoundsOptions),
+            new CommandContext("main", "main", new CapabilitySet(["plugin:webview|set-bounds"])));
+        Assert(withBounds.Success, "Setting bounds on the caller's own web view must succeed.");
+        Assert(service.Calls.Contains("set-bounds|main|10,20,300,200"), "The bounds must reach the service.");
+
+        var cleared = await router.InvokeAsync(
+            Request(
+                "plugin:webview|set-bounds",
+                new WebviewSetBoundsOptions(null),
+                TaruiJsonContext.Default.WebviewSetBoundsOptions),
+            new CommandContext("main", "main", new CapabilitySet(["plugin:webview|set-bounds"])));
+        Assert(cleared.Success, "Clearing bounds must succeed.");
+        Assert(service.Calls.Contains("set-bounds|main|fill"), "Clearing bounds must request window fill.");
+    }
+
+    private static async Task DestroysWebviewThroughCommand()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+
+        var response = await router.InvokeAsync(
+            Request(
+                "plugin:webview|destroy",
+                new WebviewLabelOptions(),
+                TaruiJsonContext.Default.WebviewLabelOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|destroy"])));
+        Assert(response.Success, "Destroying the caller's own web view must succeed.");
+        Assert(
+            service.Calls.Contains("destroy|editor"),
+            "A missing label must fall back to the caller's web view label.");
+
+        var denied = await router.InvokeAsync(
+            Request(
+                "plugin:webview|destroy",
+                new WebviewLabelOptions("main"),
+                TaruiJsonContext.Default.WebviewLabelOptions),
+            new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|destroy"])));
+        Assert(!denied.Success, "Destroying another web view without -other-webview must fail.");
         Assert(denied.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
     }
 

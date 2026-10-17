@@ -187,6 +187,17 @@ const value = await wv.evalWithCallback<number>('1 + 1');
 // 运行时身份:所有 webview 共享的浏览器后端元数据
 const runtime = await runtimeInfo();
 // { name: 'cef', webviewVersion: '150.0.11', resourceMode: 'scheme', origin: 'tarui://localhost/' }
+
+// 在一个既有窗口内挂载额外的 webview(bounds 省略时填满窗口)
+const panel = await Webview.create({
+  label: 'side',
+  windowLabel: 'main',
+  url: 'tarui://localhost/side',
+  bounds: { x: 640, y: 0, width: 320, height: 480 },
+});
+await panel.setBounds({ x: 0, y: 0, width: 200, height: 200 }); // 重新定位
+await panel.setBounds(null);                                     // 恢复填满窗口
+await panel.destroy();                                           // 卸载并释放
 ```
 
-`runtimeInfo()` 对应 `plugin:webview|runtime-info` 命令(受 capability 授权约束),返回运行时名称、引擎版本、资源模式(`'http'` / `'scheme'`)与应用 origin;底层来自 `ITaruiWebRuntime`(`name` / `webviewVersion` / `origin` / `resourceMode`)。列表与生命周期订阅:`Webview.getAll()`、`onDownloadRequested` / `onNavigationRequested` / `onRenderProcessGone`。
+`Webview.create()` 对应 `plugin:webview|create`(在既有窗口内挂载新 surface,宿主窗口继承其 capability;跨窗口需 `plugin:webview|create-other-window`)。`setBounds(null)` / `destroy()` 分别对应 `plugin:webview|set-bounds`(受 `-other-webview` 约束)与 `plugin:webview|destroy`。列表与生命周期订阅:`Webview.getAll()`、`onDownloadRequested` / `onNavigationRequested` / `onRenderProcessGone`。

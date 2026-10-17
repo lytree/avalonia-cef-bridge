@@ -27,6 +27,8 @@ public static class TaruiShellServiceCollectionExtensions
     public static IServiceCollection AddTaruiShell(this IServiceCollection services) => services
         .AddSingleton<WindowRegistry>()
         .AddSingleton<IWindowSinkRegistry>(sp => sp.GetRequiredService<WindowRegistry>())
+        .AddSingleton<WebviewRegistry>()
+        .AddSingleton<IWebviewSinkRegistry>(sp => sp.GetRequiredService<WebviewRegistry>())
         .AddSingleton<WindowExtensionRegistry>(sp =>
         {
             var builder = new WindowExtensionBuilder();
@@ -65,6 +67,8 @@ public static class TaruiShellServiceCollectionExtensions
             sp.GetRequiredService<WindowOptions>()))
         .AddSingleton<IWebviewService>(sp => new AvaloniaWebviewService(
             sp.GetRequiredService<WindowRegistry>(),
+            sp.GetRequiredService<WebviewRegistry>(),
+            sp.GetRequiredService<WebviewAttacher>(),
             sp.GetRequiredService<TaruiAppOrigin>(),
             sp.GetRequiredService<ITaruiWebRuntime>()))
         .AddSingleton<IMenuService>(sp => new AvaloniaMenuService(

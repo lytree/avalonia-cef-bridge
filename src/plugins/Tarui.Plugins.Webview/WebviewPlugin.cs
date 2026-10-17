@@ -14,7 +14,9 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
         "plugin:webview|eval",
         "plugin:webview|eval-with-callback",
         "plugin:webview|set-zoom",
-        "plugin:webview|print"
+        "plugin:webview|print",
+        "plugin:webview|set-bounds",
+        "plugin:webview|destroy"
     ];
 
     public void ConfigureCommands(CommandRouterBuilder commands)
@@ -97,12 +99,38 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             handlers.GetRuntimeInfoAsync,
             "plugin:webview|runtime-info");
 
+        // Mounting capability: create a surface inside an existing window, reposition it, or destroy it.
+        commands.Add(
+            "plugin:webview|create",
+            TaruiJsonContext.Default.WebviewCreateOptions,
+            TaruiJsonContext.Default.WebviewStateInfo,
+            handlers.CreateAsync,
+            "plugin:webview|create");
+
+        commands.Add(
+            "plugin:webview|set-bounds",
+            TaruiJsonContext.Default.WebviewSetBoundsOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.SetBoundsAsync,
+            "plugin:webview|set-bounds");
+
+        commands.Add(
+            "plugin:webview|destroy",
+            TaruiJsonContext.Default.WebviewLabelOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.DestroyAsync,
+            "plugin:webview|destroy");
+
         // Cross-webview operations require the <permission>-other-webview variant; register them as
         // valid permission IDs so capability files may reference them and validation stays strict.
         foreach (var permission in OtherWebviewPermissions)
         {
             commands.AddPermission(WebviewPermissionGuard.OtherWebviewPermission(permission));
         }
+
+        // Attaching a surface to another window requires the -other-window variant, since the new web
+        // view inherits that window's capability profile.
+        commands.AddPermission(WebviewPermissionGuard.OtherWindowPermission("plugin:webview|create"));
     }
 
     private sealed class WebviewCommands(IWebviewService service)
@@ -187,6 +215,34 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.GetRuntimeInfoAsync(cancellationToken);
+
+        [TaruiCommand("plugin:webview|create")]
+        public ValueTask<WebviewStateInfo> CreateAsync(
+            WebviewCreateOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken)
+        {
+            var targetWindow = options.WindowLabel ?? context.WindowLabel;
+            WebviewPermissionGuard.EnsureCreateTarget(context, targetWindow, "plugin:webview|create");
+            return service.CreateAsync(options with { WindowLabel = targetWindow }, cancellationToken);
+        }
+
+        [TaruiCommand("plugin:webview|set-bounds")]
+        public ValueTask<Unit> SetBoundsAsync(
+            WebviewSetBoundsOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.SetBoundsAsync(
+                Resolve(options.Label, context, "plugin:webview|set-bounds"),
+                options.Bounds,
+                cancellationToken);
+
+        [TaruiCommand("plugin:webview|destroy")]
+        public ValueTask<Unit> DestroyAsync(
+            WebviewLabelOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.DestroyAsync(Resolve(options.Label, context, "plugin:webview|destroy"), cancellationToken);
 
         private static string Resolve(string? requested, CommandContext context, string permission)
         {

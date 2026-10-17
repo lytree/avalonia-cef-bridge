@@ -47,7 +47,7 @@ builder.Services
 | --- | --- | --- | --- |
 | `Tarui.Plugins.Core` | `core:app|*` | `get-info` | 壳握手(产品、版本、能力列表) |
 | `Tarui.Plugins.Window` | `core:window|*` | 24 条 | 窗口生命周期、几何、装饰、监视器 |
-| `Tarui.Plugins.Webview` | `plugin:webview|*` | `navigate` / `get-state` / `devtools` / `eval` / `eval-with-callback` / `set-zoom` / `print` / `runtime-info` | 当前 Webview + 多 Webview 寻址 + DevTools + 脚本回执 + 运行时身份 |
+| `Tarui.Plugins.Webview` | `plugin:webview|*` | `navigate` / `get-state` / `devtools` / `eval` / `eval-with-callback` / `set-zoom` / `print` / `runtime-info` / `create` / `set-bounds` / `destroy` | 当前 Webview + 多 Webview 寻址 + DevTools + 脚本回执 + 运行时身份 + 多 surface 挂载 |
 | `Tarui.Plugins.WindowState` | `plugin:window-state|*` | `save` / `restore` / `clear` | 持久化窗口尺寸/位置(显示器拟合) |
 | `Tarui.Plugins.Event` | `core:event|*` | `emit` | Web 发出事件(限于 `user://` 前缀) |
 | `Tarui.Plugins.Dialog` | `plugin:dialog|*` | `open` / `save` / `message` / `confirm` / `ask` | 文件/目录/消息/确认/ask |

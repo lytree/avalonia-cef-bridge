@@ -26,6 +26,26 @@ export type WebviewRuntimeInfo = {
 /** Fired when the webview renderer process terminates abnormally. */
 export const RENDER_PROCESS_GONE_EVENT = 'webview://render-process-gone'
 
+/** Position and size of a web view surface inside its host window (logical units). */
+export type WebviewBounds = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Options for creating an additional web view inside an existing window. */
+export type WebviewCreateOptions = {
+  /** The new web view's label; must be unique among live web views. */
+  label: string
+  /** The host window label; defaults to the calling window. */
+  windowLabel?: string
+  /** The start URL; defaults to the application origin. */
+  url?: string
+  /** The surface bounds; omitted fills the host window. */
+  bounds?: WebviewBounds
+}
+
 export type RenderProcessGoneEvent = {
   status: 'crashed' | 'killed' | 'other'
   errorCode: number
@@ -69,6 +89,15 @@ export class Webview {
     return result.labels.map(label => Webview.getByLabel(label))
   }
 
+  /**
+   * Creates an additional web view inside an existing window and returns a handle for it.
+   * A surface with bounds is positioned within the window; without bounds it fills the window.
+   */
+  static async create(options: WebviewCreateOptions): Promise<Webview> {
+    const state = await invoke<WebviewState>('plugin:webview|create', options)
+    return Webview.getByLabel(state.label)
+  }
+
   /** Navigates this webview to a same-origin URL. */
   async navigate(url: string): Promise<void> {
     await invoke('plugin:webview|navigate', { url, ...this.target() })
@@ -97,6 +126,16 @@ export class Webview {
   /** Opens the browser print dialog for this webview. */
   async print(): Promise<void> {
     await invoke('plugin:webview|print', this.target())
+  }
+
+  /** Positions and sizes this webview's surface within its host window; null fills the window. */
+  async setBounds(bounds: WebviewBounds | null): Promise<void> {
+    await invoke('plugin:webview|set-bounds', { bounds, ...this.target() })
+  }
+
+  /** Destroys this webview, releasing its surface and session. */
+  async destroy(): Promise<void> {
+    await invoke('plugin:webview|destroy', this.target())
   }
 
   /** Evaluates a script in this webview. Execution is asynchronous; the result is not observed. */

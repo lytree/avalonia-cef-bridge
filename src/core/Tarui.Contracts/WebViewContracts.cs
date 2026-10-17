@@ -12,6 +12,22 @@ public sealed record WebviewDevToolsOptions(bool Open = true, string? Label = nu
 /// <summary>Sets the page zoom factor for a web view (1.0 = 100%).</summary>
 public sealed record WebviewSetZoomOptions(double Factor, string? Label = null);
 
+/// <summary>Position and size of a web view surface inside its host window (logical units).</summary>
+public sealed record WebviewBounds(double X, double Y, double Width, double Height);
+
+/// <summary>
+/// Creates an additional web view inside an existing window. <see cref="Bounds"/> null makes the
+/// surface fill its host window; otherwise it is positioned and sized within the window.
+/// </summary>
+public sealed record WebviewCreateOptions(
+    string Label,
+    string? WindowLabel = null,
+    string? Url = null,
+    WebviewBounds? Bounds = null);
+
+/// <summary>Repositions or resizes a web view surface; null bounds restore window fill.</summary>
+public sealed record WebviewSetBoundsOptions(WebviewBounds? Bounds, string? Label = null);
+
 /// <summary>The observable state of a web view and its host window.</summary>
 public sealed record WebviewStateInfo(
     string Label,

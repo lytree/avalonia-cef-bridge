@@ -23,6 +23,7 @@ public sealed partial class WebviewAttacher
 {
     private readonly IServiceProvider _services;
     private readonly WindowRegistry _registry;
+    private readonly WebviewRegistry _webviews;
     private readonly EventRouter _eventRouter;
     private readonly WebViewRequestPolicy _requestPolicy;
     private readonly WindowCapabilityResolver _capabilityResolver;
@@ -36,6 +37,7 @@ public sealed partial class WebviewAttacher
     public WebviewAttacher(
         IServiceProvider services,
         WindowRegistry registry,
+        WebviewRegistry webviews,
         EventRouter eventRouter,
         WebViewRequestPolicy requestPolicy,
         WindowCapabilityResolver capabilityResolver,
@@ -48,6 +50,7 @@ public sealed partial class WebviewAttacher
     {
         _services = services;
         _registry = registry;
+        _webviews = webviews;
         _eventRouter = eventRouter;
         _requestPolicy = requestPolicy;
         _capabilityResolver = capabilityResolver;
@@ -66,6 +69,71 @@ public sealed partial class WebviewAttacher
             : _capabilityResolver.ResolveForCreate(options.Label, callerContext);
         var context = new CommandContext(options.Label, options.Label, capability, _scopeOverlay);
 
+        var (session, presenter) = CreateSession(context, ResolveSource(options.Url, _appOrigin));
+
+        var window = ShellWindowFactory.Create(options);
+        var extensions = ApplyExtensions(window, context, options.Label);
+        window.AddWebview(presenter);
+
+        // Register the web view as its own entity before wiring window events, so the window-level
+        // fan-out sink can already resolve it when the first event fires.
+        _webviews.Add(new WebviewEntry(options.Label, options.Label, session, presenter));
+
+        var entry = new WindowRegistry.Entry(window, new WindowEventFanout(options.Label, _webviews), context);
+        WireExtensionLifecycle(window, extensions);
+        WireWindowEvents(window, options.Label, entry);
+        return entry;
+    }
+
+    /// <summary>
+    /// Mounts an additional web view inside an existing window. The new surface inherits the host
+    /// window's capability profile, so attaching can never grant more authority than the window
+    /// already holds. Must run on the UI thread (it touches the window's visual tree).
+    /// </summary>
+    public WebviewEntry AttachWebview(
+        ShellWindow window,
+        string windowLabel,
+        string webviewLabel,
+        Uri source,
+        WebviewBounds? bounds)
+    {
+        var host = _registry.Get(windowLabel);
+        var context = new CommandContext(windowLabel, webviewLabel, host.Context.Capabilities, _scopeOverlay);
+        var (session, presenter) = CreateSession(context, source);
+
+        window.AddWebview(presenter);
+        if (bounds is not null)
+        {
+            presenter.SetBounds(bounds);
+        }
+
+        var webview = new WebviewEntry(webviewLabel, windowLabel, session, presenter);
+        _webviews.Add(webview);
+        return webview;
+    }
+
+    /// <summary>
+    /// Unmounts and disposes a web view, releasing its surface and session. A missing label is a no-op
+    /// so a repeated destroy stays idempotent. Must run on the UI thread.
+    /// </summary>
+    public async ValueTask DestroyWebviewAsync(string webviewLabel)
+    {
+        if (!_webviews.TryGet(webviewLabel, out var webview))
+        {
+            return;
+        }
+
+        _webviews.Remove(webviewLabel);
+        if (_registry.TryGet(webview.WindowLabel, out var host) && host.Window is ShellWindow shell)
+        {
+            shell.RemoveWebview(webview.Presenter);
+        }
+
+        await webview.Session.DisposeAsync();
+    }
+
+    private (WebviewSession Session, WebviewPresenter Presenter) CreateSession(CommandContext context, Uri source)
+    {
         // The web view factory and dispatcher resolve lazily: windows are only assembled after the
         // dispatcher is fully built, so a window can be created even if a web view backend is absent.
         var dispatcher = _services.GetRequiredService<IpcDispatcher>();
@@ -77,17 +145,8 @@ public sealed partial class WebviewAttacher
             _eventRouter,
             _requestPolicy,
             context,
-            ResolveSource(options.Url, _appOrigin));
-        var presenter = new WebviewPresenter(session);
-
-        var window = ShellWindowFactory.Create(options);
-        var extensions = ApplyExtensions(window, context, options.Label);
-        window.AddWebview(presenter);
-
-        var entry = new WindowRegistry.Entry(window, session, context) { Webview = session };
-        WireExtensionLifecycle(window, extensions);
-        WireWindowEvents(window, options.Label, entry);
-        return entry;
+            source);
+        return (session, new WebviewPresenter(session));
     }
 
     private (IShellWindowExtension Instance, WindowExtensionContext Context)[] ApplyExtensions(
@@ -192,7 +251,7 @@ public sealed partial class WebviewAttacher
         window.Closed += (_, _) =>
         {
             entry.CancelCloseFallback();
-            FireAndForget.Run(HandleWindowClosedAsync(label, entry));
+            FireAndForget.Run(HandleWindowClosedAsync(label));
         };
     }
 
@@ -241,26 +300,33 @@ public sealed partial class WebviewAttacher
         }, token);
     }
 
-    private async ValueTask HandleWindowClosedAsync(string label, WindowRegistry.Entry entry)
+    private async ValueTask HandleWindowClosedAsync(string label)
     {
         if (!_registry.Remove(label))
         {
             return;
         }
 
-        if (entry.Sink is IAsyncDisposable asyncDisposable)
-        {
-            await asyncDisposable.DisposeAsync();
-        }
-        else if (entry.Sink is IDisposable disposable)
-        {
-            disposable.Dispose();
-        }
+        // A window owns its web views; closing it detaches and disposes every hosted surface.
+        await DisposeWebviewsAsync(_webviews.RemoveWindow(label));
 
         _shutdownCoordinator.NotifyWindowClosed(label, _registry.Labels.Count);
         await _eventRouter.EmitToAllAsync(
             "window://destroyed",
             JsonSerializer.SerializeToElement(new WindowLabelOptions(label), TaruiJsonContext.Default.WindowLabelOptions));
+    }
+
+    /// <summary>
+    /// Disposes every web view a window hosted. <see cref="WebviewSession"/> disposal is idempotent
+    /// (an interlocked guard), so a repeated teardown never double-disposes. Split out so the teardown
+    /// contract is unit-testable without a live window, mirroring <see cref="CloseExtensionsAsync"/>.
+    /// </summary>
+    internal static async ValueTask DisposeWebviewsAsync(IReadOnlyList<WebviewEntry> webviews)
+    {
+        foreach (var webview in webviews)
+        {
+            await webview.Session.DisposeAsync();
+        }
     }
 
     private static WindowGeometry BuildGeometry(Window window)

@@ -36,8 +36,11 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
     /// <summary>The underlying web view and the Avalonia surface it carries.</summary>
     public ITaruiAvaloniaWebView WebView => _webView;
 
-    /// <summary>The window the session belongs to.</summary>
-    public string Label => Context.WindowLabel;
+    /// <summary>The window that hosts this web view.</summary>
+    public string WindowLabel => Context.WindowLabel;
+
+    /// <summary>The web view's own label, addressable independently of its host window.</summary>
+    public string WebviewLabel => Context.WebViewLabel;
 
     /// <summary>The capability-scoped command context used to authorize IPC and reserved events.</summary>
     public CommandContext Context { get; }
@@ -112,7 +115,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         }
 
         FireAndForget.Run(_eventRouter.EmitToWindowAsync(
-            Label,
+            WindowLabel,
             FileDropEnteredEvent,
             JsonSerializer.SerializeToElement(
                 new WebViewFileDropEvent(args.Paths, args.Text, args.X, args.Y),
@@ -127,7 +130,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         }
 
         FireAndForget.Run(_eventRouter.EmitToWindowAsync(
-            Label,
+            WindowLabel,
             FileDropLeftEvent,
             JsonSerializer.SerializeToElement(new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs)));
     }
@@ -140,7 +143,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         }
 
         FireAndForget.Run(_eventRouter.EmitToWindowAsync(
-            Label,
+            WindowLabel,
             FileDroppedEvent,
             JsonSerializer.SerializeToElement(
                 new WebViewFileDropEvent(args.Paths, args.Text, args.X, args.Y),
@@ -167,7 +170,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         }
 
         FireAndForget.Run(_eventRouter.EmitToWebviewAsync(
-            Label,
+            WebviewLabel,
             DownloadRequestedEvent,
             JsonSerializer.SerializeToElement(
                 new WebViewDownloadRequestEvent(args.Url, args.SuggestedFilename),
@@ -184,7 +187,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         }
 
         FireAndForget.Run(_eventRouter.EmitToWebviewAsync(
-            Label,
+            WebviewLabel,
             NavigationRequestedEvent,
             JsonSerializer.SerializeToElement(
                 new WebViewNavigationRequestEvent(args.Url.AbsoluteUri, args.IsMainFrame),
@@ -204,7 +207,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         // is still attempted best-effort so a shell-level observer (or a restarted surface that
         // re-attaches the sink) can observe the termination instead of it vanishing silently.
         FireAndForget.Run(_eventRouter.EmitToWebviewAsync(
-            Label,
+            WebviewLabel,
             RenderProcessGoneEvent,
             JsonSerializer.SerializeToElement(
                 new WebViewRenderProcessGoneEvent(

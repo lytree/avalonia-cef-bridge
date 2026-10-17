@@ -27,6 +27,7 @@ Tarui.WebView.Abstractions        (ITaruiWebView / ITaruiWebRuntime / TaruiAppOr
 
 - `Tarui.WebView.Abstractions` 不得引用 Avalonia 或 Xilium CefGlue。
 - `Tarui.Shell` / `Tarui.Hosting` 可使用 Avalonia,但**不得引用 `Tarui.WebView.CefGlueNext` 程序集**或 Xilium CefGlue——依赖方向由 `Tarui.Architecture.Tests` 强制。组合根(演示应用 / 模板)同时引用 Shell、Hosting 与 CefGlueNext,通过 `AddCefGlueWebView()` 注入 CEF 运行时。
+- 窗口与 WebView 是**分离实体**:`Tarui.Shell` 的 `WebviewRegistry`(webview label → 会话,含 window label 副索引)独立于 `WindowRegistry`;窗口条目经 `WindowEventFanout` 把 `window://` 事件转发给其托管的**全部** webview,`webview://*` 事件按 webview label 定向;`ShellWindowComposition.Content`(`WebviewSurfaceHost`)把**无 bounds** 的 surface 填满窗口、**有 bounds** 的按 rect 定位,一窗口可挂多个 surface(paramount 于 `plugin:webview|create` / `set-bounds` / `destroy`)。
 - `src/webview/cefglue/*` 是 vendored implementation inputs,只被 `Tarui.WebView.CefGlueNext` 引用;不作为应用面对的包依赖。
 
 ## 2. CefGlue 内置源码边界

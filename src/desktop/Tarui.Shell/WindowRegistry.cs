@@ -31,9 +31,10 @@ public sealed class WindowRegistry : IWindowSinkRegistry
     private readonly object _gate = new();
 
     /// <summary>
-    /// A registered window shell together with its event sink and command context. The optional
-    /// <see cref="Webview"/> references the live web view session (phase 1 keeps a single session per
-    /// window; the structure is a single slot here and can grow to a list when multi-webview lands).
+    /// A registered window shell together with its event sink and command context. The sink is the
+    /// window-level <see cref="WindowEventFanout"/> that forwards window events to every web view the
+    /// window hosts; the web views themselves are owned by <see cref="WebviewRegistry"/> so a window
+    /// can host several surfaces without changing this entry.
     /// </summary>
     public sealed class Entry
     {
@@ -48,10 +49,8 @@ public sealed class WindowRegistry : IWindowSinkRegistry
 
         public CommandContext Context { get; }
 
+        /// <summary>The window-level fan-out sink that delivers window events to every hosted web view.</summary>
         public IEventSink Sink { get; }
-
-        /// <summary>The live web view session owned by this window, when one is mounted.</summary>
-        public WebviewSession? Webview { get; internal set; }
 
         internal bool ClosePending { get; set; }
 

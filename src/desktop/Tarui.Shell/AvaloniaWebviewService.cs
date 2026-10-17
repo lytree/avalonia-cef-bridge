@@ -10,13 +10,15 @@ using Tarui.WebView.Avalonia;
 namespace Tarui.Shell;
 
 /// <summary>
-/// Shell-backed <see cref="IWebviewService"/>. A web view is resolved from the live web view session
-/// owned by the window with the matching label (web view and window share one label while windows host
-/// a single surface). Navigations run on the UI thread and are confined to the application origin's
-/// accepted schemes — HTTP(S) and, when local assets are served, the portless custom app scheme.
+/// Shell-backed <see cref="IWebviewService"/>. A web view is resolved as its own entity from
+/// <see cref="WebviewRegistry"/> by its own label, independent of the host window. Navigations run on
+/// the UI thread and are confined to the application origin's accepted schemes — HTTP(S) and, when
+/// local assets are served, the portless custom app scheme.
 /// </summary>
 public sealed class AvaloniaWebviewService(
     WindowRegistry registry,
+    WebviewRegistry webviews,
+    WebviewAttacher attacher,
     TaruiAppOrigin appOrigin,
     ITaruiWebRuntime runtime) : IWebviewService
 {
@@ -34,9 +36,7 @@ public sealed class AvaloniaWebviewService(
         var target = Resolve(webviewLabel, url);
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var entry = registry.Get(webviewLabel);
-            var session = entry.Webview
-                ?? throw new InvalidOperationException($"No web view session is mounted for '{webviewLabel}'.");
+            var session = webviews.Get(webviewLabel).Session;
             session.WebView.Navigate(target);
         });
         return new Unit();
@@ -47,21 +47,24 @@ public sealed class AvaloniaWebviewService(
         cancellationToken.ThrowIfCancellationRequested();
         return await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var entry = registry.Get(webviewLabel);
-            var session = entry.Webview;
+            var webview = webviews.Get(webviewLabel);
+            var session = webview.Session;
+            var title = registry.TryGet(webview.WindowLabel, out var windowEntry)
+                ? windowEntry.Window.Title ?? string.Empty
+                : string.Empty;
             return new WebviewStateInfo(
                 webviewLabel,
-                entry.Context.WindowLabel,
-                session?.WebView.Source?.AbsoluteUri,
-                entry.Window.Title ?? string.Empty);
+                webview.WindowLabel,
+                session.WebView.Source?.AbsoluteUri,
+                title);
         });
     }
 
     public ValueTask<string[]> ListAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        // One web view per window today, so live web views mirror registered windows.
-        return ValueTask.FromResult(registry.Labels.ToArray());
+        // Web views are their own entities: the list enumerates every live web view, not every window.
+        return ValueTask.FromResult(webviews.WebviewLabels.ToArray());
     }
 
     public ValueTask<WebviewRuntimeInfo> GetRuntimeInfoAsync(CancellationToken cancellationToken)
@@ -77,14 +80,53 @@ public sealed class AvaloniaWebviewService(
             (origin.SchemeOrigin ?? origin.StartUri).AbsoluteUri));
     }
 
+    public ValueTask<WebviewStateInfo> CreateAsync(WebviewCreateOptions options, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentException.ThrowIfNullOrWhiteSpace(options.Label);
+
+        return new ValueTask<WebviewStateInfo>(Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var windowLabel = options.WindowLabel
+                ?? throw new InvalidOperationException("A host window label is required to create a web view.");
+            if (registry.Get(windowLabel).Window is not ShellWindow shell)
+            {
+                throw new InvalidOperationException($"Window '{windowLabel}' does not host web view surfaces.");
+            }
+
+            var source = string.IsNullOrWhiteSpace(options.Url)
+                ? appOrigin.StartUri
+                : Resolve(options.Label, options.Url!);
+            var webview = attacher.AttachWebview(shell, windowLabel, options.Label, source, options.Bounds);
+            return new WebviewStateInfo(
+                webview.WebviewLabel,
+                windowLabel,
+                webview.Session.WebView.Source?.AbsoluteUri,
+                shell.Title ?? string.Empty);
+        }).GetTask());
+    }
+
+    public ValueTask<Unit> SetBoundsAsync(string webviewLabel, WebviewBounds? bounds, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Dispatcher.UIThread.InvokeAsync(() => webviews.Get(webviewLabel).Presenter.SetBounds(bounds))
+            .GetTask().GetAwaiter().GetResult();
+        return ValueTask.FromResult(new Unit());
+    }
+
+    public async ValueTask<Unit> DestroyAsync(string webviewLabel, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        await Dispatcher.UIThread.InvokeAsync(() => attacher.DestroyWebviewAsync(webviewLabel).AsTask());
+        return new Unit();
+    }
+
     public ValueTask<Unit> SetDevToolsAsync(string webviewLabel, bool open, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var entry = registry.Get(webviewLabel);
-            var session = entry.Webview
-                ?? throw new InvalidOperationException($"No web view session is mounted for '{webviewLabel}'.");
+            var session = webviews.Get(webviewLabel).Session;
             session.WebView.SetDevTools(open);
         }).GetTask().GetAwaiter().GetResult();
         return ValueTask.FromResult(new Unit());
@@ -177,13 +219,8 @@ public sealed class AvaloniaWebviewService(
 
     private ITaruiAvaloniaWebView ResolveWebView(string webviewLabel)
     {
-        return Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            var entry = registry.Get(webviewLabel);
-            var session = entry.Webview
-                ?? throw new InvalidOperationException($"No web view session is mounted for '{webviewLabel}'.");
-            return session.WebView;
-        }).GetTask().GetAwaiter().GetResult();
+        return Dispatcher.UIThread.InvokeAsync(() => webviews.Get(webviewLabel).Session.WebView)
+            .GetTask().GetAwaiter().GetResult();
     }
 
     private Uri Resolve(string webviewLabel, string url)

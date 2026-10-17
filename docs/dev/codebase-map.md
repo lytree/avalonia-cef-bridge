@@ -13,7 +13,7 @@ src/
     Tarui.Ipc/              # 运行时:CommandRouter、ITaruiPlugin、AddPlugin<T> 扩展
   desktop/
     Tarui.Hosting/          # ASP.NET Core 风格主机:TaruiHost/Builder/Lifetime
-    Tarui.Shell/            # 声明式壳组合:AddTaruiShell、WindowRegistry、EventRouter
+    Tarui.Shell/            # 声明式壳组合:AddTaruiShell、WindowRegistry、WebviewRegistry、EventRouter
     Tarui.SingleInstance/   # 单实例守卫与 IPC 转发
   generators/
     Tarui.Ipc.Generators/   # Roslyn 源生成器:JSON 元数据、强类型 invoker
@@ -42,7 +42,7 @@ capabilities/               # Demo/编辑器用能力清单
 | --- | --- | --- |
 | `Tarui.Contracts` | DTO record、`TaruiJsonContext`(`JsonSerializerContext`) | 跨进程序列化契约,零运行时依赖 |
 | `Tarui.Ipc` | `ITaruiPlugin`、`AddPlugin<T>()`、`CommandRouterBuilder`、`IpcDispatcher` | 插件抽象、命令路由器、权限登记(`RegisteredPermissions`) |
-| `Tarui.Shell` | `AddTaruiShell`、`WindowRegistry`、`EventRouter`、`CapabilitySetProvider`、`ShellWindowFactory`、`MainWindowLauncher`、`IpcDispatcher` 接入 | 声明式组合,所有插件均 `ProjectReference` 引入 |
+| `Tarui.Shell` | `AddTaruiShell`、`WindowRegistry`、`WebviewRegistry`、`WindowEventFanout`、`WebviewSurfaceHost`、`EventRouter`、`CapabilitySetProvider`、`ShellWindowFactory`、`MainWindowLauncher`、`IpcDispatcher` 接入 | 声明式组合,所有插件均 `ProjectReference` 引入；窗口与 WebView 分离实体（webview label 独立寻址） |
 | `Tarui.Hosting` | `TaruiHost.CreateApplicationBuilder`、`TaruiApplicationBuilder`、`TaruiApplication`、`TaruiAvaloniaApp`、`TaruiLifetimeBridge`、`HostShutdownWatcher` | 注入 M.E.Hosting、Avalonia lifecycle 桥接 |
 | `Tarui.SingleInstance` | `SingleInstanceGuard`、`SingleInstanceIdentity`、`InstanceRole` | 二次启动参数转发到主进程 |
 | `Tarui.WebView.Abstractions` | `IWebViewHost`、`INavigationRequest`、`IDownloadRequest` | UI 中立契约,无 Avalonia/CefGlue |

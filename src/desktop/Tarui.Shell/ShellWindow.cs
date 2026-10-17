@@ -74,4 +74,10 @@ public sealed class ShellWindow : Window
     {
         Composition.Content.Children.Add(presenter);
     }
+
+    /// <summary>Unmounts a web view surface from the composition's content slot.</summary>
+    public void RemoveWebview(WebviewPresenter presenter)
+    {
+        Composition.Content.Children.Remove(presenter);
+    }
 }

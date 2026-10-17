@@ -228,6 +228,31 @@ internal sealed class FakeWebviewService : IWebviewService
         Calls.Add($"eval-with-callback|{webviewLabel}|{channelId ?? "-"}|{script}");
         return ValueTask.FromResult(new Unit());
     }
+
+    public ValueTask<WebviewStateInfo> CreateAsync(WebviewCreateOptions options, CancellationToken cancellationToken)
+    {
+        Calls.Add($"create|{options.WindowLabel ?? "-"}|{options.Label}");
+        return ValueTask.FromResult(new WebviewStateInfo(
+            options.Label,
+            options.WindowLabel ?? options.Label,
+            options.Url,
+            $"{options.Label}-title"));
+    }
+
+    public ValueTask<Unit> SetBoundsAsync(string webviewLabel, WebviewBounds? bounds, CancellationToken cancellationToken)
+    {
+        var description = bounds is null
+            ? "fill"
+            : $"{bounds.X},{bounds.Y},{bounds.Width},{bounds.Height}";
+        Calls.Add($"set-bounds|{webviewLabel}|{description}");
+        return ValueTask.FromResult(new Unit());
+    }
+
+    public ValueTask<Unit> DestroyAsync(string webviewLabel, CancellationToken cancellationToken)
+    {
+        Calls.Add($"destroy|{webviewLabel}");
+        return ValueTask.FromResult(new Unit());
+    }
 }
 
 internal sealed class FakeEventSender : IEventSender

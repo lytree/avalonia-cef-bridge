@@ -31,6 +31,18 @@ public interface IWebviewService
     ValueTask<string[]> ListAsync(CancellationToken cancellationToken);
 
     /// <summary>
+    /// Creates an additional web view inside an existing window. The surface inherits the host window's
+    /// capability profile; null <see cref="WebviewCreateOptions.Bounds"/> makes it fill the window.
+    /// </summary>
+    ValueTask<WebviewStateInfo> CreateAsync(WebviewCreateOptions options, CancellationToken cancellationToken);
+
+    /// <summary>Repositions or resizes a web view surface; null bounds restore window fill.</summary>
+    ValueTask<Unit> SetBoundsAsync(string webviewLabel, WebviewBounds? bounds, CancellationToken cancellationToken);
+
+    /// <summary>Destroys a web view, releasing its surface and session.</summary>
+    ValueTask<Unit> DestroyAsync(string webviewLabel, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Reports the identity of the browser runtime backing every web view (name, engine version,
     /// resource mode and application origin). This is runtime-wide, not per-web-view.
     /// </summary>
