@@ -15,7 +15,10 @@ namespace Tarui.Shell;
 /// a single surface). Navigations run on the UI thread and are confined to the application origin's
 /// accepted schemes — HTTP(S) and, when local assets are served, the portless custom app scheme.
 /// </summary>
-public sealed class AvaloniaWebviewService(WindowRegistry registry, TaruiAppOrigin appOrigin) : IWebviewService
+public sealed class AvaloniaWebviewService(
+    WindowRegistry registry,
+    TaruiAppOrigin appOrigin,
+    ITaruiWebRuntime runtime) : IWebviewService
 {
     // The wrapper script is handed straight to the JS engine via ExecuteScript, never embedded into
     // HTML, so the relaxed encoder is the correct choice — the default encoder would escape safe
@@ -59,6 +62,19 @@ public sealed class AvaloniaWebviewService(WindowRegistry registry, TaruiAppOrig
         cancellationToken.ThrowIfCancellationRequested();
         // One web view per window today, so live web views mirror registered windows.
         return ValueTask.FromResult(registry.Labels.ToArray());
+    }
+
+    public ValueTask<WebviewRuntimeInfo> GetRuntimeInfoAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        // The origin reported is the runtime's base origin: the portless custom scheme origin when
+        // local assets are served, otherwise the HTTP(S) start origin.
+        var origin = runtime.Origin;
+        return ValueTask.FromResult(new WebviewRuntimeInfo(
+            runtime.Name,
+            runtime.WebviewVersion,
+            runtime.ResourceMode,
+            (origin.SchemeOrigin ?? origin.StartUri).AbsoluteUri));
     }
 
     public ValueTask<Unit> SetDevToolsAsync(string webviewLabel, bool open, CancellationToken cancellationToken)

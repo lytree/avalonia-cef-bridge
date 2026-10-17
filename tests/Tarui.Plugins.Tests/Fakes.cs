@@ -188,6 +188,13 @@ internal sealed class FakeWebviewService : IWebviewService
         return ValueTask.FromResult(Labels);
     }
 
+    public ValueTask<WebviewRuntimeInfo> GetRuntimeInfoAsync(CancellationToken cancellationToken)
+    {
+        Calls.Add("runtime-info");
+        return ValueTask.FromResult(
+            new WebviewRuntimeInfo("cef", "150.0.11", "scheme", "tarui://localhost/"));
+    }
+
     public ValueTask<Unit> SetDevToolsAsync(string webviewLabel, bool open, CancellationToken cancellationToken)
     {
         Calls.Add($"devtools|{webviewLabel}|{(open ? "open" : "close")}");

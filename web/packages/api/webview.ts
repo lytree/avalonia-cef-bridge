@@ -11,6 +11,18 @@ export type WebviewState = {
   title: string
 }
 
+/**
+ * The identity of the browser runtime backing every webview: the runtime name,
+ * the underlying engine version, the asset resource mode and the application
+ * origin.
+ */
+export type WebviewRuntimeInfo = {
+  name: string
+  webviewVersion: string
+  resourceMode: 'http' | 'scheme'
+  origin: string
+}
+
 /** Fired when the webview renderer process terminates abnormally. */
 export const RENDER_PROCESS_GONE_EVENT = 'webview://render-process-gone'
 
@@ -135,4 +147,9 @@ export class Webview {
 /** Shorthand for {@link Webview.getCurrent}. */
 export function getCurrentWebview(): Webview {
   return Webview.getCurrent()
+}
+
+/** Returns the identity of the browser runtime backing every webview. */
+export async function runtimeInfo(): Promise<WebviewRuntimeInfo> {
+  return invoke<WebviewRuntimeInfo>('plugin:webview|runtime-info', {})
 }

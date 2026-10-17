@@ -29,4 +29,10 @@ public interface IWebviewService
         CancellationToken cancellationToken);
 
     ValueTask<string[]> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Reports the identity of the browser runtime backing every web view (name, engine version,
+    /// resource mode and application origin). This is runtime-wide, not per-web-view.
+    /// </summary>
+    ValueTask<WebviewRuntimeInfo> GetRuntimeInfoAsync(CancellationToken cancellationToken);
 }

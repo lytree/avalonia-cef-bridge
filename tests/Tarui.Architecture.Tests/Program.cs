@@ -460,6 +460,18 @@ internal static class Program
                         "TN-CEF-ENTRY",
                         "Only Tarui.WebView.CefGlueNext may reference vendored CefGlue projects directly."));
                 }
+
+                // The runtime boundary is inverted: Shell and Hosting depend on the web view
+                // abstractions (Tarui.WebView.Abstractions), never on the CEF adapter assembly. A
+                // direct project reference would silently re-couple the window/host layers to CEF.
+                if (IsShellOrHostingProject(file) && IsTaruiCefGlueAdapterProject(target))
+                {
+                    violations.Add(CreateProjectViolation(
+                        file,
+                        reference,
+                        "TN-BOUNDARY",
+                        "Tarui.Shell/Tarui.Hosting must depend on Tarui.WebView.Abstractions, not reference Tarui.WebView.CefGlueNext directly."));
+                }
             }
         }
 

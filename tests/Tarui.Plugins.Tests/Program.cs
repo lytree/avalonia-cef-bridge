@@ -42,6 +42,7 @@ internal static class Program
         await AllowsOtherWebviewWithPermission();
         await TogglesDevToolsForOwnAndOtherWebview();
         await ReturnsWebviewStateAndLabels();
+        await ReportsWebviewRuntimeInfo();
         await EvaluatesScriptsThroughWebviewCommands();
         await CompletesEvalCallbackOnBoundChannel();
         await DeniesCloseThroughWindowCommand();
@@ -569,6 +570,7 @@ internal static class Program
             "plugin:webview|eval-with-callback",
             "plugin:webview|eval-callback-complete",
             "plugin:webview|list",
+            "plugin:webview|runtime-info",
         };
         // The internal completion command deliberately reuses the eval-with-callback permission id,
         // so it is routed as a command but never registered as its own permission.
@@ -792,6 +794,30 @@ internal static class Program
         Assert(
             labels.Labels.SequenceEqual(["main", "editor"]),
             "The label list must match the service response.");
+    }
+
+    private static async Task ReportsWebviewRuntimeInfo()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+
+        var response = await router.InvokeAsync(
+            Request("plugin:webview|runtime-info", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
+            new CommandContext("main", "main", new CapabilitySet(["plugin:webview|runtime-info"])));
+        Assert(response.Success, "Reporting the runtime identity must succeed when permitted.");
+        Assert(service.Calls.Contains("runtime-info"), "The runtime-info command must reach the service.");
+
+        var info = Result(response, TaruiJsonContext.Default.WebviewRuntimeInfo);
+        Assert(info.Name == "cef", "The runtime name must come from the service.");
+        Assert(info.WebviewVersion == "150.0.11", "The engine version must come from the service.");
+        Assert(info.ResourceMode == "scheme", "The resource mode must come from the service.");
+        Assert(info.Origin == "tarui://localhost/", "The application origin must come from the service.");
+
+        var denied = await router.InvokeAsync(
+            Request("plugin:webview|runtime-info", new EmptyArgs(), TaruiJsonContext.Default.EmptyArgs),
+            new CommandContext("main", "main", new CapabilitySet(["plugin:webview|list"])));
+        Assert(!denied.Success, "Runtime info must be denied without its own permission.");
+        Assert(denied.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
     }
 
     private static void ResolvesWebviewPluginThroughServiceCollection()

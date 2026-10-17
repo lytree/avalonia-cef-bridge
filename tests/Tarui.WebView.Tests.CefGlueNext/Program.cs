@@ -15,6 +15,7 @@ internal static class Program
         RuntimeRejectsMissingSubprocessBeforeNativeStartup();
         RuntimeRejectsInvalidSchemeOptionsBeforeNativeStartup();
         RunSubProcessIgnoresNormalApplicationArguments();
+        WebRuntimeReportsIdentityFromOptions();
         SchemeOptionsPreserveResourceAndSecurityConfiguration();
         ResourceProviderContractCarriesRequestAndResponse();
         EventArgumentsDefaultToSafeDecisions();
@@ -224,6 +225,33 @@ internal static class Program
         Assert(
             !CefGlueNextAvaloniaRuntime.RunSubProcess(["--app=test"], exitAfterRun: false),
             "Normal application arguments must not enter the CEF subprocess path.");
+    }
+
+    private static void WebRuntimeReportsIdentityFromOptions()
+    {
+        using var contentRoot = new TemporaryDirectory();
+        File.WriteAllText(Path.Combine(contentRoot.Path, "index.html"), "<!doctype html><title>test</title>");
+
+        // Constructing the runtime identity must not start native CEF; it only derives metadata from
+        // the web app options, so it can be resolved from DI before the UI thread is up.
+        var schemeRuntime = new CefGlueNextWebRuntime(CefGlueNextWebAppOptions.CreateScheme(contentRoot.Path));
+        AssertEqual("cef", schemeRuntime.Name, "The runtime name should identify the CEF backend.");
+        AssertEqual(
+            CefGlueNextPortInfo.CefVersion,
+            schemeRuntime.WebviewVersion,
+            "The engine version should be the ported CEF version.");
+        AssertEqual("scheme", schemeRuntime.ResourceMode, "Scheme-mode options should report the scheme resource mode.");
+        Assert(
+            schemeRuntime.Origin.SchemeOrigin is not null,
+            "A scheme-mode runtime should expose the custom scheme origin.");
+
+        var httpRuntime = new CefGlueNextWebRuntime(
+            CefGlueNextWebAppOptions.CreateHttp(new Uri("http://127.0.0.1:5173")));
+        AssertEqual("http", httpRuntime.ResourceMode, "HTTP-mode options should report the http resource mode.");
+        AssertEqual(
+            "http://127.0.0.1:5173/",
+            httpRuntime.Origin.StartUri.AbsoluteUri,
+            "An HTTP-mode runtime should expose the start origin.");
     }
 
     private static void SchemeOptionsPreserveResourceAndSecurityConfiguration()

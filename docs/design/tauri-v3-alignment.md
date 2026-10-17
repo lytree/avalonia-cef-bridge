@@ -1,0 +1,161 @@
+# Tarui 与 Tauri v3 差异分析与改造方案
+
+> 状态：分析基线 + 改造方案；**V3-0（运行时身份与扩展表面）已于 2026-10-17 实施完成**，其余阶段待排期
+> 基线日期：2026-10-17
+> 对比对象：Tauri **3.0.0-alpha.0 … alpha.5**（2026-09-13 至 2026-10-14，GitHub Releases `tauri-v3.0.0-alpha.*`；稳定线为 2.12.4）、`tauri-runtime-wry` / `tauri-runtime-cef` 3.0.0-alpha、`@tauri-apps/cli` 3.0.0-alpha.4/5
+> 姊妹文档：[`alignment-plan.md`](alignment-plan.md)（v2 对齐实施，继续有效）、[`gap-analysis.md`](gap-analysis.md)（v2 / Wails v3 缺口；其 §5 P0-0 与本文 V3-1 对应）、[`webview.md`](webview.md)、[`web-resource-mode.md`](web-resource-mode.md)
+> 本文目的：盘点 Tauri v3 已公布的架构变化，逐项评估与 Tarui 现状的差异，给出分阶段改造方案。v3 仍处 alpha（约 1–2 周一个 alpha），本文结论随新版本发布复核更新。
+
+## 1. Tauri v3 主题概览
+
+从 alpha.0–alpha.5 的 changelog 提炼，v3 的核心变化集中在八条主线：
+
+| # | 主题 | 关键变化 | 来源 |
+| --- | --- | --- | --- |
+| T1 | **运行时解耦** | webview 运行时改为构建期显式选择：应用直接依赖运行时 crate 并 `Builder::runtime(Wry::default())`；`tauri` 核心默认使用类型擦除的 `DynRuntime`（未选运行时报 `RuntimeNotConfigured`）；`devtools`/`unstable`/`macos-private-api` 等 feature 移到运行时 crate | alpha.0 #15985 |
+| T2 | **运行时特有表面隔离** | 运行时专属 API 从 `tauri` 移到运行时 crate 的扩展 trait（`WebviewCefExt`、`AppHandleWryExt` 等），同时为具体运行时与 `DynRuntime` 实现，运行时不匹配时返回 `RuntimeTypeMismatch` | alpha.0 #15985 |
+| T3 | **官方 CEF 运行时** | 新增 `tauri-runtime-cef`：`send_dev_tools_message` / `on_dev_tools_protocol` / `browser_runtime_style`；Linux 侧启用 GTK4 | alpha.0 起 |
+| T4 | **scheme 与版本归运行时** | `RuntimeHandle::custom_scheme_url(scheme, https)` 决定协议 URL 格式（`tauri://localhost` vs `http://tauri.localhost`），`convertFileSrc` 跟随运行时；资产路径改为从请求 URI 解析而非剥离硬编码前缀；`webview_version` 提升为 `RuntimeHandle` 必需方法 | alpha.0 #15985 |
+| T5 | **Linux 现代化** | GTK3/GTK4 改为 feature 可选、可无 GTK 构建（`GtkVersionMismatch` 错误）；托盘默认 **ksni**（SNI over D-Bus），移除 libappindicator 系统依赖（`linux-libappindicator` 可回退） | alpha.0 #15787 |
+| T6 | **资源解析改革** | `tauri-build` 不再把资源拷贝到 target；dev 下相对路径资源直接从源码读取（编辑不触发重编、改动即时生效）；remap 资源在每次运行首次访问时镜像到可执行文件旁；`bundle > resources` 纳入内嵌配置 | alpha.0 #15882 |
+| T7 | **ACL 精简** | 自动生成的命令权限改为 manifest 上的 `commands` 列表按需物化（不再为每命令生成 allow/deny 两条）；应用命令获得隐式 `allow-*` / `deny-*` 通配权限，capability 不必逐条列举 | alpha.0 |
+| T8 | **工具链与 DX** | `tauri migrate` 支持 v2→v3；移除 `macos-private-api` feature 与 `macOSPrivateApi` 配置（透明/全屏始终可用）；NSIS `install-icon`→`installer-icon`；MSRV 1.95；specta 成为可选依赖（类型化 bindings 一等公民）、tracing 可选 | alpha.0–alpha.5、CLI alpha.4 |
+
+对 Tarui 而言，**T1–T4 与本仓库的浏览器栈分层直接同构**，是最有对齐价值的部分；T5 由 Avalonia 与 CEF 运行时主导；T6–T8 是体验与配置精简项。
+
+## 2. 逐项差异分析
+
+评级说明：`高` = 架构级差异，需要专项改造；`中` = 有结构差距但有清晰落点；`小` = 局部增强即可对齐；`不适用` = 技术栈差异导致无需跟进；`观察` = 由上游（Avalonia/CEF）主导，Tarui 不主动改造。
+
+| # | Tauri v3 变更 | Tarui 现状 | 评级 | 归属 |
+| --- | --- | --- | --- | --- |
+| D1 | T1 运行时构建期选择（`DynRuntime` + `.runtime()` + `RuntimeNotConfigured`） | `Tarui.WebView.Abstractions` 的 `ITaruiWebView` / `ITaruiWebViewFactory` 已浏览器中立（不变量 3 守护），且 `Tarui.Shell` / `Tarui.Hosting` **只引用** `Tarui.WebView.Abstractions` + `Tarui.WebView.Avalonia`（不引用 CefGlueNext，见下方 §4.1 前提修正）；真实差距是：(a) 缺少“运行时身份”契约（name / webviewVersion / origin / resourceMode 无统一出口）；(b) `CefGlueNextWebViewFactory` 同时承担「工厂」与「CEF 运行时初始化」两个职责；(c) 组合根没有显式“运行时”概念，等价于 v2 的 `tauri::Wry` 硬编码 | **高**（已实施 V3-0，见 §4.1） | V3-0 |
+| D2 | T2 运行时特有表面隔离（扩展 trait + `RuntimeTypeMismatch`） | CEF 特有能力（UserAgent/Proxy 透传、CDP 消息）与通用能力混在 `CefGlueNext` 适配层，无独立入口；前端与宿主代码无从区分"通用 vs 运行时特有" | 中 | V3-0 |
+| D3 | T3 CEF 运行时的 CDP 通道（`send_dev_tools_message` / `on_dev_tools_protocol`） | Tarui 本就是 CEF-only（定位 ≈ 官方 `tauri-runtime-cef`）；vendored CefGlue 已具备 `CefBrowserHost.SendDevToolsMessage` / `ExecuteDevToolsMethod` / `CefDevToolsMessageObserver`，但 Tarui 抽象只暴露 `plugin:webview\|devtools`（Show/Close 级别），无 CDP 收发命令 | 中 | V3-3 |
+| D4 | T4 scheme URL 格式由运行时定义 + 资产路径从 URI 解析 | `CefGlueNextWebAppOptions` 已有可配 scheme（默认 `tarui`）+ domain（`localhost`）+ **HTTP/Scheme 双资源模式**（`TaruiAppOrigin`），语义上已达到甚至超出 v3 的 `custom_scheme_url`；差距在结构：该决策埋在 CefGlueNext 适配层，`WebViewRequestPolicy` 与策略测试仍按 `tarui://localhost` 字面假设 | 小 | V3-0 |
+| D5 | T4 `webview_version` 成为运行时必需 API | `CefGlueNextPortInfo.CefVersion`（`150.0.11`）经 `CefGlueNextWebRuntime.WebviewVersion` 暴露，并通过 `plugin:webview\|runtime-info` + `@lytree/api/webview` 的 `runtimeInfo()` 抵达前端（V3-0 已落地） | 小（已实施） | V3-0 |
+| D6 | T5 Linux GTK3/GTK4 可选、无 GTK 构建 | 窗口层是 Avalonia 12.1（Linux 自带 GTK3 线）；CEF 150 运行时的 GTK 链由 CEF 分发决定，Tarui 无法单独选择 | 观察 | — |
+| D7 | T5 Linux 托盘默认 ksni，移除 libappindicator | `Tarui.Shell/AvaloniaTrayService.cs` 委托 Avalonia `TrayIcon`，Linux 后端由 Avalonia 决定；仓库内无 libappindicator 依赖或打包声明 | 观察 | — |
+| D8 | T6 资源目录解析（dev 源路径直读、live 生效、镜像 remap） | dev 前端走 Vite dev server（HTTP 模式）或 wwwroot 静态资源，**不存在** v3 所解决的"build 脚本拷贝资源触发重编"痛点；但 Tarui 也尚未形成 `resourceDir` 级别的原生资源目录抽象（fs 插件的 resources 只读 scope 是独立概念） | 小 | V3-3 评估 |
+| D9 | T7 ACL 精简（manifest `commands` 按需物化 + 应用命令隐式 `allow-*`/`deny-*`） | 权限按命令逐条显式注册（`RegisteredPermissions`），capability 逐条列举；`CapabilitySet` 仅有 `*` 全通配（生产禁用）；**无权限集合**（`plugin:fs\|default` 类标识尚未实现，见 alignment-plan §4.1） | 中 | V3-2 |
+| D10 | T8 macOS 私有 API 退役 | 透明窗口走 Avalonia `TransparencyLevelHint`，Tarui 从未有 `macos-private-api` 类开关 | 不适用 | — |
+| D11 | T8 specta 类型化 bindings | `@lytree/api` 32 个模块全部手写；`Tarui.Ipc.Generators` 只生成 C# 侧 `GeneratedCommandCatalog`，不覆盖 TS。gap-analysis §4 已把 bindings 自动生成列为 Wails v3 对照下的显著差距，v3 将其升级为官方方向 | 中（DX 高价值） | V3-3 |
+| D12 | T8 `tauri migrate` / NSIS 键名 / MSRV | Tarui 无历史版本迁移负担；产物为 zip / MSIX / `.app` / `.app.tar.gz`，无 NSIS；MSRV 是 Rust 侧概念 | 不适用 | — |
+| D13 | 单窗口多 WebView（v2 既有模型，v3 保留 Window/Webview 独立实体） | **架构级缺口**（gap-analysis §3.1 / §5 P0-0）：`WindowOptions`→`IWebViewFactory` 为窗口↔webview 一对一强绑定。`Tarui.Plugins.Webview` 的 `IWebviewService` 契约已声明"webview 与宿主窗口解耦、可按 `webviewLabel` 独立寻址"（`navigate/get-state/devtools/set-zoom/print/eval/eval-with-callback/list` 命令 + own/other-webview 权限），即**插件层寻址已就绪，缺底层多 WebView 挂载** | **高** | V3-1 |
+| D14 | T8 tracing 观测 | `Tarui.Plugins.Log` 已实现 renderer→MEL 双向桥接，等价 | 小/已等价 | — |
+| D15 | Android 绑定宏迁移（`android_binding!` 移至 wry 运行时） | 移动端为对齐计划 §1 明确非目标 | 不适用 | — |
+
+## 3. 差异汇总
+
+- **架构级（P0）**：D1（运行时身份未显式化）、D13（单窗口多 WebView）。D13 已是 v2 对齐遗留的唯一架构级缺口，v3 延续该模型，改造一并进行。
+- **结构级（P1）**：D2（运行时特有表面）、D9（权限集合与清单精简）。
+- **增强级（P2）**：D3（CDP 通道）、D5（版本暴露）、D11（bindings 生成）、D8（resourceDir 评估）。
+- **已等价或超出**：D4（双资源模式 > `custom_scheme_url` 单一方案）、D14。
+- **上游主导/不适用**：D6、D7（Avalonia/CEF 决定）、D10、D12、D15。
+
+## 4. 改造方案
+
+### 4.1 Phase V3-0：运行时身份与扩展表面（对齐 T1/T2/T4）
+
+**目标**：把"CefGlueNext 是唯一实现"重构为"应用选择一个 webview 运行时"，依赖方向倒转为 Shell/Hosting 只面向抽象。Tarui **不实现第二个运行时**——本阶段的价值是边界清晰化（等价 v3 把 CEF 表面隔离进 `tauri-runtime-cef`），并为未来任何替代内核留出插槽。
+
+**实施状态（2026-10-17，V3-0 已完成）**：
+
+- **前提修正**：规划时假设 `Tarui.Shell` / `Tarui.Hosting` 直接引用 `Tarui.WebView.CefGlueNext`，实测**不成立**——两者本就只引用 `Tarui.WebView.Abstractions`（+ Shell 的 `Tarui.WebView.Avalonia`）。故步骤 2/3/7/8 的“依赖倒转”工作量重估；`TaruiAppOrigin` 亦早已位于 Abstractions（步骤 1 的“上移”同样不成立）。本阶段据此收敛为“补运行时身份契约 + 落地 runtime-info + 用架构测试锁边界”。
+- **已交付**：步骤 1（`ITaruiWebRuntime`，用 `ValueTask` 且**不含** `RunSubProcess`）、步骤 2 的运行时类型拆分（`CefGlueNextWebRuntime : ITaruiWebRuntime`）、步骤 4（`AddCefGlueWebView()` 注册运行时并解析 `TaruiAppOrigin`）、步骤 5（`plugin:webview|runtime-info` + `@lytree/api/webview` 的 `runtimeInfo()`）、步骤 8（架构测试新增 Shell/Hosting 引用 CefGlueNext 违规断言）。全部自测试与架构测试通过。
+- **延迟项（本轮未做，记录原因）**：
+  - 步骤 3（Hosting 调用注入的 `ITaruiWebRuntime` 编排 `Initialize/Shutdown`）：CEF 初始化绑定 Avalonia UI 线程，改为 Hosting 编排会引入提前初始化/线程时序风险；当前仍由 `CefGlueNextAvaloniaRuntime`（静态、fingerprint 幂等）+ 组合根 `finally` 承担。**待 CEF 线程模型明确后再动**。
+  - 步骤 2 的 `RunSubProcess` 物理迁移：`RunSubProcess` 必须在 host builder 之前（`Program.Main`，DI 之前）调用，保留为 `CefGlueNextAvaloniaRuntime` 静态方法；`ITaruiWebRuntime` 作为 DI 实例只承担 metadata + `InitializeAsync/ShutdownAsync`。
+  - 步骤 6（`ICefWebviewExtension` / CDP 扩展表面）：与 D3 同批，归入 V3-3。
+  - 步骤 7（`WebViewRequestPolicy` 字面假设改为从 `TaruiAppOrigin` 构造）：该策略测试当前无 CefGlueNext 依赖，改动收益低于回归风险，择机随资源模式增强一并进行。
+
+实施步骤：
+
+1. `Tarui.WebView.Abstractions` 新增 `ITaruiWebRuntime`：
+
+   ```csharp
+   public interface ITaruiWebRuntime
+   {
+       string Name { get; }                 // "CefGlue"
+       string WebviewVersion { get; }       // 对齐 RuntimeHandle::webview_version
+       TaruiAppOrigin Origin { get; }       // scheme+domain 或 HTTP 基址（含资源模式）
+       Task InitializeAsync(CancellationToken ct);
+       Task ShutdownAsync();
+       int RunSubProcess(IReadOnlyList<string> args);   // 子进程派发，非 0 表示已作为子进程运行
+   }
+   ```
+
+   `TaruiAppOrigin` 从 `CefGlueNextWebAppOptions` 上移到 Abstractions（D4 的结构归位）。
+2. `Tarui.WebView.CefGlueNext` 拆分：`CefGlueNextWebViewFactory` 的运行时职责（CEF `Initialize`/`Shutdown`/子进程派发、`CefSettings` 组装）移入新类型 `CefGlueNextWebRuntime : ITaruiWebRuntime`；工厂只保留"创建 webview"。`CefVersion` 常量随迁。
+3. 生命周期编排（不变量 6 的 `RunSubProcess → Initialize → … → Shutdown` 链）改由 Hosting 调用注入的 `ITaruiWebRuntime`；Shell 的窗口桥接只依赖 `ITaruiWebViewFactory`。
+4. 组合根：`AddCefGlueWebView()` 语义变为"注册 CefGlue 运行时实现"并保留为兼容别名（等价 v3 `.runtime(tauri_runtime_wry::Wry::default())` 的"应用选运行时"动作）；未注册运行时时启动失败并给出明确错误（对齐 `RuntimeNotConfigured`）。
+5. 新增 `plugin:webview|runtime-info`（或并入应用握手快照）：返回 `{ name, webviewVersion, resourceMode, origin }`，权限 `plugin:webview|runtime-info`；`@lytree/api/webview` 增加 `runtimeInfo()`。
+6. CEF 特有表面（D2）：`Tarui.WebView.CefGlueNext` 内提供 `ICefWebviewExtension`（CDP 消息收发、browser runtime style 预留位），宿主代码按需向下转型（对齐 v3 `WebviewCefExt` 扩展 trait 模式）；Abstractions 与前端 API 不感知。
+7. `WebViewRequestPolicy` 及其测试中 `tarui://localhost` 字面假设改为从 `TaruiAppOrigin` 构造。
+8. 架构测试更新：`Tarui.Shell` / `Tarui.Hosting` 不得引用 `Tarui.WebView.CefGlueNext` 程序集（原依赖图倒转）；CEF 特有接口仅允许出现在 CefGlueNext 程序集。
+
+验收门禁：
+
+- `runtime-info` 返回 CEF 版本与资源模式，且被能力闸门保护；
+- Shell/Hosting 项目引用与架构测试证明仅依赖 Abstractions；
+- 现有 `AddCefGlueWebView()` 用法零破坏，全部自测试与架构测试通过；
+- `webview.md` §1 依赖图更新（倒转后 Shell/Hosting 不再直连 CefGlueNext）。
+
+### 4.2 Phase V3-1：单窗口多 WebView（承接 gap-analysis §5 P0-0）
+
+**目标**：Window 与 WebView 实体分离，一窗口可挂多个 webview。分两步交付：
+
+1. **实体分离**（无行为变化的重构）：
+   - 新增 `WebviewRegistry`（label → webview 会话）独立于窗口注册表；窗口持有 webview 集合，现有 1:1 成为"单子视图"特例；
+   - `plugin:webview|*` 命令的 label 寻址落到新注册表；事件定向（`webview://*`）与 capability 的 windows 匹配规则同步按 webview label 解析。
+2. **挂载能力**：
+   - `plugin:webview|create`：`parentWindow` + `bounds` + 独立 `origin`，在既有窗口内创建；
+   - `plugin:webview|set-bounds` / `destroy`；窗口 resize/关闭联动释放；
+   - Avalonia 侧以多个 NativeControlHost 承载 windowed CEF 实例；权限沿用 own/other-webview，跨窗口 attach 需 `*-other-window`。
+
+验收门禁：一窗口两 webview 独立导航、独立 capability 隔离、独立关闭释放；关闭 100 次动态 webview 无注册表/CEF 资源残留；1:1 旧路径行为不变。
+
+### 4.3 Phase V3-2：权限集合与清单精简（对齐 T7）
+
+**目标**：capability 不再逐条罗列命令，同时不放松"生产禁 `*`"红线。
+
+实施步骤：
+
+1. 插件声明**权限集合**（如 `plugin:fs|default`、`core:window|default`）：集合在构建期展开为具体命令权限，运行时按需物化（等价 v3 manifest `commands` 列表）；
+2. 应用自有命令获得隐式 `allow-app-commands` / `deny-app-commands` 集合权限（对齐 v3 隐式 `allow-*`/`deny-*`）；
+3. `CapabilityLoader` 校验集合标识存在性、循环展开与未知成员；JSON Schema 与 `docs/usage/capabilities.md` 同步；
+4. demo 能力清单改写为集合形式并保持语义等价（拒绝测试逐条对照）。
+
+验收门禁：demo capability 显著缩短且全部拒绝测试结果不变；`*` 通配仍仅限隔离测试环境。
+
+### 4.4 Phase V3-3：开发体验增强（对齐 T3/T8 的 DX 方向）
+
+按价值排序，逐项独立可交付：
+
+1. **webview 版本暴露**（D5）：若 V3-0 未覆盖，在握手或 `runtime-info` 中落地；
+2. **CDP 消息通道**（D3）：`plugin:webview|send-devtools-message` / `on-devtools-protocol` 事件（capability 门控，默认不授权），基于 `CefBrowserHost.SendDevToolsMessage` + `CefDevToolsMessageObserver`；解锁性能分析、内存快照等工具链；
+3. **类型化 bindings 生成**（D11）：扩展 `Tarui.Ipc.Generators`——从命令目录 + DTO 元数据（`JsonSerializerContext`）生成命令契约（JSON 清单 / `.d.ts`），CI 校验手写 `@lytree/api` 与生成契约零漂移；全量生成模块另行评估；
+4. **resourceDir 概念评估**（D8）：如引入"应用原生资源目录"，须与 `IFileAccessPolicy` 的 resources 只读 scope 统一，避免两套资源边界。
+
+### 4.5 观察项（记录，不排期）
+
+| 项 | 处置 |
+| --- | --- |
+| D6/D7 Linux GTK 与托盘后端 | Avalonia / CEF 主导；若 Avalonia 托盘切 SNI 后端则自然跟进，届时更新 `docs/dev/environment.md` 依赖说明 |
+| D10 macOS 私有 API | 不适用（Avalonia 承担） |
+| D12 `migrate` / NSIS / MSRV | 不适用；`tarui.app.json` 键名演进遵循自有 Schema 版本化 |
+| D14 tracing | MEL 已等价；OpenTelemetry 导出另立评估 |
+| v3 后续 alpha/beta 增量 | 每个新版本发布后复核本文 §2 表并登记增量；RC 后冻结 V3-0/V3-2 设计细节 |
+
+## 5. 与既有计划的关系
+
+- `alignment-plan.md`（v2 对齐）**继续有效**：本文不替换其阶段门禁与 §15 状态表；v3 项叠加在其上，V3-1 即其 Phase 5 遗留的"webviewWindow 独立对象"缺口与 gap-analysis P0-0 的合并实施。
+- 改造期间维持 10 条设计不变量：V3-0 的接口拆分不引入运行时反射；V3-2 的集合展开发生在构建期；V3-3 的 TS 生成复用既有源生成基建。
+- 文档同步义务：V3-0 落地时更新 [`webview.md`](webview.md) 分层图与 [`architecture.md`](architecture.md) 模块生命周期（**已于 2026-10-17 完成**）；V3-2 落地时更新 [`ipc.md`](ipc.md) 与 `docs/usage/capabilities.md`。
+
+## 6. 风险
+
+1. **alpha 漂移**：v3 尚未 RC，T1–T4 语义可能微调（如 `Runtime` trait 方法签名）。缓解：V3-0 只对齐"依赖方向与概念"，不逐字复刻 Rust API。
+2. **不盲跟多运行时**：v3 的可插拔运行时对 Tarui 的意义是边界清晰与未来插槽，不是当下实现第二后端；避免为抽象而抽象。
+3. **V3-1 工程量**：窗口↔webview 分离触及 Shell 生命周期与事件路由核心，须先补齐窗口生命周期回归测试再动刀（gap-analysis §5 P0-0 同结论）。
+4. **权限集合的安全回归**：集合展开错误可能造成意外放行；V3-2 必须以"集合展开结果 = 逐条罗列结果"为不可协商的测试断言。

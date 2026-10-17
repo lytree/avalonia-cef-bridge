@@ -8,24 +8,25 @@
 
 | 层 | 职责 | 可引用的依赖 |
 | --- | --- | --- |
-| `Tarui.WebView.Abstractions` | UI 中立的导航、脚本、下载、文件拖放与拖拽区域契约 | 无 Avalonia,无 CefGlue |
+| `Tarui.WebView.Abstractions` | UI 中立的导航、脚本、下载、文件拖放与拖拽区域契约,以及运行时身份(`ITaruiWebRuntime`:name / webviewVersion / origin / resourceMode) | 无 Avalonia,无 CefGlue |
 | `Tarui.WebView.Avalonia` | 承载 Avalonia `Control` 的契约 | Avalonia + Tarui WebView 契约 |
-| `Tarui.WebView.CefGlueNext` | 直接的 Avalonia 浏览器控件、CefGlue handler、运行时与原生浏览器生命周期 + Tarui 适配 | Avalonia + 内置 CefGlue + Tarui 契约(原 `CefGlue.Next.Avalonia` 已并入) |
+| `Tarui.WebView.CefGlueNext` | 直接的 Avalonia 浏览器控件、CefGlue handler、运行时与原生浏览器生命周期 + Tarui 适配,并提供 `ITaruiWebRuntime` 的 CEF 实现 `CefGlueNextWebRuntime` | Avalonia + 内置 CefGlue + Tarui 契约(原 `CefGlue.Next.Avalonia` 已并入) |
 
 依赖关系:
 
 ```text
-Tarui.WebView.Abstractions
+Tarui.WebView.Abstractions        (ITaruiWebView / ITaruiWebRuntime / TaruiAppOrigin — UI 中立)
   ↑
-Tarui.WebView.Avalonia
-  ↑                                 ┌─ Tarui.WebView.CefGlueNext ─┐
-Tarui.Shell ───────────────────────►│  CefGlueNextAvaloniaWebView │
-Tarui.Hosting ─────────────────────►│  CefGlueNextAvaloniaRuntime │
-                                    └──────────────────────────────┘
+  ├── Tarui.WebView.Avalonia      (Avalonia Control 契约)
+  │     ↑
+  │     └── Tarui.WebView.CefGlueNext   (CefGlueNextWebRuntime : ITaruiWebRuntime)
+  │
+  ├── Tarui.Shell                 (只依赖 Abstractions + Avalonia)
+  └── Tarui.Hosting               (只依赖 Abstractions + Avalonia)
 ```
 
 - `Tarui.WebView.Abstractions` 不得引用 Avalonia 或 Xilium CefGlue。
-- `Tarui.Shell` / `Tarui.Hosting` 可使用 Avalonia,但不得引用 Xilium CefGlue。
+- `Tarui.Shell` / `Tarui.Hosting` 可使用 Avalonia,但**不得引用 `Tarui.WebView.CefGlueNext` 程序集**或 Xilium CefGlue——依赖方向由 `Tarui.Architecture.Tests` 强制。组合根(演示应用 / 模板)同时引用 Shell、Hosting 与 CefGlueNext,通过 `AddCefGlueWebView()` 注入 CEF 运行时。
 - `src/webview/cefglue/*` 是 vendored implementation inputs,只被 `Tarui.WebView.CefGlueNext` 引用;不作为应用面对的包依赖。
 
 ## 2. CefGlue 内置源码边界

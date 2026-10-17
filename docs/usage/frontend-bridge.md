@@ -126,7 +126,7 @@ Channel 背压由 `WebviewSession.SendAsync` await 天然成立:JS 调度满时,
 | `ipc` | `@lytree/api/ipc` | invoke / Channel |
 | `app` | `@lytree/api/app` | getAppInfo |
 | `window` | `@lytree/api/window` | 类(Window) |
-| `webview` | `@lytree/api/webview` | 类(Webview) |
+| `webview` | `@lytree/api/webview` | 类(Webview) / runtimeInfo |
 | `event` | `@lytree/api/event` | emit / listen |
 | `dialog` | `@lytree/api/dialog` | openDialog / openMessage / openAsk |
 | `os` | `@lytree/api/os` | 函数式 |
@@ -167,3 +167,26 @@ Demo 前端(`examples/demo/web/src/App.tsx`)演示:
 - `fs.readDir({ base: 'appData' })` 列出隔离目录。
 - `emit('demo://echo', payload)` 触发路由事件。
 - Channel 流式读 / 写 + Shell stdio 流 + HTTP 流。
+
+## 8. Webview 与运行时身份
+
+`Webview` 类寻址单个浏览器表面:无 label 时指向当前渲染器所在 webview,`getByLabel('editor')` 寻址其它 webview(当前与宿主窗口共享 label)。
+
+```ts
+import { Webview, runtimeInfo } from '@lytree/api/webview';
+
+const wv = Webview.getCurrent();
+await wv.navigate('tarui://localhost/settings');
+const state = await wv.getState();              // { label, windowLabel, url, title }
+await wv.openDevtools();
+await wv.setZoom(1.25);
+await wv.print();
+await wv.evalScript('window.scrollTo(0, 0)');
+const value = await wv.evalWithCallback<number>('1 + 1');
+
+// 运行时身份:所有 webview 共享的浏览器后端元数据
+const runtime = await runtimeInfo();
+// { name: 'cef', webviewVersion: '150.0.11', resourceMode: 'scheme', origin: 'tarui://localhost/' }
+```
+
+`runtimeInfo()` 对应 `plugin:webview|runtime-info` 命令(受 capability 授权约束),返回运行时名称、引擎版本、资源模式(`'http'` / `'scheme'`)与应用 origin;底层来自 `ITaruiWebRuntime`(`name` / `webviewVersion` / `origin` / `resourceMode`)。列表与生命周期订阅:`Webview.getAll()`、`onDownloadRequested` / `onNavigationRequested` / `onRenderProcessGone`。

@@ -65,7 +65,8 @@ public static class TaruiShellServiceCollectionExtensions
             sp.GetRequiredService<WindowOptions>()))
         .AddSingleton<IWebviewService>(sp => new AvaloniaWebviewService(
             sp.GetRequiredService<WindowRegistry>(),
-            sp.GetRequiredService<TaruiAppOrigin>()))
+            sp.GetRequiredService<TaruiAppOrigin>(),
+            sp.GetRequiredService<ITaruiWebRuntime>()))
         .AddSingleton<IMenuService>(sp => new AvaloniaMenuService(
             sp.GetRequiredService<WindowRegistry>(),
             sp.GetRequiredService<EventRouter>()))

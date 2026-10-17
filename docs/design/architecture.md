@@ -6,7 +6,7 @@
 
 Avalonia owns the window, native dialogs, platform services, WebView presentation lifecycle, and recovery UI. The Web application owns routes, forms, tables, and business state. The browser implementation is a replaceable component boundary rather than a Shell concern.
 
-The Shell depends on `Tarui.WebView.Abstractions` and the Avalonia-only `Tarui.WebView.Avalonia` hosting contract; it never references Xilium CefGlue. `examples/demo` (the `Demo` app) registers `Tarui.WebView.CefGlueNext` through `AddCefGlueWebView()`, and that adapter is the sole CefGlue component entry (the legacy `CefGlue.Next.Avalonia` package has been absorbed into `Tarui.WebView.CefGlueNext`). Plugins are referenced and registered explicitly at the composition root through `AddPlugin<T>()` / `Add*Plugin()`; there is no plugin scan, runtime type lookup, or reflection-based dependency injection.
+The Shell depends on `Tarui.WebView.Abstractions` and the Avalonia-only `Tarui.WebView.Avalonia` hosting contract; it never references `Tarui.WebView.CefGlueNext` or Xilium CefGlue. The runtime identity (`ITaruiWebRuntime`: runtime name, engine version, origin, resource mode) is an Abstractions contract; the CEF implementation lives in `Tarui.WebView.CefGlueNext`. `examples/demo` (the `Demo` app) registers the CEF runtime through `AddCefGlueWebView()` — the application's "choose a runtime" action — and that adapter is the sole CefGlue component entry (the legacy `CefGlue.Next.Avalonia` package has been absorbed into `Tarui.WebView.CefGlueNext`). Plugins are referenced and registered explicitly at the composition root through `AddPlugin<T>()` / `Add*Plugin()`; there is no plugin scan, runtime type lookup, or reflection-based dependency injection.
 
 ## Browser package graph
 
@@ -35,9 +35,9 @@ Tarui.WebView.CefGlueNext --------+--> CefGlueNext component layer
 | `Tarui.Shell` | `AddTaruiShell`、`WindowRegistry`、`EventRouter`、`CapabilitySetProvider`、`ShellWindowFactory`、`MainWindowLauncher`、`IpcDispatcher` 接入 | 声明式组合,所有插件均 `ProjectReference` 引入 |
 | `Tarui.Hosting` | `TaruiHost.CreateApplicationBuilder`、`TaruiApplicationBuilder`、`TaruiApplication`、`TaruiAvaloniaApp`、`TaruiLifetimeBridge`、`HostShutdownWatcher` | 注入 M.E.Hosting、Avalonia lifecycle 桥接 |
 | `Tarui.SingleInstance` | `SingleInstanceGuard`、`SingleInstanceIdentity`、`InstanceRole` | 二次启动参数转发到主进程 |
-| `Tarui.WebView.Abstractions` | `IWebViewHost`、`INavigationRequest`、`IDownloadRequest` | UI 中立契约,无 Avalonia/CefGlue |
+| `Tarui.WebView.Abstractions` | `IWebViewHost`、`INavigationRequest`、`IDownloadRequest`、`ITaruiWebRuntime`、`TaruiAppOrigin` | UI 中立契约,无 Avalonia/CefGlue |
 | `Tarui.WebView.Avalonia` | `TaruiWebView`(Avalonia Control) | Control 承载层 |
-| `Tarui.WebView.CefGlueNext` | `AddCefGlueWebView()`、`CefGlueNextWebAppOptions`、`CefGlueNextAvaloniaWebView`、`CefGlueNextAvaloniaRuntime` | Tarui 事件/策略/Capability 适配 + 浏览器组件实现,nupkg 内嵌 Xilium CefGlue DLL(原 `CefGlue.Next.Avalonia` 已并入) |
+| `Tarui.WebView.CefGlueNext` | `AddCefGlueWebView()`、`CefGlueNextWebAppOptions`、`CefGlueNextAvaloniaWebView`、`CefGlueNextAvaloniaRuntime`、`CefGlueNextWebRuntime` | Tarui 事件/策略/Capability 适配 + 浏览器组件实现 + `ITaruiWebRuntime` 的 CEF 实现,nupkg 内嵌 Xilium CefGlue DLL(原 `CefGlue.Next.Avalonia` 已并入) |
 | `Tarui.Ipc.Generators` | `IIncrementalGenerator` | 源生成 TaruiJsonContext 与强类型 invoker |
 
 依赖方向(强约束,被架构门禁检查):
@@ -50,7 +50,7 @@ Hosting  →  Shell  →  (Ipc, Contracts, WebView.Abstractions, WebView.Avaloni
                   Tarui.WebView.CefGlueNext(包内嵌 5 个 Xilium DLL)
 ```
 
-`Hosting` 和 `Shell` 都不引用 Xilium CefGlue 程序集;`Tarui.WebView.CefGlueNext` 是唯一接触 CefGlue 实现类型的项目;`webview/cefglue/*` 只能被 `Tarui.WebView.CefGlueNext` 引用。
+`Hosting` 和 `Shell` 都不引用 `Tarui.WebView.CefGlueNext` 程序集,也不引用 Xilium CefGlue;`Tarui.WebView.CefGlueNext` 是唯一接触 CefGlue 实现类型的项目;`webview/cefglue/*` 只能被 `Tarui.WebView.CefGlueNext` 引用。运行时身份(`ITaruiWebRuntime`)由 Abstractions 声明、由 CefGlueNext 实现、经 DI 注入 Shell;该边界由 `Tarui.Architecture.Tests` 强制(Shell/Hosting 引用 CefGlueNext 即判违规)。
 
 ## Hosting
 

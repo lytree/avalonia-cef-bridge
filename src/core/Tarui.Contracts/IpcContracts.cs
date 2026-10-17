@@ -203,6 +203,7 @@ public sealed record StreamEchoArgs(string? Channel, int Count);
 [JsonSerializable(typeof(WebviewEvalFrame))]
 [JsonSerializable(typeof(WebviewStateInfo))]
 [JsonSerializable(typeof(WebviewLabels))]
+[JsonSerializable(typeof(WebviewRuntimeInfo))]
 [JsonSerializable(typeof(StoreFileOptions))]
 [JsonSerializable(typeof(StoreKeyOptions))]
 [JsonSerializable(typeof(StoreSetOptions))]

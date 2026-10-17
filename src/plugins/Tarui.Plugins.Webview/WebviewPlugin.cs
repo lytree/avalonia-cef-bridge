@@ -88,6 +88,15 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             handlers.ListAsync,
             "plugin:webview|list");
 
+        // The runtime identity is app-wide (name, engine version, resource mode, origin), so it is
+        // neither label-scoped nor routed through the own-or-other web view guard.
+        commands.Add(
+            "plugin:webview|runtime-info",
+            TaruiJsonContext.Default.EmptyArgs,
+            TaruiJsonContext.Default.WebviewRuntimeInfo,
+            handlers.GetRuntimeInfoAsync,
+            "plugin:webview|runtime-info");
+
         // Cross-webview operations require the <permission>-other-webview variant; register them as
         // valid permission IDs so capability files may reference them and validation stays strict.
         foreach (var permission in OtherWebviewPermissions)
@@ -171,6 +180,13 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             var labels = await service.ListAsync(cancellationToken);
             return new WebviewLabels([.. labels]);
         }
+
+        [TaruiCommand("plugin:webview|runtime-info")]
+        public ValueTask<WebviewRuntimeInfo> GetRuntimeInfoAsync(
+            EmptyArgs options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.GetRuntimeInfoAsync(cancellationToken);
 
         private static string Resolve(string? requested, CommandContext context, string permission)
         {

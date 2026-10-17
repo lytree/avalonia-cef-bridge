@@ -22,6 +22,17 @@ public sealed record WebviewStateInfo(
 /// <summary>The labels of every live web view (one per window for now).</summary>
 public sealed record WebviewLabels(string[] Labels);
 
+/// <summary>
+/// The identity of the browser runtime backing every web view: the runtime name, the underlying
+/// engine version, the asset resource mode (<c>http</c> or <c>scheme</c>) and the application origin.
+/// Mirrors Tauri v3's runtime identity surface (<c>webview_version</c> + <c>custom_scheme_url</c>).
+/// </summary>
+public sealed record WebviewRuntimeInfo(
+    string Name,
+    string WebviewVersion,
+    string ResourceMode,
+    string Origin);
+
 /// <summary>Reserved <c>webview://file-drop-*</c> payload describing a drag over the web view surface.</summary>
 public sealed record WebViewFileDropEvent(string[] Paths, string? Text, double X, double Y);
 

@@ -109,6 +109,7 @@
     "plugin:webview|eval-with-callback",
     "plugin:webview|set-zoom",
     "plugin:webview|print",
+    "plugin:webview|runtime-info",
     "plugin:webview|navigate-other-webview",
     "plugin:webview|get-state-other-webview",
     "plugin:webview|set-zoom-other-webview",

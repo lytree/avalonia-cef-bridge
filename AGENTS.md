@@ -19,6 +19,7 @@
 - [`web-resource-mode.md`](docs/design/web-resource-mode.md) —— HTTP / Scheme 双模式、`TaruiAppOrigin`、Scheme 处理、CSP / SPA fallback
 - [`alignment-plan.md`](docs/design/alignment-plan.md) —— 与 Tauri v2 桌面能力的逐项对齐进度表（权威状态表 §15）
 - [`gap-analysis.md`](docs/design/gap-analysis.md) —— 与 Tauri v2 / Wails v3 的功能差距分析（P0/P1/P2 缺口）
+- [`tauri-v3-alignment.md`](docs/design/tauri-v3-alignment.md) —— 与 Tauri v3（alpha）的差异分析与分阶段改造方案（V3-0 运行时身份 / V3-1 多 WebView / V3-2 权限集合 / V3-3 DX）
 - [`cli-workflow.md`](docs/design/cli-workflow.md) —— CLI / SDK / 插件双包分发设计稿（W0–W5 阶段记录）
 
 ### `docs/dev/` —— 框架贡献者
