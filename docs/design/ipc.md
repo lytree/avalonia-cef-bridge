@@ -133,6 +133,8 @@ title-bar 关闭请求先发出 `window://close-requested` 事件;前端必须�
 
 前端不应依赖错误文本(本地化、漂移);错误码是契约,跨版本稳定。
 
+> 注:运行时实际发出的错误码为**大写下划线**形式(如 `PERMISSION_DENIED`、`SCOPE_DENIED`、`COMMAND_NOT_FOUND`、`INVALID_ARGUMENTS`、`NOT_SUPPORTED`、`COMMAND_FAILED`);`CommandRouter` 把 `NotSupportedException` 映射为 `NOT_SUPPORTED`。上表沿用的早期小写记法仅表示同一语义,以运行时字符串与 `IpcCommandError.code` 为准。
+
 ## 5. 前端桥接
 
 `web/packages/api`(`@lytree/api`)为每个插件契约提供强类型模块;主入口和子路径导出均支持:

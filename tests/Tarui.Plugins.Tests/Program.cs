@@ -47,6 +47,9 @@ internal static class Program
         await DeniesCrossWindowCreateWithoutPermission();
         await SetsAndClearsWebviewBoundsViaCommand();
         await DestroysWebviewThroughCommand();
+        await RoutesSendDevToolsMessageToService();
+        await DeniesSendDevToolsMessageWithoutPermission();
+        await RejectsEmptyDevToolsMessage();
         await EvaluatesScriptsThroughWebviewCommands();
         await CompletesEvalCallbackOnBoundChannel();
         await DeniesCloseThroughWindowCommand();
@@ -578,6 +581,7 @@ internal static class Program
             "plugin:webview|create",
             "plugin:webview|set-bounds",
             "plugin:webview|destroy",
+            "plugin:webview|send-devtools-message",
         };
         // The internal completion command deliberately reuses the eval-with-callback permission id,
         // so it is routed as a command but never registered as its own permission.
@@ -599,6 +603,7 @@ internal static class Program
         Assert(
             builder.RegisteredPermissions.Contains("plugin:webview|set-bounds-other-webview") &&
             builder.RegisteredPermissions.Contains("plugin:webview|destroy-other-webview") &&
+            builder.RegisteredPermissions.Contains("plugin:webview|send-devtools-message-other-webview") &&
             builder.RegisteredPermissions.Contains("plugin:webview|create-other-window"),
             "The cross-surface and cross-window permission variants must be registered.");
     }
@@ -940,6 +945,59 @@ internal static class Program
             new CommandContext("editor", "editor", new CapabilitySet(["plugin:webview|destroy"])));
         Assert(!denied.Success, "Destroying another web view without -other-webview must fail.");
         Assert(denied.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
+    }
+
+    private static async Task RoutesSendDevToolsMessageToService()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+
+        var response = await router.InvokeAsync(
+            Request(
+                "plugin:webview|send-devtools-message",
+                new WebviewDevToolsMessageOptions("{\"id\":1,\"method\":\"Runtime.enable\"}"),
+                TaruiJsonContext.Default.WebviewDevToolsMessageOptions),
+            new CommandContext("main", "main", new CapabilitySet(["plugin:webview|send-devtools-message"])));
+
+        Assert(response.Success, "Sending a CDP message on the caller's own web view must succeed.");
+        Assert(
+            service.Calls.Contains("send-devtools-message|main|{\"id\":1,\"method\":\"Runtime.enable\"}"),
+            "The CDP message must reach the service.");
+    }
+
+    private static async Task DeniesSendDevToolsMessageWithoutPermission()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+
+        var denied = await router.InvokeAsync(
+            Request(
+                "plugin:webview|send-devtools-message",
+                new WebviewDevToolsMessageOptions("{}"),
+                TaruiJsonContext.Default.WebviewDevToolsMessageOptions),
+            new CommandContext("main", "main", new CapabilitySet(["plugin:webview|list"])));
+
+        Assert(!denied.Success, "Sending a CDP message must be denied without its permission.");
+        Assert(denied.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
+        Assert(
+            !service.Calls.Any(call => call.StartsWith("send-devtools-message", StringComparison.Ordinal)),
+            "A denied send must never reach the service.");
+    }
+
+    private static async Task RejectsEmptyDevToolsMessage()
+    {
+        var service = new FakeWebviewService();
+        var router = BuildRouter(service);
+
+        var invalid = await router.InvokeAsync(
+            Request(
+                "plugin:webview|send-devtools-message",
+                new WebviewDevToolsMessageOptions("   "),
+                TaruiJsonContext.Default.WebviewDevToolsMessageOptions),
+            new CommandContext("main", "main", new CapabilitySet(["plugin:webview|send-devtools-message"])));
+
+        Assert(!invalid.Success, "An empty CDP message must be rejected.");
+        Assert(invalid.Error?.Code == "INVALID_ARGUMENTS", "The error must be INVALID_ARGUMENTS.");
     }
 
     private static void ResolvesWebviewPluginThroughServiceCollection()

@@ -111,6 +111,7 @@ describe('@lytree/api/window', () => {
 - `Tarui.Plugins.Tests` —— 插件组合 + 路由器
 - `Tarui.Shell.Tests` / `Tarui.Hosting.Tests` —— Shell 组合 + Host 生命周期
 - `Tarui.Architecture.Tests` —— 反射 / 扫描门禁
+- `Tarui.Bindings.Tests` —— 生成命令契约 ↔ `@lytree/api` 的 `invoke('…')` 字面量双向漂移门禁
 - `Tarui.WebView.Tests` —— CefGlue 适配 + Scheme 安全规则
 - `Tarui.Http.Tests` —— HTTP 客户端(scope / 重定向 / 流式)
 - `Tarui.ShellPlugin.Tests` —— 插件层集成

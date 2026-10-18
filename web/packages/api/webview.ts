@@ -26,6 +26,14 @@ export type WebviewRuntimeInfo = {
 /** Fired when the webview renderer process terminates abnormally. */
 export const RENDER_PROCESS_GONE_EVENT = 'webview://render-process-gone'
 
+/** Fired for every CDP message (method result or event) the browser emits. */
+export const DEVTOOLS_PROTOCOL_EVENT = 'webview://devtools-protocol'
+
+/** A raw Chrome DevTools Protocol JSON message emitted by the browser. */
+export type DevtoolsProtocolMessage = {
+  message: string
+}
+
 /** Position and size of a web view surface inside its host window (logical units). */
 export type WebviewBounds = {
   x: number
@@ -138,6 +146,15 @@ export class Webview {
     await invoke('plugin:webview|destroy', this.target())
   }
 
+  /**
+   * Sends a raw Chrome DevTools Protocol message to this webview (for example
+   * `{"id":1,"method":"Runtime.enable"}`). Requires the `plugin:webview|send-devtools-message`
+   * permission and a runtime that exposes the DevTools protocol channel.
+   */
+  async sendDevtoolsMessage(message: string): Promise<void> {
+    await invoke('plugin:webview|send-devtools-message', { message, ...this.target() })
+  }
+
   /** Evaluates a script in this webview. Execution is asynchronous; the result is not observed. */
   async evalScript(script: string): Promise<void> {
     await invoke('plugin:webview|eval', { script, ...this.target() })
@@ -176,6 +193,11 @@ export class Webview {
   /** Fires when the webview renderer process terminates abnormally. */
   onRenderProcessGone(handler: (event: RenderProcessGoneEvent) => void): Unlisten {
     return listen<RenderProcessGoneEvent>(RENDER_PROCESS_GONE_EVENT, event => handler(event.payload))
+  }
+
+  /** Fires for every CDP protocol message the browser emits for this webview. */
+  onDevtoolsProtocol(handler: (message: DevtoolsProtocolMessage) => void): Unlisten {
+    return listen<DevtoolsProtocolMessage>(DEVTOOLS_PROTOCOL_EVENT, event => handler(event.payload))
   }
 
   private target(): Record<string, unknown> {

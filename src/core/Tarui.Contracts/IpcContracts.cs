@@ -200,6 +200,8 @@ public sealed record StreamEchoArgs(string? Channel, int Count);
 [JsonSerializable(typeof(WebviewBounds))]
 [JsonSerializable(typeof(WebviewCreateOptions))]
 [JsonSerializable(typeof(WebviewSetBoundsOptions))]
+[JsonSerializable(typeof(WebviewDevToolsMessageOptions))]
+[JsonSerializable(typeof(WebViewDevToolsMessageEvent))]
 [JsonSerializable(typeof(WebviewEvalOptions))]
 [JsonSerializable(typeof(WebviewEvalCallbackOptions))]
 [JsonSerializable(typeof(WebviewEvalCompleteOptions))]

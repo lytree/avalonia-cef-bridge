@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.Configuration;
@@ -28,6 +28,9 @@ internal static class Program
         await WindowFanoutWithoutWebviewsIsNoOp();
         WebviewSessionExposesSeparateWindowAndWebviewLabels();
         await ClosingWindowDisposesEveryHostedWebview();
+        await EmitsDevToolsProtocolEventWhenAuthorized();
+        await SuppressesDevToolsProtocolEventWithoutCapability();
+        await IgnoresDevToolsMessagesFromWebViewWithoutProtocol();
         WebviewSurfaceHostFillsUnboundedAndPositionsBounded();
         AttachWebviewRegistersInWebviewRegistry();
         await RepeatedWebviewChurnLeavesNoResidue();
@@ -937,6 +940,56 @@ internal static class Program
         Assert(mainView.DisposeAsyncCallCount == 1, "Web view disposal must be idempotent.");
     }
 
+    private static Task EmitsDevToolsProtocolEventWhenAuthorized()
+    {
+        var capabilities = new CapabilitySet([], ["webview://devtools-protocol"], []);
+        var webView = new FakeDevToolsWebView();
+        var (host, sink, _) = CreateWebViewHost(capabilities, webView: webView);
+
+        using (host)
+        {
+            webView.RaiseDevToolsMessage("{\"method\":\"Runtime.consoleAPICalled\"}");
+        }
+
+        var message = sink.Events.SingleOrDefault(entry => entry.Event == "webview://devtools-protocol");
+        Assert(
+            message.Event == "webview://devtools-protocol",
+            "An authorized window must receive the CDP message.");
+        Assert(
+            message.Payload.GetProperty("message").GetString() == "{\"method\":\"Runtime.consoleAPICalled\"}",
+            "The CDP payload must carry the raw message.");
+        return Task.CompletedTask;
+    }
+
+    private static Task SuppressesDevToolsProtocolEventWithoutCapability()
+    {
+        var webView = new FakeDevToolsWebView();
+        var (host, sink, _) = CreateWebViewHost(new CapabilitySet([], [], []), webView: webView);
+
+        using (host)
+        {
+            webView.RaiseDevToolsMessage("{}");
+        }
+
+        Assert(sink.Events.Count == 0, "A window without the CDP event capability must not receive the message.");
+        return Task.CompletedTask;
+    }
+
+    private static Task IgnoresDevToolsMessagesFromWebViewWithoutProtocol()
+    {
+        var capabilities = new CapabilitySet([], ["webview://devtools-protocol"], []);
+        var (host, sink, _) = CreateWebViewHost(capabilities);
+
+        using (host)
+        {
+            // A plain FakeWebView does not implement ITaruiDevToolsProtocol, so the session never
+            // subscribes; constructing it must stay safe and emit nothing.
+        }
+
+        Assert(sink.Events.Count == 0, "A web view without the CDP channel must not emit protocol events.");
+        return Task.CompletedTask;
+    }
+
     private static void WebviewSurfaceHostFillsUnboundedAndPositionsBounded()
     {
         var (mainEntry, _) = CreateWebviewEntry("main", "main");
@@ -1286,13 +1339,14 @@ internal static class Program
     private static (WebviewSession Host, FakeSink Sink, FakeWebView WebView) CreateWebViewHost(
         CapabilitySet capabilities,
         WebViewRequestPolicy? policy = null,
-        CommandContext? context = null)
+        CommandContext? context = null,
+        FakeWebView? webView = null)
     {
         var registry = new FakeSinkRegistry();
         var sink = registry.Add("main", capabilities);
         var router = new EventRouter(registry, new EventHub());
         var dispatcher = new IpcDispatcher(new CommandRouterBuilder().Build());
-        var webView = new FakeWebView();
+        webView ??= new FakeWebView();
 
         var host = new WebviewSession(
             new FixedWebViewFactory(webView),
@@ -1320,7 +1374,26 @@ internal static class Program
         public ITaruiAvaloniaWebView Create(TaruiWebViewOptions options) => new FakeWebView();
     }
 
-    private sealed class FakeWebView : ITaruiAvaloniaWebView, IAsyncDisposable
+    /// <summary>A web view that also exposes the optional CDP channel, used to exercise the event path.</summary>
+    private sealed class FakeDevToolsWebView : FakeWebView, ITaruiDevToolsProtocol
+    {
+        public List<string> SentMessages { get; } = [];
+
+        public bool SendResult { get; set; } = true;
+
+        public event EventHandler<TaruiDevToolsMessageEventArgs>? DevToolsMessageReceived;
+
+        public bool TrySendDevToolsMessage(string message)
+        {
+            SentMessages.Add(message);
+            return SendResult;
+        }
+
+        public void RaiseDevToolsMessage(string json) =>
+            DevToolsMessageReceived?.Invoke(this, new TaruiDevToolsMessageEventArgs(json));
+    }
+
+    private class FakeWebView : ITaruiAvaloniaWebView, IAsyncDisposable
     {
 #pragma warning disable CS0067 // The message and drag-region events are part of the interface but unused by routing tests.
         public event EventHandler<TaruiWebMessage>? MessageReceived;

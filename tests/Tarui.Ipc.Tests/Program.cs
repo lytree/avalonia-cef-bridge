@@ -16,6 +16,7 @@ internal static class Program
         DeduplicatesRegisteredPermissions();
         ExposesRouterRegisteredPermissions();
         await HandlerExceptionsDoNotCorruptDispatcherAsync();
+        await MapsNotSupportedExceptionToNotSupportedCode();
         await StreamsProgressFramesThroughBoundChannelAsync();
         await ChannelDegradesToInMemoryBufferWithoutSinkAsync();
         await DeniesStreamingCommandOutsideCapabilityAsync();
@@ -75,6 +76,28 @@ internal static class Program
 
         Assert(!response.Success, "A command outside the capability must fail.");
         Assert(response.Error?.Code == "PERMISSION_DENIED", "The error must be PERMISSION_DENIED.");
+    }
+
+    private static async Task MapsNotSupportedExceptionToNotSupportedCode()
+    {
+        // A handler that needs a runtime capability the current backend lacks reports NOT_SUPPORTED so
+        // the front end can distinguish "unsupported here" from a generic COMMAND_FAILED.
+        var builder = new CommandRouterBuilder();
+        builder.Add(
+            "test:echo",
+            TaruiJsonContext.Default.EmptyArgs,
+            TaruiJsonContext.Default.Unit,
+            static (_, _, _) => throw new NotSupportedException("no runtime channel"),
+            "test:echo");
+
+        var response = await builder.Build().InvokeAsync(
+            Request("3"),
+            new CommandContext("main", "main", new CapabilitySet(["test:echo"])));
+
+        Assert(!response.Success, "A command without runtime support must fail.");
+        Assert(
+            response.Error?.Code == "NOT_SUPPORTED",
+            $"The error must be NOT_SUPPORTED but was '{response.Error?.Code}'.");
     }
 
     private static async Task DispatchesRegisteredCommandWithoutDynamicBinding()

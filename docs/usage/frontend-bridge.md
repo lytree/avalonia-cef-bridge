@@ -198,6 +198,10 @@ const panel = await Webview.create({
 await panel.setBounds({ x: 0, y: 0, width: 200, height: 200 }); // 重新定位
 await panel.setBounds(null);                                     // 恢复填满窗口
 await panel.destroy();                                           // 卸载并释放
+
+// CDP:发送一条 Chrome DevTools Protocol 消息并订阅浏览器回传
+await wv.sendDevtoolsMessage('{"id":1,"method":"Runtime.enable"}');
+const off = wv.onDevtoolsProtocol(({ message }) => console.log('cdp', message));
 ```
 
-`Webview.create()` 对应 `plugin:webview|create`(在既有窗口内挂载新 surface,宿主窗口继承其 capability;跨窗口需 `plugin:webview|create-other-window`)。`setBounds(null)` / `destroy()` 分别对应 `plugin:webview|set-bounds`(受 `-other-webview` 约束)与 `plugin:webview|destroy`。列表与生命周期订阅:`Webview.getAll()`、`onDownloadRequested` / `onNavigationRequested` / `onRenderProcessGone`。
+`Webview.create()` 对应 `plugin:webview|create`(在既有窗口内挂载新 surface,宿主窗口继承其 capability;跨窗口需 `plugin:webview|create-other-window`)。`setBounds(null)` / `destroy()` 分别对应 `plugin:webview|set-bounds`(受 `-other-webview` 约束)与 `plugin:webview|destroy`。`sendDevtoolsMessage()` 对应 `plugin:webview|send-devtools-message`(受权限 + `-other-webview` 约束,默认不授权;承载后端不支持 CDP 时报 `NOT_SUPPORTED`),`onDevtoolsProtocol` 订阅保留事件 `webview://devtools-protocol`(须在 capability `events` 中声明)。列表与生命周期订阅:`Webview.getAll()`、`onDownloadRequested` / `onNavigationRequested` / `onRenderProcessGone`。

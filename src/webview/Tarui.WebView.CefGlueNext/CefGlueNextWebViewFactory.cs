@@ -135,7 +135,7 @@ public sealed class CefGlueNextWebViewFactory : ITaruiWebViewFactory, ITaruiAval
     }
 }
 
-public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
+public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, ITaruiDevToolsProtocol, IAsyncDisposable
 {
     private readonly CefGlueNextAvaloniaWebView _component;
     private EventHandler<TaruiWebMessage>? _messageReceived;
@@ -146,6 +146,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
     private EventHandler<TaruiWebViewNavigationEventArgs>? _navigationRequested;
     private EventHandler<TaruiWebViewDragRegionEventArgs>? _dragRegionsUpdated;
     private EventHandler<TaruiWebViewRenderProcessGoneEventArgs>? _renderProcessGone;
+    private EventHandler<TaruiDevToolsMessageEventArgs>? _devToolsMessageReceived;
     private int _disposeState;
 
     public CefGlueNextWebView(TaruiWebViewOptions options)
@@ -161,6 +162,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         _component.ExternalNavigationRequested += OnComponentExternalNavigationRequested;
         _component.DragRegionsUpdated += OnComponentDragRegionsUpdated;
         _component.RenderProcessGone += OnComponentRenderProcessGone;
+        _component.DevToolsMessageReceived += OnComponentDevToolsMessage;
     }
 
     public Control Control => _component;
@@ -215,6 +217,12 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         remove => _renderProcessGone -= value;
     }
 
+    public event EventHandler<TaruiDevToolsMessageEventArgs>? DevToolsMessageReceived
+    {
+        add => _devToolsMessageReceived += value;
+        remove => _devToolsMessageReceived -= value;
+    }
+
     public void Navigate(Uri source) => _component.Navigate(source);
 
     public void SetDevTools(bool open)
@@ -228,6 +236,9 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
             _component.CloseDevTools();
         }
     }
+
+    /// <summary>Sends a raw CDP JSON message to the browser; false when the browser is not ready yet.</summary>
+    public bool TrySendDevToolsMessage(string message) => _component.SendDevToolsMessage(message);
 
     /// <summary>Sets the page zoom factor (1.0 = 100%, must be finite and positive).</summary>
     public void SetZoom(double factor) => _component.SetZoom(factor);
@@ -285,6 +296,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         _component.ExternalNavigationRequested -= OnComponentExternalNavigationRequested;
         _component.DragRegionsUpdated -= OnComponentDragRegionsUpdated;
         _component.RenderProcessGone -= OnComponentRenderProcessGone;
+        _component.DevToolsMessageReceived -= OnComponentDevToolsMessage;
         _component.Dispose();
         _messageReceived = null;
         _fileDropEntered = null;
@@ -294,6 +306,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         _navigationRequested = null;
         _dragRegionsUpdated = null;
         _renderProcessGone = null;
+        _devToolsMessageReceived = null;
     }
 
     public async ValueTask DisposeAsync()
@@ -319,6 +332,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         _component.ExternalNavigationRequested -= OnComponentExternalNavigationRequested;
         _component.DragRegionsUpdated -= OnComponentDragRegionsUpdated;
         _component.RenderProcessGone -= OnComponentRenderProcessGone;
+        _component.DevToolsMessageReceived -= OnComponentDevToolsMessage;
     }
 
     private void ClearEventHandlers()
@@ -331,10 +345,14 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, IAsyncDisposable
         _navigationRequested = null;
         _dragRegionsUpdated = null;
         _renderProcessGone = null;
+        _devToolsMessageReceived = null;
     }
 
     private void OnComponentMessageReceived(object? sender, string message) =>
         _messageReceived?.Invoke(this, new TaruiWebMessage(message));
+
+    private void OnComponentDevToolsMessage(object? sender, TaruiDevToolsMessageEventArgs args) =>
+        _devToolsMessageReceived?.Invoke(this, args);
 
     private void OnComponentFileDropEntered(object? sender, CefGlueNextAvaloniaFileDropEventArgs args)
     {

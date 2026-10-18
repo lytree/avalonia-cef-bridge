@@ -25,12 +25,14 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
     private const string DownloadRequestedEvent = "webview://download-requested";
     private const string NavigationRequestedEvent = "webview://navigation-requested";
     private const string RenderProcessGoneEvent = "webview://render-process-gone";
+    private const string DevToolsProtocolEvent = "webview://devtools-protocol";
     private const string BridgeErrorCode = "BRIDGE_ERROR";
 
     private readonly IpcDispatcher _dispatcher;
     private readonly EventRouter _eventRouter;
     private readonly WebViewRequestPolicy _policy;
     private readonly ITaruiAvaloniaWebView _webView;
+    private readonly ITaruiDevToolsProtocol? _devToolsProtocol;
     private int _disposeState;
 
     /// <summary>The underlying web view and the Avalonia surface it carries.</summary>
@@ -65,6 +67,13 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         _webView.DownloadRequested += OnDownloadRequested;
         _webView.NavigationRequested += OnNavigationRequested;
         _webView.RenderProcessGone += OnRenderProcessGone;
+        // The DevTools protocol channel is an optional capability: a backend without CDP simply does
+        // not implement it, so the session stays silent for that surface.
+        if (_webView is ITaruiDevToolsProtocol devToolsProtocol)
+        {
+            _devToolsProtocol = devToolsProtocol;
+            devToolsProtocol.DevToolsMessageReceived += OnDevToolsMessage;
+        }
     }
 
     public async ValueTask<string> DispatchMessageAsync(
@@ -195,6 +204,21 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
     }
 
     private bool MayReceive(string eventName) => Context.Capabilities.AllowsEvent(eventName);
+
+    private void OnDevToolsMessage(object? sender, TaruiDevToolsMessageEventArgs args)
+    {
+        if (!MayReceive(DevToolsProtocolEvent))
+        {
+            return;
+        }
+
+        FireAndForget.Run(_eventRouter.EmitToWebviewAsync(
+            WebviewLabel,
+            DevToolsProtocolEvent,
+            JsonSerializer.SerializeToElement(
+                new WebViewDevToolsMessageEvent(args.Message),
+                TaruiJsonContext.Default.WebViewDevToolsMessageEvent)));
+    }
 
     private void OnRenderProcessGone(object? sender, TaruiWebViewRenderProcessGoneEventArgs args)
     {
@@ -353,5 +377,9 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         _webView.DownloadRequested -= OnDownloadRequested;
         _webView.NavigationRequested -= OnNavigationRequested;
         _webView.RenderProcessGone -= OnRenderProcessGone;
+        if (_devToolsProtocol is not null)
+        {
+            _devToolsProtocol.DevToolsMessageReceived -= OnDevToolsMessage;
+        }
     }
 }

@@ -121,6 +121,27 @@ public sealed class AvaloniaWebviewService(
         return new Unit();
     }
 
+    public ValueTask<Unit> SendDevToolsMessageAsync(string webviewLabel, string message, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var session = webviews.Get(webviewLabel).Session;
+            if (session.WebView is not ITaruiDevToolsProtocol protocol)
+            {
+                throw new NotSupportedException(
+                    $"Web view '{webviewLabel}' does not expose a DevTools protocol channel.");
+            }
+
+            if (!protocol.TrySendDevToolsMessage(message))
+            {
+                throw new NotSupportedException(
+                    $"Web view '{webviewLabel}' is not ready to receive DevTools protocol messages.");
+            }
+        }).GetTask().GetAwaiter().GetResult();
+        return ValueTask.FromResult(new Unit());
+    }
+
     public ValueTask<Unit> SetDevToolsAsync(string webviewLabel, bool open, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

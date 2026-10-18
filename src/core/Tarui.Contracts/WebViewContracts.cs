@@ -28,6 +28,12 @@ public sealed record WebviewCreateOptions(
 /// <summary>Repositions or resizes a web view surface; null bounds restore window fill.</summary>
 public sealed record WebviewSetBoundsOptions(WebviewBounds? Bounds, string? Label = null);
 
+/// <summary>Sends a raw Chrome DevTools Protocol (CDP) JSON message to a web view.</summary>
+public sealed record WebviewDevToolsMessageOptions(string Message, string? Label = null);
+
+/// <summary>Reserved <c>webview://devtools-protocol</c> payload carrying a raw CDP JSON message.</summary>
+public sealed record WebViewDevToolsMessageEvent(string Message);
+
 /// <summary>The observable state of a web view and its host window.</summary>
 public sealed record WebviewStateInfo(
     string Label,

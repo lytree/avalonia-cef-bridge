@@ -1,6 +1,6 @@
 # Tarui 与 Tauri v3 差异分析与改造方案
 
-> 状态：分析基线 + 改造方案；**V3-0（运行时身份与扩展表面）与 V3-1（单窗口多 WebView）已于 2026-10-17 实施完成**，其余阶段待排期
+> 状态：分析基线 + 改造方案；**V3-0（运行时身份）、V3-1（单窗口多 WebView）、V3-3（DX：CDP 通道 + 类型化契约）已实施完成**；V3-2（权限集合）待排期
 > 基线日期：2026-10-17
 > 对比对象：Tauri **3.0.0-alpha.0 … alpha.5**（2026-09-13 至 2026-10-14，GitHub Releases `tauri-v3.0.0-alpha.*`；稳定线为 2.12.4）、`tauri-runtime-wry` / `tauri-runtime-cef` 3.0.0-alpha、`@tauri-apps/cli` 3.0.0-alpha.4/5
 > 姊妹文档：[`alignment-plan.md`](alignment-plan.md)（v2 对齐实施，继续有效）、[`gap-analysis.md`](gap-analysis.md)（v2 / Wails v3 缺口；其 §5 P0-0 与本文 V3-1 对应）、[`webview.md`](webview.md)、[`web-resource-mode.md`](web-resource-mode.md)
@@ -30,8 +30,8 @@
 | # | Tauri v3 变更 | Tarui 现状 | 评级 | 归属 |
 | --- | --- | --- | --- | --- |
 | D1 | T1 运行时构建期选择（`DynRuntime` + `.runtime()` + `RuntimeNotConfigured`） | `Tarui.WebView.Abstractions` 的 `ITaruiWebView` / `ITaruiWebViewFactory` 已浏览器中立（不变量 3 守护），且 `Tarui.Shell` / `Tarui.Hosting` **只引用** `Tarui.WebView.Abstractions` + `Tarui.WebView.Avalonia`（不引用 CefGlueNext，见下方 §4.1 前提修正）；真实差距是：(a) 缺少“运行时身份”契约（name / webviewVersion / origin / resourceMode 无统一出口）；(b) `CefGlueNextWebViewFactory` 同时承担「工厂」与「CEF 运行时初始化」两个职责；(c) 组合根没有显式“运行时”概念，等价于 v2 的 `tauri::Wry` 硬编码 | **高**（已实施 V3-0，见 §4.1） | V3-0 |
-| D2 | T2 运行时特有表面隔离（扩展 trait + `RuntimeTypeMismatch`） | CEF 特有能力（UserAgent/Proxy 透传、CDP 消息）与通用能力混在 `CefGlueNext` 适配层，无独立入口；前端与宿主代码无从区分"通用 vs 运行时特有" | 中 | V3-0 |
-| D3 | T3 CEF 运行时的 CDP 通道（`send_dev_tools_message` / `on_dev_tools_protocol`） | Tarui 本就是 CEF-only（定位 ≈ 官方 `tauri-runtime-cef`）；vendored CefGlue 已具备 `CefBrowserHost.SendDevToolsMessage` / `ExecuteDevToolsMethod` / `CefDevToolsMessageObserver`，但 Tarui 抽象只暴露 `plugin:webview\|devtools`（Show/Close 级别），无 CDP 收发命令 | 中 | V3-3 |
+| D2 | T2 运行时特有表面隔离（扩展 trait + `RuntimeTypeMismatch`） | 运行时不匹配的 CDP 通道已隔离为 Abstractions 的可选能力接口 `ITaruiDevToolsProtocol`（仅 CEF 实现，宿主 `is` 探测，缺失报 `NOT_SUPPORTED`，见 §4.4）；其余 CEF 专有的 UserAgent/Proxy 透传仍为 `Tarui.WebView.CefGlueNext` 初始化期配置，无独立入口 | 中（部分对齐） | V3-3 |
+| D3 | T3 CEF 运行时的 CDP 通道（`send_dev_tools_message` / `on_dev_tools_protocol`） | 已实施（V3-3）：`ITaruiDevToolsProtocol`（Abstractions 可选接口）+ `CefGlueNextAvaloniaWebView` 经 `CefBrowserHost.AddDevToolsMessageObserver` 收发；`plugin:webview\|send-devtools-message` 命令 + `webview://devtools-protocol` 事件（capability 门控，demo 默认不授权）；前端 `Webview.sendDevtoolsMessage` / `onDevtoolsProtocol` | 小（已实施） | V3-3 |
 | D4 | T4 scheme URL 格式由运行时定义 + 资产路径从 URI 解析 | `CefGlueNextWebAppOptions` 已有可配 scheme（默认 `tarui`）+ domain（`localhost`）+ **HTTP/Scheme 双资源模式**（`TaruiAppOrigin`），语义上已达到甚至超出 v3 的 `custom_scheme_url`；差距在结构：该决策埋在 CefGlueNext 适配层，`WebViewRequestPolicy` 与策略测试仍按 `tarui://localhost` 字面假设 | 小 | V3-0 |
 | D5 | T4 `webview_version` 成为运行时必需 API | `CefGlueNextPortInfo.CefVersion`（`150.0.11`）经 `CefGlueNextWebRuntime.WebviewVersion` 暴露，并通过 `plugin:webview\|runtime-info` + `@lytree/api/webview` 的 `runtimeInfo()` 抵达前端（V3-0 已落地） | 小（已实施） | V3-0 |
 | D6 | T5 Linux GTK3/GTK4 可选、无 GTK 构建 | 窗口层是 Avalonia 12.1（Linux 自带 GTK3 线）；CEF 150 运行时的 GTK 链由 CEF 分发决定，Tarui 无法单独选择 | 观察 | — |
@@ -39,7 +39,7 @@
 | D8 | T6 资源目录解析（dev 源路径直读、live 生效、镜像 remap） | dev 前端走 Vite dev server（HTTP 模式）或 wwwroot 静态资源，**不存在** v3 所解决的"build 脚本拷贝资源触发重编"痛点；但 Tarui 也尚未形成 `resourceDir` 级别的原生资源目录抽象（fs 插件的 resources 只读 scope 是独立概念） | 小 | V3-3 评估 |
 | D9 | T7 ACL 精简（manifest `commands` 按需物化 + 应用命令隐式 `allow-*`/`deny-*`） | 权限按命令逐条显式注册（`RegisteredPermissions`），capability 逐条列举；`CapabilitySet` 仅有 `*` 全通配（生产禁用）；**无权限集合**（`plugin:fs\|default` 类标识尚未实现，见 alignment-plan §4.1） | 中 | V3-2 |
 | D10 | T8 macOS 私有 API 退役 | 透明窗口走 Avalonia `TransparencyLevelHint`，Tarui 从未有 `macos-private-api` 类开关 | 不适用 | — |
-| D11 | T8 specta 类型化 bindings | `@lytree/api` 32 个模块全部手写；`Tarui.Ipc.Generators` 只生成 C# 侧 `GeneratedCommandCatalog`，不覆盖 TS。gap-analysis §4 已把 bindings 自动生成列为 Wails v3 对照下的显著差距，v3 将其升级为官方方向 | 中（DX 高价值） | V3-3 |
+| D11 | T8 specta 类型化 bindings | 已实施（V3-3 v1）：`Tarui.Ipc.Generators` 从 `commands.Add("id", …)` 调用点生成每程序集 `{Assembly}CommandCatalog`（`{ Id, Input, Output }` 契约）；新增 `tests/Tarui.Bindings.Tests` 把生成契约与手写 `@lytree/api` 的 `invoke('…')` 字面量做双向漂移校验。全量 `.d.ts` 生成与权限字段仍延后 | 中（v1 已实施） | V3-3 |
 | D12 | T8 `tauri migrate` / NSIS 键名 / MSRV | Tarui 无历史版本迁移负担；产物为 zip / MSIX / `.app` / `.app.tar.gz`，无 NSIS；MSRV 是 Rust 侧概念 | 不适用 | — |
 | D13 | 单窗口多 WebView（v2 既有模型，v3 保留 Window/Webview 独立实体） | **架构级缺口**（gap-analysis §3.1 / §5 P0-0）：`WindowOptions`→`IWebViewFactory` 为窗口↔webview 一对一强绑定。`Tarui.Plugins.Webview` 的 `IWebviewService` 契约已声明"webview 与宿主窗口解耦、可按 `webviewLabel` 独立寻址"（`navigate/get-state/devtools/set-zoom/print/eval/eval-with-callback/list` 命令 + own/other-webview 权限），即**插件层寻址已就绪，缺底层多 WebView 挂载** | **高**（已实施 V3-1） | V3-1 |
 | D14 | T8 tracing 观测 | `Tarui.Plugins.Log` 已实现 renderer→MEL 双向桥接，等价 | 小/已等价 | — |
@@ -49,7 +49,7 @@
 
 - **架构级（P0）**：D1（运行时身份未显式化，已实施 V3-0）、D13（单窗口多 WebView，已实施 V3-1）。D13 曾是 v2 对齐遗留的唯一架构级缺口，v3 延续该模型，本次一并完成。
 - **结构级（P1）**：D2（运行时特有表面）、D9（权限集合与清单精简）。
-- **增强级（P2）**：D3（CDP 通道）、D5（版本暴露）、D11（bindings 生成）、D8（resourceDir 评估）。
+- **增强级（P2）**：D3（CDP 通道，已实施 V3-3）、D5（版本暴露，已实施 V3-0）、D11（bindings 生成，V3-3 v1 已实施）、D8（resourceDir 评估）。
 - **已等价或超出**：D4（双资源模式 > `custom_scheme_url` 单一方案）、D14。
 - **上游主导/不适用**：D6、D7（Avalonia/CEF 决定）、D10、D12、D15。
 
@@ -139,6 +139,14 @@
 ### 4.4 Phase V3-3：开发体验增强（对齐 T3/T8 的 DX 方向）
 
 按价值排序，逐项独立可交付：
+
+**实施状态（2026-10-18，已交付项 2/3；项 1 已随 V3-0；项 4 仅评估登记）**：
+
+- **CDP 消息通道（D3，已交付）**：Abstractions 新增可选能力接口 `ITaruiDevToolsProtocol`（`TrySendDevToolsMessage` + `DevToolsMessageReceived`），仅 `CefGlueNextAvaloniaWebView` / `CefGlueNextWebView` 实现（经 `LifeSpanHandler.OnAfterCreated` → `CefBrowserHost.AddDevToolsMessageObserver`，不改 vendored CefGlue）；`plugin:webview|send-devtools-message` 命令（权限 + `-other-webview`）与保留事件 `webview://devtools-protocol`（capability 门控，demo 默认不授权）；`CommandRouter` 新增 `NOT_SUPPORTED` 错误码；前端 `Webview.sendDevtoolsMessage` / `onDevtoolsProtocol`。
+- **类型化命令契约（D11 v1，已交付）**：生成器改为从 `commands.Add("id", TaruiJsonContext.Default.Input, …)` 调用点发现命令（覆盖属性处理器与内联 lambda，5/6 参数两种签名），产出每程序集 `{Assembly}CommandCatalog`（`Contracts` = `{ Id, Input, Output }`）；新增 `tests/Tarui.Bindings.Tests` 做生成契约 ↔ 手写 `@lytree/api` 的 `invoke('…')` 字面量双向漂移校验。
+- **偏差登记**：契约 v1 不含权限与 `.d.ts`（按文档延后）；生成器的「DTO 未入 JsonContext」诊断未加（分析器发布跟踪 RS2008 的维护成本高于收益，延后）；CEF 真机 CDP 收发路径无法在控制台自测，真机验收沿用 §6-10 待办；D2 的 `ICefWebviewExtension` 未单独建（CDP 已由 `ITaruiDevToolsProtocol` 覆盖，`browser_runtime_style` 等无消费者的预留位不建，避免为抽象而抽象）。
+
+实施步骤（原文）：
 
 1. **webview 版本暴露**（D5）：若 V3-0 未覆盖，在握手或 `runtime-info` 中落地；
 2. **CDP 消息通道**（D3）：`plugin:webview|send-devtools-message` / `on-devtools-protocol` 事件（capability 门控，默认不授权），基于 `CefBrowserHost.SendDevToolsMessage` + `CefDevToolsMessageObserver`；解锁性能分析、内存快照等工具链；

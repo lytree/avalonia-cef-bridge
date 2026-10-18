@@ -59,6 +59,7 @@ Tarui IPC 改为固定的 `window.invokeCSharpAction(json)` CEF process message 
 - `CefGlueNextAvaloniaRuntimeOptions.UserAgent` / `ProxyServer` 把对应 CEF 命令行 / `CefSettings` 字段透传(仅初始化期有效)。
 - `CefGlueCookieStore` 提供 `IWebViewCookieManager` 实现,无浏览器宿主时由插件层诚实降级。
 - `IWebViewPermissionGuard` / `WindowPermissionGuard` 把 Capability 解析结果与导航 / 下载决策绑定。
+- `ITaruiDevToolsProtocol`(Abstractions 的可选能力接口)由 CEF 适配层实现,提供 CDP 消息收发(`TrySendDevToolsMessage` + `DevToolsMessageReceived`,经 `CefBrowserHost.AddDevToolsMessageObserver` 注册观察者);宿主经 `is` 探测,缺失时 `plugin:webview|send-devtools-message` 报 `NOT_SUPPORTED`。这是「运行时特有表面隔离」的落地——通用契约不带 CDP,支持 CDP 的后端才实现该接口。
 
 直接使用 Avalonia 的应用:安装 `Tarui.WebView.CefGlueNext`,在 host 启动前调用 `CefGlueNextAvaloniaRuntime.RunSubProcess(args)`,初始化一份运行时配置,嵌入 `CefGlueNextAvaloniaWebView`,并在退出 Avalonia 消息循环前 await 所有 WebView 的关闭。随后应用停止并释放 Host,在 `Program` 的 `finally` 块中调用 `CefGlueNextAvaloniaRuntime.Shutdown()`。Tarui 应用通常使用 `Tarui.WebView.CefGlueNext.AddCefGlueWebView()` 扩展,以便 Shell 施加窗口 capability 与 IPC 策略。
 

@@ -16,7 +16,8 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
         "plugin:webview|set-zoom",
         "plugin:webview|print",
         "plugin:webview|set-bounds",
-        "plugin:webview|destroy"
+        "plugin:webview|destroy",
+        "plugin:webview|send-devtools-message"
     ];
 
     public void ConfigureCommands(CommandRouterBuilder commands)
@@ -120,6 +121,15 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             TaruiJsonContext.Default.Unit,
             handlers.DestroyAsync,
             "plugin:webview|destroy");
+
+        // The DevTools protocol channel is capability-gated and off by default: sending CDP messages
+        // reaches the browser's protocol surface, so only a window that opts in may drive it.
+        commands.Add(
+            "plugin:webview|send-devtools-message",
+            TaruiJsonContext.Default.WebviewDevToolsMessageOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.SendDevToolsMessageAsync,
+            "plugin:webview|send-devtools-message");
 
         // Cross-webview operations require the <permission>-other-webview variant; register them as
         // valid permission IDs so capability files may reference them and validation stays strict.
@@ -243,6 +253,23 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.DestroyAsync(Resolve(options.Label, context, "plugin:webview|destroy"), cancellationToken);
+
+        [TaruiCommand("plugin:webview|send-devtools-message")]
+        public ValueTask<Unit> SendDevToolsMessageAsync(
+            WebviewDevToolsMessageOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(options.Message))
+            {
+                throw new InvalidPayloadException();
+            }
+
+            return service.SendDevToolsMessageAsync(
+                Resolve(options.Label, context, "plugin:webview|send-devtools-message"),
+                options.Message,
+                cancellationToken);
+        }
 
         private static string Resolve(string? requested, CommandContext context, string permission)
         {

@@ -43,6 +43,12 @@ public interface IWebviewService
     ValueTask<Unit> DestroyAsync(string webviewLabel, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Sends a raw Chrome DevTools Protocol message to a web view. Requires a runtime that exposes the
+    /// DevTools protocol channel; runtimes that do not report <c>NOT_SUPPORTED</c>.
+    /// </summary>
+    ValueTask<Unit> SendDevToolsMessageAsync(string webviewLabel, string message, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Reports the identity of the browser runtime backing every web view (name, engine version,
     /// resource mode and application origin). This is runtime-wide, not per-web-view.
     /// </summary>

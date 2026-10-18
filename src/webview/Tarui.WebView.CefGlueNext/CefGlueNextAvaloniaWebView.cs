@@ -1,8 +1,10 @@
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Tarui.WebView.Abstractions;
 using Xilium.CefGlue;
 using Xilium.CefGlue.Avalonia;
 using Xilium.CefGlue.Common;
@@ -16,6 +18,10 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
     private readonly CefGlueNextAvaloniaNavigationHandler _navigationHandler;
     private readonly CefGlueNextAvaloniaDownloadHandler _downloadHandler;
     private readonly CefGlueNextAvaloniaDragHandler _dragHandler;
+    private readonly CefGlueNextAvaloniaDevToolsLifeSpanHandler _devToolsLifeSpanHandler;
+    private CefBrowserHost? _devToolsHost;
+    private CefGlueNextAvaloniaDevToolsObserver? _devToolsObserver;
+    private CefRegistration? _devToolsRegistration;
     private readonly TaskCompletionSource<object?> _browserClosed =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<object?> _closeCompleted =
@@ -40,10 +46,12 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
         _navigationHandler = new CefGlueNextAvaloniaNavigationHandler(this);
         _downloadHandler = new CefGlueNextAvaloniaDownloadHandler(this);
         _dragHandler = new CefGlueNextAvaloniaDragHandler(this);
+        _devToolsLifeSpanHandler = new CefGlueNextAvaloniaDevToolsLifeSpanHandler(this);
 
         _browser.RequestHandler = _navigationHandler;
         _browser.DownloadHandler = _downloadHandler;
         _browser.DragHandler = _dragHandler;
+        _browser.LifeSpanHandler = _devToolsLifeSpanHandler;
         _browser.WebMessageReceived += OnWebMessageReceived;
         _browser.BrowserInitialized += OnBrowserInitialized;
         _browser.BrowserClosed += OnBrowserClosed;
@@ -87,6 +95,9 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
     /// <summary>Raised when the browser's render process terminated (crash, kill or other reason).</summary>
     public event EventHandler<CefGlueNextAvaloniaRenderProcessGoneEventArgs>? RenderProcessGone;
 
+    /// <summary>Raised for every CDP message (method result or event) the browser emits.</summary>
+    public event EventHandler<TaruiDevToolsMessageEventArgs>? DevToolsMessageReceived;
+
     public bool IsBrowserInitialized => _browser.IsBrowserInitialized;
 
     public bool IsLoading => _browser.IsLoading;
@@ -110,6 +121,52 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
 
     /// <summary>Closes the browser developer tools if they are currently open.</summary>
     public void CloseDevTools() => DevTools(false);
+
+    /// <summary>
+    /// Sends a raw CDP JSON message to the browser. Returns <c>false</c> when the browser has not been
+    /// created yet, so the caller can distinguish "not ready" from a real failure.
+    /// </summary>
+    public bool SendDevToolsMessage(string message)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        var sent = false;
+        InvokeOnUiThread(() =>
+        {
+            ThrowIfDisposed();
+            if (_devToolsHost is not null)
+            {
+                sent = _devToolsHost.SendDevToolsMessage(Encoding.UTF8.GetBytes(message));
+            }
+        });
+        return sent;
+    }
+
+    /// <summary>Attaches the CDP observer once the browser exists; invoked from the life span handler.</summary>
+    internal void AttachDevTools(CefBrowser browser)
+    {
+        if (_devToolsHost is not null)
+        {
+            return;
+        }
+
+        _devToolsHost = browser.GetHost();
+        _devToolsObserver = new CefGlueNextAvaloniaDevToolsObserver(this);
+        _devToolsRegistration = _devToolsHost.AddDevToolsMessageObserver(_devToolsObserver);
+    }
+
+    /// <summary>Marshals a received CDP message onto the UI thread and raises it.</summary>
+    internal void RaiseDevToolsMessage(string json)
+    {
+        var args = new TaruiDevToolsMessageEventArgs(json);
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            DevToolsMessageReceived?.Invoke(this, args);
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => DevToolsMessageReceived?.Invoke(this, args));
+    }
 
     private void DevTools(bool open)
     {
@@ -319,6 +376,11 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
             _browser.AddressChanged -= OnAddressChanged;
             _addressChangeHooked = false;
         }
+        _devToolsRegistration?.Dispose();
+        _devToolsRegistration = null;
+        _devToolsObserver = null;
+        _devToolsHost = null;
+        _browser.LifeSpanHandler = null;
         _browser.WebMessageReceived -= OnWebMessageReceived;
         _browser.BrowserInitialized -= OnBrowserInitialized;
         _browser.RequestHandler = null;

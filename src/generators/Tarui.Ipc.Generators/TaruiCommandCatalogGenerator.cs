@@ -2,38 +2,82 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Tarui.Ipc.Generators;
 
+/// <summary>
+/// Emits a per-assembly <c>{Assembly}CommandCatalog</c> describing every routed command. Commands are
+/// discovered from the literal <c>commands.Add("id", TaruiJsonContext.Default.Input,
+/// TaruiJsonContext.Default.Output, …)</c> call sites (the single registration path, covering both
+/// attribute-decorated handlers and inline lambdas) and carry the argument/result DTO type names.
+/// </summary>
 [Generator(LanguageNames.CSharp)]
 public sealed class TaruiCommandCatalogGenerator : IIncrementalGenerator
 {
+    private const string CommandRouterBuilderMetadataName = "Tarui.Ipc.CommandRouterBuilder";
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var commands = context.SyntaxProvider
-            .ForAttributeWithMetadataName(
-                "Tarui.Contracts.TaruiCommandAttribute",
-                static (node, _) => node is Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax,
-                static (attributeContext, _) => ReadCommand(attributeContext.TargetSymbol))
-            .Where(static name => name is not null)
-            .Select(static (name, _) => name!);
+            .CreateSyntaxProvider(
+                static (node, _) => node is InvocationExpressionSyntax invocation && IsCandidateAdd(invocation),
+                static (syntaxContext, _) => ReadCommand(syntaxContext))
+            .Where(static command => command is not null)
+            .Select(static (command, _) => command!);
 
-        context.RegisterSourceOutput(commands.Collect(), static (productionContext, names) =>
-            EmitCatalog(productionContext, names));
+        var input = commands.Collect().Combine(context.CompilationProvider);
+
+        context.RegisterSourceOutput(input, static (productionContext, pair) =>
+            EmitCatalog(productionContext, pair.Left, pair.Right.AssemblyName));
     }
 
-    private static string? ReadCommand(ISymbol symbol)
-    {
-        foreach (var attribute in symbol.GetAttributes())
-        {
-            if (attribute.AttributeClass?.ToDisplayString() != "Tarui.Contracts.TaruiCommandAttribute")
-            {
-                continue;
-            }
+    private static bool IsCandidateAdd(InvocationExpressionSyntax invocation) =>
+        invocation.Expression is MemberAccessExpressionSyntax { Name.Identifier.Text: "Add" } &&
+        invocation.ArgumentList.Arguments.Count is 5 or 6;
 
-            return attribute.ConstructorArguments.Length == 1
-                ? attribute.ConstructorArguments[0].Value as string
-                : null;
+    private static CommandDescriptor? ReadCommand(GeneratorSyntaxContext context)
+    {
+        var invocation = (InvocationExpressionSyntax)context.Node;
+        var model = context.SemanticModel;
+
+        if (model.GetSymbolInfo(invocation).Symbol is not IMethodSymbol method ||
+            method.Name != "Add" ||
+            method.ContainingType?.ToDisplayString() != CommandRouterBuilderMetadataName)
+        {
+            return null;
+        }
+
+        var arguments = invocation.ArgumentList.Arguments;
+        if (arguments.Count is not (5 or 6))
+        {
+            return null;
+        }
+
+        var id = GetStringLiteral(arguments[0], model);
+        var input = GetJsonContextMemberName(arguments[1]);
+        var output = GetJsonContextMemberName(arguments[2]);
+        if (id is null || input is null || output is null)
+        {
+            return null;
+        }
+
+        return new CommandDescriptor(id, input, output);
+    }
+
+    private static string? GetStringLiteral(ArgumentSyntax argument, SemanticModel model) =>
+        model.GetConstantValue(argument.Expression).Value as string;
+
+    /// <summary>Reads the DTO name out of a <c>TaruiJsonContext.Default.{Name}</c> argument.</summary>
+    private static string? GetJsonContextMemberName(ArgumentSyntax argument)
+    {
+        if (argument.Expression is MemberAccessExpressionSyntax
+            {
+                Name.Identifier.Text: { Length: > 0 } name,
+                Expression: MemberAccessExpressionSyntax { Name.Identifier.Text: "Default" }
+            })
+        {
+            return name;
         }
 
         return null;
@@ -41,37 +85,68 @@ public sealed class TaruiCommandCatalogGenerator : IIncrementalGenerator
 
     private static void EmitCatalog(
         SourceProductionContext context,
-        ImmutableArray<string> names)
+        ImmutableArray<CommandDescriptor> commands,
+        string? assemblyName)
     {
-        var distinctNames = names
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(static name => name, StringComparer.Ordinal)
+        var distinct = commands
+            .GroupBy(static command => command.Id, StringComparer.Ordinal)
+            .Select(static group => group.First())
+            .OrderBy(static command => command.Id, StringComparer.Ordinal)
             .ToArray();
 
+        // The class is named per assembly so several plugin catalogs can be referenced at once without
+        // a CS0433 clash (the bindings drift test unions them).
+        var className = Sanitize(assemblyName) + "CommandCatalog";
         var source = new StringBuilder();
         source.AppendLine("// <auto-generated />");
         source.AppendLine("using System.Collections.Generic;");
+        source.AppendLine("using Tarui.Contracts;");
         source.AppendLine();
         source.AppendLine("namespace Tarui.Generated;");
         source.AppendLine();
-        source.AppendLine("public static class GeneratedCommandCatalog");
+        source.AppendLine($"public static class {className}");
         source.AppendLine("{");
         source.AppendLine("    public static IReadOnlyList<string> Commands { get; } =");
         source.AppendLine("    [");
 
-        foreach (var name in distinctNames)
+        foreach (var command in distinct)
         {
-            source.Append("        ");
-            source.Append('"');
-            source.Append(Escape(name));
-            source.Append('"');
-            source.AppendLine(",");
+            source.Append("        \"");
+            source.Append(Escape(command.Id));
+            source.AppendLine("\",");
+        }
+
+        source.AppendLine("    ];");
+        source.AppendLine();
+        source.AppendLine("    public static IReadOnlyList<TaruiCommandContract> Contracts { get; } =");
+        source.AppendLine("    [");
+
+        foreach (var command in distinct)
+        {
+            source.Append("        new(\"");
+            source.Append(Escape(command.Id));
+            source.Append("\", \"");
+            source.Append(Escape(command.Input));
+            source.Append("\", \"");
+            source.Append(Escape(command.Output));
+            source.AppendLine("\"),");
         }
 
         source.AppendLine("    ];");
         source.AppendLine("}");
+        context.AddSource($"{className}.g.cs", source.ToString());
+    }
 
-        context.AddSource("GeneratedCommandCatalog.g.cs", source.ToString());
+    private static string Sanitize(string? assemblyName)
+    {
+        var name = string.IsNullOrEmpty(assemblyName) ? "Tarui" : assemblyName!;
+        var builder = new StringBuilder(name.Length);
+        foreach (var character in name)
+        {
+            builder.Append(char.IsLetterOrDigit(character) ? character : '_');
+        }
+
+        return builder.ToString();
     }
 
     private static string Escape(string value) => value
@@ -79,4 +154,20 @@ public sealed class TaruiCommandCatalogGenerator : IIncrementalGenerator
         .Replace("\"", "\\\"")
         .Replace("\r", "\\r")
         .Replace("\n", "\\n");
+
+    private sealed class CommandDescriptor
+    {
+        public CommandDescriptor(string id, string input, string output)
+        {
+            Id = id;
+            Input = input;
+            Output = output;
+        }
+
+        public string Id { get; }
+
+        public string Input { get; }
+
+        public string Output { get; }
+    }
 }

@@ -112,6 +112,10 @@ public sealed class CommandRouter(
         {
             return InvokeResponse.Fail(request.Id, "CANCELLED", "The command was cancelled.");
         }
+        catch (NotSupportedException exception)
+        {
+            return InvokeResponse.Fail(request.Id, "NOT_SUPPORTED", exception.Message);
+        }
         catch (Exception exception)
         {
             return InvokeResponse.Fail(request.Id, "COMMAND_FAILED", exception.Message);
