@@ -20,6 +20,13 @@ internal static class Program
         LoaderRejectsInvalidPlatform();
         LoaderRejectsMissingWindows();
         LoaderRejectsInvalidScope();
+        CatalogMaterializesDefaultAndGuardSets();
+        CatalogHonorsCuratedAndExcludedSets();
+        CatalogExpandsNestedSetsAndRejectsCycles();
+        LoaderExpandsPermissionSetEntries();
+        LoaderKeepsScopedGrantAlongsideSetMember();
+        LoaderRejectsScopeOnPermissionSet();
+        DemoCapabilitiesResolveAgainstRegisteredPlugins();
         await RouterEnforcesScopedPermissions();
         await RouterDeniesScopedPermission();
         EventNamesRestrictWebEmitsToUserNamespace();
@@ -495,6 +502,299 @@ internal static class Program
         var denied = await Invoke(router, context);
         Assert(!denied.Success && denied.Error!.Code == "SCOPE_DENIED",
             "A deny-rule match must map to the SCOPE_DENIED error code.");
+    }
+
+    private static void CatalogMaterializesDefaultAndGuardSets()
+    {
+        var builder = new CommandRouterBuilder();
+        builder.AddPermission("plugin:demo|alpha");
+        builder.AddPermission("plugin:demo|beta");
+        builder.AddPermission("plugin:demo|beta-other-window");
+        builder.AddPermission("plugin:demo|read-other-webview");
+        builder.AddPermission("app|greet");
+
+        var catalog = new PermissionSetCatalog(builder.BuildPermissionSets());
+
+        Assert(
+            Expand(catalog, "plugin:demo|default") == "plugin:demo|alpha,plugin:demo|beta",
+            "A namespace default set must hold every non-guard permission of that namespace.");
+        Assert(
+            Expand(catalog, "plugin:demo|other-window") == "plugin:demo|beta-other-window",
+            "Cross-window guards must land in their own set, never in 'default'.");
+        Assert(
+            Expand(catalog, "plugin:demo|other-webview") == "plugin:demo|read-other-webview",
+            "Cross-webview guards must land in their own set.");
+        Assert(
+            Expand(catalog, "app|default") == "app|greet",
+            "Application commands without a plugin prefix must populate the implicit app set.");
+    }
+
+    private static void CatalogHonorsCuratedAndExcludedSets()
+    {
+        var curated = new CommandRouterBuilder();
+        curated.AddPermission("plugin:demo|alpha");
+        curated.AddPermission("plugin:demo|beta");
+        curated.DefinePermissionSet("plugin:demo|default", ["plugin:demo|alpha"], "read-only surface");
+        var curatedCatalog = new PermissionSetCatalog(curated.BuildPermissionSets());
+        Assert(
+            Expand(curatedCatalog, "plugin:demo|default") == "plugin:demo|alpha",
+            "A curated set must replace the materialized set of the same identifier.");
+
+        var excluded = new CommandRouterBuilder();
+        excluded.AddPermission("plugin:demo|alpha");
+        excluded.AddPermission("plugin:demo|beta");
+        excluded.ExcludeFromDefaultSet("plugin:demo|beta");
+        var excludedCatalog = new PermissionSetCatalog(excluded.BuildPermissionSets());
+        Assert(
+            Expand(excludedCatalog, "plugin:demo|default") == "plugin:demo|alpha",
+            "An excluded permission must stay out of the namespace default set.");
+    }
+
+    private static void CatalogExpandsNestedSetsAndRejectsCycles()
+    {
+        var catalog = new PermissionSetCatalog(
+        [
+            new PermissionSetDefinition("plugin:demo|read", ["plugin:demo|alpha"]),
+            new PermissionSetDefinition("plugin:demo|all", ["plugin:demo|read", "plugin:demo|beta"]),
+        ]);
+
+        Assert(
+            Expand(catalog, "plugin:demo|all") == "plugin:demo|alpha,plugin:demo|beta",
+            "A set member that names another set must expand recursively.");
+
+        var cyclic = new PermissionSetCatalog(
+        [
+            new PermissionSetDefinition("plugin:demo|x", ["plugin:demo|y"]),
+            new PermissionSetDefinition("plugin:demo|y", ["plugin:demo|x"]),
+        ]);
+
+        AssertThrows<InvalidOperationException>(
+            () => cyclic.Expand("plugin:demo|x"),
+            "A set cycle must be rejected instead of silently truncated.");
+
+        AssertThrows<InvalidOperationException>(
+            () => catalog.Expand("plugin:demo|unknown"),
+            "Expanding an unknown set identifier must fail loudly.");
+    }
+
+    private static void LoaderExpandsPermissionSetEntries()
+    {
+        var catalog = new PermissionSetCatalog(
+        [
+            new PermissionSetDefinition(
+                "plugin:demo|default",
+                ["plugin:demo|alpha", "plugin:demo|beta"]),
+        ]);
+
+        using var directory = new TempDirectory();
+        directory.Write(
+            "cap.json",
+            """
+            { "identifier": "main", "windows": ["main"], "permissions": ["plugin:demo|default"] }
+            """);
+
+        var main = CapabilityLoader.Load(directory.Path, catalog)["main"];
+        Assert(
+            main.Allows("plugin:demo|alpha") && main.Allows("plugin:demo|beta"),
+            "A declared set must expand into every member permission.");
+        Assert(
+            !main.Allows("plugin:demo|default"),
+            "The set identifier itself must not survive expansion as a permission id.");
+    }
+
+    private static void LoaderKeepsScopedGrantAlongsideSetMember()
+    {
+        var catalog = new PermissionSetCatalog(
+        [
+            new PermissionSetDefinition(
+                "core:window|default",
+                ["core:window|close", "core:window|create"]),
+        ]);
+
+        using var directory = new TempDirectory();
+        directory.Write(
+            "cap.json",
+            """
+            {
+              "identifier": "main",
+              "windows": ["main"],
+              "permissions": [
+                "core:window|default",
+                { "identifier": "core:window|create", "allow": [{ "path": "editor" }] }
+              ]
+            }
+            """);
+
+        var main = CapabilityLoader.Load(directory.Path, catalog)["main"];
+        Assert(main.Allows("core:window|close"), "An unscoped set member must stay granted.");
+        Assert(
+            main.TryGetScope("core:window|create", out var scope) && scope.Allow.Count == 1,
+            "A set member listed again with a scope must keep that scope: the set never clears it.");
+    }
+
+    private static void LoaderRejectsScopeOnPermissionSet()
+    {
+        var catalog = new PermissionSetCatalog(
+        [
+            new PermissionSetDefinition("plugin:fs|default", ["plugin:fs|read-text-file"]),
+        ]);
+
+        using var directory = new TempDirectory();
+        directory.Write(
+            "cap.json",
+            """
+            {
+              "identifier": "main",
+              "windows": ["main"],
+              "permissions": [
+                { "identifier": "plugin:fs|default", "allow": [{ "base": "appData" }] }
+              ]
+            }
+            """);
+
+        AssertThrows<InvalidDataException>(
+            () => CapabilityLoader.Load(directory.Path, catalog),
+            "A permission set must not carry allow/deny scopes; scopes belong to individual permissions.");
+    }
+
+    private static void DemoCapabilitiesResolveAgainstRegisteredPlugins()
+    {
+        var builder = new CommandRouterBuilder();
+        RegisterDemoPlugins(builder);
+
+        // Demo.Desktop registers the Channel streaming command in the core:channel namespace.
+        builder.AddPermission("core:channel|stream-echo");
+
+        var catalog = new PermissionSetCatalog(builder.BuildPermissionSets());
+        var capabilities = CapabilityLoader.Load(
+            Path.Combine(FindRepositoryRoot(), "examples", "demo", "capabilities"),
+            catalog);
+
+        Assert(
+            capabilities.ContainsKey("main") && capabilities.ContainsKey("editor"),
+            "Both demo capability profiles must load.");
+
+        var unregistered = capabilities
+            .SelectMany(static pair => pair.Value.Permissions)
+            .Where(permission => !builder.RegisteredPermissions.Contains(permission))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        Assert(
+            unregistered.Length == 0,
+            "The demo manifests must expand into permissions the plugins actually register; unregistered: " +
+            string.Join(", ", unregistered));
+
+        var main = capabilities["main"];
+
+        // Scoped grants must survive the set rewrite: they cannot be expressed by a set.
+        string[] stillGranted =
+        [
+            "plugin:fs|read-text-file",
+            "plugin:fs|write-text-file",
+            "plugin:fs|remove",
+            "plugin:global-shortcut|register",
+            "plugin:global-shortcut|unregister-all",
+            "plugin:store|set",
+            "plugin:sql|allow-load",
+            "plugin:http|fetch",
+            "plugin:shell|spawn",
+            "plugin:websocket|connect",
+            "core:window|create",
+        ];
+        foreach (var permission in stillGranted)
+        {
+            Assert(main.Allows(permission), $"The demo main window must still grant '{permission}'.");
+        }
+
+        // The opt-in surfaces must stay closed even though the demo now grants whole namespaces.
+        Assert(
+            !main.Allows("plugin:webview|send-devtools-message"),
+            "plugin:webview|default must not grant the CDP channel.");
+        Assert(
+            !main.Allows("plugin:webview|eval-other-webview"),
+            "Cross-webview evaluation must stay opt-in.");
+        Assert(
+            !main.Allows("plugin:window-state|save-other-window"),
+            "A namespace default set must never include its cross-window guards.");
+
+        // Documented widening accepted by the set rewrite (see docs/design/tauri-v3-alignment.md §4.3):
+        // a cross-window close veto is weaker than the cross-window close the demo already grants, so
+        // the guard set is allowed to carry it.
+        Assert(
+            main.Allows("core:window|deny-close-other-window"),
+            "The cross-window guard set covers deny-close-other-window.");
+
+        var editor = capabilities["editor"];
+        Assert(
+            editor.Allows("plugin:tray|remove") && editor.Allows("plugin:notification|cancel"),
+            "The editor profile must grant the tray and notification namespaces through sets.");
+        Assert(
+            !editor.Allows("plugin:menu|show-context-menu"),
+            "The editor profile keeps an explicit, narrower menu grant than plugin:menu|default.");
+        Assert(
+            !editor.Allows("core:window|set-theme"),
+            "The editor profile must not gain the whole window surface from a set it never names.");
+    }
+
+    /// <summary>
+    /// Replays the demo composition root well enough to materialize the permission-set catalog.
+    /// Registering commands only wires handlers, so the injected services are never touched; passing
+    /// <c>null!</c> keeps this fixture check independent of a running host.
+    /// </summary>
+    private static void RegisterDemoPlugins(CommandRouterBuilder builder)
+    {
+        ITaruiPlugin[] plugins =
+        [
+            new global::Tarui.Plugins.Core.CorePlugin(),
+            new global::Tarui.Plugins.System.SystemPlugin(null!, null!, null!, null!, null!),
+            new global::Tarui.Plugins.Window.WindowPlugin(null!),
+            new global::Tarui.Plugins.Webview.WebviewPlugin(null!),
+            new global::Tarui.Plugins.Dialog.DialogPlugin(null!),
+            new global::Tarui.Plugins.Menu.MenuPlugin(null!),
+            new global::Tarui.Plugins.Tray.TrayPlugin(null!),
+            new global::Tarui.Plugins.Notification.NotificationPlugin(null!),
+            new global::Tarui.Plugins.Autostart.AutostartPlugin(null!),
+            new global::Tarui.Plugins.GlobalShortcut.GlobalShortcutPlugin(null!),
+            new global::Tarui.Plugins.Positioner.PositionerPlugin(null!),
+            new global::Tarui.Plugins.WindowState.WindowStatePlugin(null!),
+            new global::Tarui.Plugins.Store.StorePlugin(null!),
+            new global::Tarui.Plugins.Log.LogPlugin(null!),
+            new global::Tarui.Plugins.DeepLink.DeepLinkPlugin(null!),
+            new global::Tarui.Plugins.Updater.UpdaterPlugin(null!),
+            new global::Tarui.Plugins.Events.EventPlugin(null!),
+            new global::Tarui.Plugins.FileSystem.FileSystemPlugin(null!),
+            new global::Tarui.Plugins.Http.HttpPlugin(null!),
+            new global::Tarui.Plugins.Cookie.CookiePlugin(null!),
+            new global::Tarui.Plugins.Sql.SqlPlugin(null!),
+            new global::Tarui.Plugins.Websocket.WebsocketPlugin(null!),
+            new global::Tarui.Plugins.PersistedScope.PersistedScopePlugin(null!),
+            new global::Tarui.Plugins.Shell.ShellPlugin(null!),
+        ];
+
+        foreach (var plugin in plugins)
+        {
+            plugin.ConfigureCommands(builder);
+        }
+    }
+
+    private static string Expand(PermissionSetCatalog catalog, string identifier) =>
+        string.Join(",", catalog.Expand(identifier));
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "tarui.net.slnx")))
+            {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException("Could not locate the repository root (tarui.net.slnx).");
     }
 
     private static async Task<InvokeResponse> Invoke(CommandRouter router, CommandContext context) =>

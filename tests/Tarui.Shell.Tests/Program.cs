@@ -50,6 +50,9 @@ internal static class Program
         await CapabilityLoaderHandlesMissingDirectory();
         ComposerRegistersPluginCommands();
         ComposerRejectsUnregisteredPermissions();
+        ComposerExpandsPermissionSetsFromPluginRegistrations();
+        ComposerGrantsApplicationCommandsThroughAppDefaultSet();
+        ComposerRejectsUnknownPermissionSet();
         CapabilitySetProviderCachesDirectorySnapshot();
         AddTaruiShellRegistersShellServices();
         await AutostartPlatformServicesRoundTripLaunchEntries();
@@ -317,6 +320,105 @@ internal static class Program
         }
 
         Assert(rejected, "Compose must reject capability files that reference unregistered permissions.");
+    }
+
+    private static void ComposerExpandsPermissionSetsFromPluginRegistrations()
+    {
+        using var directory = new TempDirectory();
+        directory.Write(
+            "main.json",
+            """
+            {
+              "identifier": "main",
+              "windows": ["main"],
+              "permissions": ["test:shell|default"]
+            }
+            """);
+
+        var services = BuildPermissionSetServices(directory.Path, new TestShellPlugin());
+        using var provider = services.BuildServiceProvider();
+
+        var router = CommandRouterComposer.Compose(provider);
+        var capabilities = provider.GetRequiredService<ICapabilityProvider>().Capabilities["main"];
+
+        Assert(
+            capabilities.Allows("test:shell|one") && capabilities.Allows("test:shell|two"),
+            "A capability that names a materialized set must grant every permission the namespace registered.");
+        Assert(
+            router.RegisteredPermissions.Contains("test:shell|one"),
+            "Expanding a set must not disturb the router's permission registry.");
+    }
+
+    private static void ComposerGrantsApplicationCommandsThroughAppDefaultSet()
+    {
+        using var directory = new TempDirectory();
+        directory.Write(
+            "main.json",
+            """
+            {
+              "identifier": "main",
+              "windows": ["main"],
+              "permissions": ["app|default"]
+            }
+            """);
+
+        var services = BuildPermissionSetServices(directory.Path, new TestAppCommandPlugin());
+        using var provider = services.BuildServiceProvider();
+
+        CommandRouterComposer.Compose(provider);
+        var capabilities = provider.GetRequiredService<ICapabilityProvider>().Capabilities["main"];
+
+        Assert(
+            capabilities.Allows("app|greet"),
+            "Application commands without a plugin prefix must be reachable through the implicit app set.");
+    }
+
+    private static void ComposerRejectsUnknownPermissionSet()
+    {
+        using var directory = new TempDirectory();
+        directory.Write(
+            "main.json",
+            """
+            {
+              "identifier": "main",
+              "windows": ["main"],
+              "permissions": ["test:shell|defualt"]
+            }
+            """);
+
+        var services = BuildPermissionSetServices(directory.Path, new TestShellPlugin());
+        using var provider = services.BuildServiceProvider();
+
+        var rejected = false;
+        try
+        {
+            CommandRouterComposer.Compose(provider);
+        }
+        catch (InvalidOperationException exception)
+        {
+            rejected = exception.Message.Contains("test:shell|defualt") &&
+                       exception.Message.Contains("test:shell|default");
+        }
+
+        Assert(rejected, "A typo in a set identifier must fail startup and list the declared sets.");
+    }
+
+    /// <summary>
+    /// Reproduces the composition-time wiring <c>AddTaruiShell</c> installs: one plugin pass shared by
+    /// the permission-set catalog and the router, so the capability provider expands sets against the
+    /// permissions the plugins actually registered.
+    /// </summary>
+    private static ServiceCollection BuildPermissionSetServices(string capabilityDirectory, ITaruiPlugin plugin)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(plugin);
+        services.AddSingleton(sp => CommandRouterComposer.CreateBuilder(sp));
+        services.AddSingleton<IPermissionSetCatalog>(sp => new PermissionSetCatalog(
+            sp.GetRequiredService<CommandRouterBuilder>().BuildPermissionSets()));
+        services.AddSingleton<ICapabilityProvider>(sp => new CapabilitySetProvider(
+            sp.GetRequiredService<IPermissionSetCatalog>(),
+            capabilityDirectory));
+        return services;
     }
 
     private static void CapabilitySetProviderCachesDirectorySnapshot()
@@ -1518,6 +1620,21 @@ internal static class Program
                 static (_, _, _) => ValueTask.FromResult(new Unit()),
                 "test:shell|two");
         }
+    }
+
+    /// <summary>
+    /// An application-owned command: its permission carries no <c>core:</c> / <c>plugin:</c> prefix, so
+    /// it belongs to the <c>app</c> namespace and is reachable through the implicit <c>app|default</c>.
+    /// </summary>
+    private sealed class TestAppCommandPlugin : ITaruiPlugin
+    {
+        public void ConfigureCommands(CommandRouterBuilder commands) =>
+            commands.Add(
+                "app|greet",
+                TaruiJsonContext.Default.EmptyArgs,
+                TaruiJsonContext.Default.Unit,
+                static (_, _, _) => ValueTask.FromResult(new Unit()),
+                "app|greet");
     }
 
     private static void WindowCapabilityResolverRejectsTargetThatExpandsAllow()

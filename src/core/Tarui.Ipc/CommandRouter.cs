@@ -18,8 +18,13 @@ public sealed class CommandRouterBuilder
     private readonly Dictionary<string, ICommandInvoker> _commands = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _permissions = new(StringComparer.Ordinal);
     private readonly HashSet<string> _registeredPermissions = new(StringComparer.Ordinal);
+    private readonly List<PermissionSetDefinition> _permissionSets = [];
+    private readonly HashSet<string> _permissionSetIds = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _defaultSetExclusions = new(StringComparer.Ordinal);
 
     public IReadOnlyCollection<string> RegisteredPermissions => _registeredPermissions;
+
+    public IReadOnlyCollection<string> DefinedPermissionSets => _permissionSetIds;
 
     public CommandRouterBuilder Add<TArgs, TResult>(
         string command,
@@ -48,6 +53,90 @@ public sealed class CommandRouterBuilder
     {
         _registeredPermissions.Add(permission);
         return this;
+    }
+
+    /// <summary>
+    /// Declares a curated permission set (Tauri ACL set) a capability manifest may reference as a
+    /// single entry. Members may be other set identifiers; expansion happens while manifests load and
+    /// rejects cycles. A curated set replaces the auto-materialized set of the same identifier.
+    /// </summary>
+    public CommandRouterBuilder DefinePermissionSet(
+        string identifier,
+        IReadOnlyList<string> permissions,
+        string? description = null)
+    {
+        if (!_permissionSetIds.Add(identifier))
+        {
+            throw new InvalidOperationException($"Duplicate permission set '{identifier}'.");
+        }
+
+        _permissionSets.Add(new PermissionSetDefinition(identifier, permissions, description));
+        return this;
+    }
+
+    /// <summary>
+    /// Keeps <paramref name="permission"/> out of its namespace's materialized <c>|default</c> set. Used
+    /// for permissions that must stay opt-in even though they map to an ordinary command — the DevTools
+    /// protocol channel is the canonical case: granting <c>plugin:webview|default</c> must not hand a
+    /// window the ability to drive CDP.
+    /// </summary>
+    public CommandRouterBuilder ExcludeFromDefaultSet(string permission)
+    {
+        _defaultSetExclusions.Add(permission);
+        return this;
+    }
+
+    /// <summary>
+    /// Materializes the permission-set catalog. Curated sets come first, then one set per namespace
+    /// derived from the registered command permissions: <c>{namespace}|default</c> for the namespace's
+    /// own permissions and <c>{namespace}|other-window</c> / <c>{namespace}|other-webview</c> for its
+    /// cross-target guards. Splitting the guards keeps <c>|default</c> from silently authorizing
+    /// operations on another window or web view. Application-defined commands (no <c>core:</c> /
+    /// <c>plugin:</c> prefix) land in the <c>app</c> namespace, which is what gives every app an
+    /// implicit <c>app|default</c> covering all of its own commands.
+    /// </summary>
+    public IReadOnlyList<PermissionSetDefinition> BuildPermissionSets()
+    {
+        var declarations = new List<PermissionSetDefinition>(_permissionSets);
+        var declared = new HashSet<string>(_permissionSetIds, StringComparer.Ordinal);
+
+        var materialized = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+        foreach (var permission in _registeredPermissions)
+        {
+            string setId;
+            if (PermissionSetNames.IsCrossTargetGuard(permission))
+            {
+                setId = PermissionSetNames.CrossTargetSetOf(permission);
+            }
+            else if (_defaultSetExclusions.Contains(permission))
+            {
+                continue;
+            }
+            else
+            {
+                setId = PermissionSetNames.DefaultSetOf(permission);
+            }
+
+            if (!materialized.TryGetValue(setId, out var members))
+            {
+                members = new SortedSet<string>(StringComparer.Ordinal);
+                materialized.Add(setId, members);
+            }
+
+            members.Add(permission);
+        }
+
+        foreach (var pair in materialized)
+        {
+            if (declared.Contains(pair.Key))
+            {
+                continue;
+            }
+
+            declarations.Add(new PermissionSetDefinition(pair.Key, [.. pair.Value]));
+        }
+
+        return declarations;
     }
 
     public CommandRouter Build() => new(
@@ -115,6 +204,16 @@ public sealed class CommandRouter(
         catch (NotSupportedException exception)
         {
             return InvokeResponse.Fail(request.Id, "NOT_SUPPORTED", exception.Message);
+        }
+        catch (TaruiRuntimeTypeMismatchException exception)
+        {
+            // A runtime-specific surface was requested from a runtime that does not implement it
+            // (Tauri v3 RuntimeTypeMismatch). Distinct from NOT_SUPPORTED: the command exists, the
+            // selected backend is simply the wrong one.
+            return InvokeResponse.Fail(
+                request.Id,
+                TaruiRuntimeTypeMismatchException.ErrorCode,
+                exception.Message);
         }
         catch (Exception exception)
         {

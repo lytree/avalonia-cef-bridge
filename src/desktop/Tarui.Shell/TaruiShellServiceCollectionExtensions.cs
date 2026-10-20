@@ -46,7 +46,14 @@ public static class TaruiShellServiceCollectionExtensions
         .AddSingleton<WebViewRequestPolicy>(sp => BuildWebViewRequestPolicy(
             sp.GetService<IConfiguration>(),
             sp.GetRequiredService<TaruiAppOrigin>()))
-        .AddSingleton<ICapabilityProvider, CapabilitySetProvider>()
+        // One composition-time plugin pass shared by the router and the permission-set catalog, so a
+        // capability manifest can name a set such as "core:window|default" and still be validated
+        // against the exact permissions the plugins registered.
+        .AddSingleton(sp => CommandRouterComposer.CreateBuilder(sp))
+        .AddSingleton<IPermissionSetCatalog>(sp => new PermissionSetCatalog(
+            sp.GetRequiredService<CommandRouterBuilder>().BuildPermissionSets()))
+        .AddSingleton<ICapabilityProvider>(sp => new CapabilitySetProvider(
+            sp.GetRequiredService<IPermissionSetCatalog>()))
         .AddSingleton<WindowCapabilityResolver>()
         .AddSingleton<ISingleInstanceCoordinator, NoopSingleInstanceCoordinator>()
         .AddSingleton<IAppShutdown, NoopAppShutdown>()

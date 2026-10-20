@@ -49,6 +49,13 @@ public CommandRouterBuilder Add(
 
 permission ID 与 command ID 通常一致(`core:window|create` 等);`RegisteredPermissions` 在 `Add` 时自动登记,**禁止手工维护**。
 
+新增命令后 capability 侧的连带影响:
+
+- 新权限自动进入所属命名空间的 `{ns}|default` 集合(`plugin:foo` → `plugin:foo|default`),capability 无需改动即可被「整面授权」覆盖。
+- 以 `-other-window` / `-other-webview` 结尾的守卫权限进入 `{ns}|other-window` / `{ns}|other-webview`,**不会**进入 `default`——跨窗口/跨 WebView 能力必须被显式授予。
+- 必须显式授予、不能随整面放开的权限,在 `ConfigureCommands` 里调用 `commands.ExcludeFromDefaultSet(permission)`(参考 `plugin:webview|send-devtools-message`)。
+- 需要「只读子集」一类定制集合时,用 `commands.DefinePermissionSet(identifier, members, description)` 声明,它会覆盖同名自动集合。
+
 ## 3. 现有插件清单
 
 | 插件包 | 命令前缀 | 命令数 | 备注 |

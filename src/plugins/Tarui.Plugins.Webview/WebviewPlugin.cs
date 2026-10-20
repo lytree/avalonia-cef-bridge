@@ -131,6 +131,10 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             handlers.SendDevToolsMessageAsync,
             "plugin:webview|send-devtools-message");
 
+        // The CDP channel stays opt-in even when a capability grants the whole webview surface, so it
+        // is kept out of the materialized "plugin:webview|default" set and must be named explicitly.
+        commands.ExcludeFromDefaultSet("plugin:webview|send-devtools-message");
+
         // Cross-webview operations require the <permission>-other-webview variant; register them as
         // valid permission IDs so capability files may reference them and validation stays strict.
         foreach (var permission in OtherWebviewPermissions)

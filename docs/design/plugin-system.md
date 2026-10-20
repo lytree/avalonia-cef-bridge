@@ -78,8 +78,9 @@ public static IServiceCollection AddPlugin<TPlugin>(this IServiceCollection serv
 
 - **命令 ID**:`<prefix>:<verb>|<action>`,前缀 `core`/`plugin`,动作小写、横线分隔,如 `plugin:fs|read-file-stream`。
 - **权限 ID** 与命令 ID 一一对应;`RegisteredPermissions` 自动登记,无需手工维护。
+- **权限集合**:`CommandRouterBuilder.BuildPermissionSets()` 按命名空间自动物化 `{ns}|default`(该命名空间除跨目标守卫外的全部权限)与 `{ns}|other-window` / `{ns}|other-webview`(跨目标守卫)。插件可用 `DefinePermissionSet(...)` 覆盖同名集合,或用 `ExcludeFromDefaultSet(permission)` 把必须显式授予的权限(如 CDP 通道)排除在 `default` 外。capability 侧只需写集合标识,详见 [`../usage/capabilities.md`](../usage/capabilities.md) §5。
 - **事件 ID**:`<prefix>://<verb>`,前缀由插件或 shell 保留,Web 不可发起保留前缀。
-- **Scope allow / deny**:FileSystem / GlobalShortcut / Store / PersistedScope / Http 等插件支持。deny 命中即拒绝,与 capability 静态授权合并时仍 deny 优先。
+- **Scope allow / deny**:FileSystem / GlobalShortcut / Store / PersistedScope / Http 等插件支持。deny 命中即拒绝,与 capability 静态授权合并时仍 deny 优先。scope 只能挂在单条权限上,不能挂在权限集合上。
 
 ## 5. 第三方(out-of-tree)插件
 
@@ -88,7 +89,7 @@ public static IServiceCollection AddPlugin<TPlugin>(this IServiceCollection serv
 1. `dotnet add package Tarui.Plugins.Foo`
 2. `builder.Services.AddFooPlugin()`(组合根显式注册)
 3. `pnpm add @lytree/plugin-foo`
-4. `capabilities/main.json` 增加授权(如 `plugin:foo|*` 或逐命令 + scope)
+4. `capabilities/main.json` 增加授权(如 `plugin:foo|default` 或逐命令 + scope)
 5. `tarui build` 自动合成校验 schema
 
 与 Tauri 的 Cargo.toml + capability 步骤数一致;差异仅在编译期注册形式(C# 扩展方法 vs Rust 宏),同等显式。

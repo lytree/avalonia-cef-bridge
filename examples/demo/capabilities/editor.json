@@ -48,16 +48,8 @@
     "plugin:menu|insert",
     "plugin:menu|remove",
     "plugin:menu|remove-window-menu",
-    "plugin:tray|create",
-    "plugin:tray|set-menu",
-    "plugin:tray|set-icon",
-    "plugin:tray|set-tooltip",
-    "plugin:tray|set-visible",
-    "plugin:tray|remove",
-    "plugin:notification|permission-state",
-    "plugin:notification|request-permission",
-    "plugin:notification|show",
-    "plugin:notification|cancel",
+    "plugin:tray|default",
+    "plugin:notification|default",
     {
       "identifier": "plugin:fs|read-text-file",
       "allow": [

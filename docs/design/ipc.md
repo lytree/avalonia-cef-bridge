@@ -61,6 +61,17 @@ Web: Channel.onmessage(chunk) → … → Channel.onclose()
 
 每条命令通过 `commands.Add(name, argsTypeInfo, resultTypeInfo, handler, permission, scopeAuthorizer)` 注册,permission ID 形如 `core:app|get-info`、`plugin:fs|read-text-file`。`CommandRouterBuilder.RegisteredPermissions` 是去重集合,在 `CommandRouterComposer.Compose(...)` 阶段比对每个 capability 文件中显式列出的 permission;**未注册权限会被架构门禁抛 `InvalidOperationException`,跳过 `"*"` 通配语义**。
 
+### 3.1.1 权限集合(ACL set)
+
+capability 不必逐条罗列命令:manifest 可以引用**权限集合**,在加载期展开为具体 permission ID(对应 Tauri v3 的 ACL 集合与「按需物化 manifest commands」)。
+
+- **命名规约**:集合标识 = `{命名空间}|{后缀}`,命名空间是 permission ID 最后一个 `|` 之前的部分(`plugin:fs|read-text-file` → `plugin:fs`);没有 `core:` / `plugin:` 前缀的 permission 属于 `app` 命名空间。
+- **自动物化**:每个命名空间生成一个 `{命名空间}|default`(该命名空间除跨目标守卫外的全部 permission),跨目标守卫单独分组为 `{命名空间}|other-window` / `{命名空间}|other-webview`——`|default` 永不包含跨越其他窗口 / WebView 的守卫权限。应用自有命令因此天然获得隐式 `app|default`。
+- **定制与豁免**:插件可 `DefinePermissionSet(...)` 覆盖同名自动集合,或 `ExcludeFromDefaultSet(permission)` 把必须显式授予的权限(如 `plugin:webview|send-devtools-message` 的 CDP 通道)排除在 `|default` 之外。
+- **禁止携带 scope**:集合条目只表达「授予哪些 permission」,`allow` / `deny` 必须落到单条 permission 上,否则加载期报 `InvalidDataException`。集合与显式 scoped 条目可同时出现,scope 归属显式条目。
+- **校验**:未知集合标识、展开循环、集合成员未注册均由 `CapabilityLoader` / `CommandRouterComposer` 在启动期抛错,并列出可用集合标识。
+- **组合期单次遍历**:`AddTaruiShell` 注册的 `CommandRouterBuilder` 单例同时供 `IPermissionSetCatalog` 与 `CommandRouter` 使用,保证「集合展开结果」与「路由实际注册的权限」来自同一次插件遍历。
+
 ### 3.2 Capability 文件
 
 每个窗口/WebView 持有标识符(如 `main`),仅允许执行 capability 清单中显式列入的命令与事件。**缺省即拒绝**(无显式 capability = 拒绝一切)。
@@ -133,7 +144,7 @@ title-bar 关闭请求先发出 `window://close-requested` 事件;前端必须�
 
 前端不应依赖错误文本(本地化、漂移);错误码是契约,跨版本稳定。
 
-> 注:运行时实际发出的错误码为**大写下划线**形式(如 `PERMISSION_DENIED`、`SCOPE_DENIED`、`COMMAND_NOT_FOUND`、`INVALID_ARGUMENTS`、`NOT_SUPPORTED`、`COMMAND_FAILED`);`CommandRouter` 把 `NotSupportedException` 映射为 `NOT_SUPPORTED`。上表沿用的早期小写记法仅表示同一语义,以运行时字符串与 `IpcCommandError.code` 为准。
+> 注:运行时实际发出的错误码为**大写下划线**形式(如 `PERMISSION_DENIED`、`SCOPE_DENIED`、`COMMAND_NOT_FOUND`、`INVALID_ARGUMENTS`、`NOT_SUPPORTED`、`RUNTIME_TYPE_MISMATCH`、`COMMAND_FAILED`);`CommandRouter` 把 `NotSupportedException` 映射为 `NOT_SUPPORTED`,把 `TaruiRuntimeTypeMismatchException` 映射为 `RUNTIME_TYPE_MISMATCH`(请求了当前 webview 运行时不提供的运行时专属扩展,见 [`webview.md`](webview.md) §3)。上表沿用的早期小写记法仅表示同一语义,以运行时字符串与 `IpcCommandError.code` 为准。
 
 ## 5. 前端桥接
 

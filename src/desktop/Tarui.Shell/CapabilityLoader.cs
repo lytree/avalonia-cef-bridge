@@ -18,7 +18,16 @@ public static class CapabilityLoader
         ["windows", "macos", "linux", "ios", "android"],
         StringComparer.Ordinal);
 
-    public static IReadOnlyDictionary<string, CapabilitySet> Load(string directory)
+    public static IReadOnlyDictionary<string, CapabilitySet> Load(string directory) =>
+        Load(directory, PermissionSetCatalog.Empty);
+
+    /// <summary>
+    /// Loads every capability manifest in <paramref name="directory"/>. Permission-set identifiers
+    /// (for example <c>core:window|default</c>) are expanded against <paramref name="catalog"/> into
+    /// the concrete permission ids the router registered, so a manifest never has to enumerate the
+    /// commands of a namespace by hand.
+    /// </summary>
+    public static IReadOnlyDictionary<string, CapabilitySet> Load(string directory, IPermissionSetCatalog catalog)
     {
         var buckets = new Dictionary<string, WindowBucket>(StringComparer.Ordinal);
         if (!Directory.Exists(directory))
@@ -31,13 +40,17 @@ public static class CapabilityLoader
             using var document = JsonDocument.Parse(
                 File.ReadAllText(file),
                 new JsonDocumentOptions { AllowTrailingCommas = true });
-            ApplyManifest(file, document.RootElement, buckets);
+            ApplyManifest(file, document.RootElement, buckets, catalog);
         }
 
         return ToCapabilityMap(buckets);
     }
 
-    private static void ApplyManifest(string file, JsonElement root, Dictionary<string, WindowBucket> buckets)
+    private static void ApplyManifest(
+        string file,
+        JsonElement root,
+        Dictionary<string, WindowBucket> buckets,
+        IPermissionSetCatalog catalog)
     {
         if (root.ValueKind is not JsonValueKind.Object)
         {
@@ -66,15 +79,16 @@ public static class CapabilityLoader
                     $"[{file}] Duplicate permission identifier '{permission.Identifier}' in capability '{identifier}'.");
             }
 
-            var scope = new PermissionScope(
-                NormalizeScopes(permission.Allow, file, identifier, isDeny: false),
-                NormalizeScopes(permission.Deny, file, identifier, isDeny: true));
-
+            var (members, scope) = ResolveGrant(permission, catalog, file);
             foreach (var label in windows)
             {
                 var bucket = buckets.GetOrAddValue(label, static () => new WindowBucket());
-                bucket.Permissions.Add(permission.Identifier);
-                if (scope.Allow.Count > 0 || scope.Deny.Count > 0)
+                foreach (var member in members)
+                {
+                    bucket.Permissions.Add(member);
+                }
+
+                if (scope is not null)
                 {
                     bucket.Scopes[permission.Identifier] = scope;
                 }
@@ -84,6 +98,43 @@ public static class CapabilityLoader
                     bucket.Events.Add(eventName);
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Resolves one manifest entry into the permission ids it grants plus the scope that applies to
+    /// them. A permission-set entry expands into its members and is scope-free by construction: a
+    /// scope belongs to a single permission, so authoring one on a set would have to be broadcast to
+    /// members that may not accept the same <c>base</c>, which is exactly the ambiguity the strict
+    /// JSON shape avoids. Scoped grants therefore stay explicit.
+    /// </summary>
+    private static (string[] Members, PermissionScope? Scope) ResolveGrant(
+        CapabilityGrant grant,
+        IPermissionSetCatalog catalog,
+        string file)
+    {
+        if (!catalog.TryGet(grant.Identifier, out _))
+        {
+            var scope = new PermissionScope(
+                NormalizeScopes(grant.Allow, file, grant.Identifier, isDeny: false),
+                NormalizeScopes(grant.Deny, file, grant.Identifier, isDeny: true));
+            return ([grant.Identifier], scope.Allow.Count > 0 || scope.Deny.Count > 0 ? scope : null);
+        }
+
+        if ((grant.Allow?.Length ?? 0) > 0 || (grant.Deny?.Length ?? 0) > 0)
+        {
+            throw new InvalidDataException(
+                $"[{file}] Permission set '{grant.Identifier}' cannot carry 'allow'/'deny' scopes; " +
+                "declare the scope on the individual permissions instead.");
+        }
+
+        try
+        {
+            return ([.. catalog.Expand(grant.Identifier)], null);
+        }
+        catch (InvalidOperationException exception)
+        {
+            throw new InvalidDataException($"[{file}] {exception.Message}");
         }
     }
 

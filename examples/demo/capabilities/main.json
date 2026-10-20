@@ -1,6 +1,6 @@
 {
   "identifier": "main",
-  "description": "Main window desktop permissions",
+  "description": "Main window desktop permissions (permission sets + scoped grants)",
   "windows": ["main"],
   "platforms": ["windows", "macos", "linux"],
   "events": [
@@ -35,84 +35,20 @@
     "core:os|info",
     "core:platform|capabilities",
     "core:path|resolve",
-    "core:process|exit",
-    "core:process|relaunch",
+    "core:process|default",
     "core:shell|open",
-    "core:clipboard|read-text",
-    "core:clipboard|write-text",
-    "core:clipboard|read-html",
-    "core:clipboard|write-html",
-    "core:clipboard|read-image",
-    "core:clipboard|write-image",
+    "core:clipboard|default",
     "core:cli|parse",
     "core:channel|stream-echo",
+
+    "core:window|default",
+    "core:window|other-window",
     {
       "identifier": "core:window|create",
       "allow": [{ "path": "editor" }]
     },
-    "core:window|close",
-    "core:window|deny-close",
-    "core:window|minimize",
-    "core:window|maximize",
-    "core:window|unmaximize",
-    "core:window|unminimize",
-    "core:window|toggle-maximize",
-    "core:window|hide",
-    "core:window|show",
-    "core:window|focus",
-    "core:window|center",
-    "core:window|set-title",
-    "core:window|set-size",
-    "core:window|set-position",
-    "core:window|set-min-size",
-    "core:window|set-max-size",
-    "core:window|set-always-on-top",
-    "core:window|set-skip-taskbar",
-    "core:window|set-icon",
-    "core:window|set-theme",
-    "core:window|set-resizable",
-    "core:window|set-decorations",
-    "core:window|set-fullscreen",
-    "core:window|get-state",
-    "core:window|current-monitor",
-    "core:window|primary-monitor",
-    "core:window|monitors",
-    "core:window|list",
-    "core:window|close-other-window",
-    "core:window|minimize-other-window",
-    "core:window|maximize-other-window",
-    "core:window|unmaximize-other-window",
-    "core:window|unminimize-other-window",
-    "core:window|toggle-maximize-other-window",
-    "core:window|hide-other-window",
-    "core:window|show-other-window",
-    "core:window|focus-other-window",
-    "core:window|center-other-window",
-    "core:window|set-title-other-window",
-    "core:window|set-size-other-window",
-    "core:window|set-position-other-window",
-    "core:window|set-min-size-other-window",
-    "core:window|set-max-size-other-window",
-    "core:window|set-always-on-top-other-window",
-    "core:window|set-skip-taskbar-other-window",
-    "core:window|set-resizable-other-window",
-    "core:window|set-decorations-other-window",
-    "core:window|set-fullscreen-other-window",
-    "core:window|get-state-other-window",
-    "core:window|current-monitor-other-window",
-    "core:window|monitors-other-window",
-    "plugin:webview|navigate",
-    "plugin:webview|get-state",
-    "plugin:webview|devtools",
-    "plugin:webview|list",
-    "plugin:webview|eval",
-    "plugin:webview|eval-with-callback",
-    "plugin:webview|set-zoom",
-    "plugin:webview|print",
-    "plugin:webview|runtime-info",
-    "plugin:webview|create",
-    "plugin:webview|set-bounds",
-    "plugin:webview|destroy",
+
+    "plugin:webview|default",
     "plugin:webview|navigate-other-webview",
     "plugin:webview|get-state-other-webview",
     "plugin:webview|set-zoom-other-webview",
@@ -120,34 +56,17 @@
     "plugin:webview|set-bounds-other-webview",
     "plugin:webview|destroy-other-webview",
     "plugin:webview|create-other-window",
-    "plugin:dialog|open",
-    "plugin:dialog|save",
-    "plugin:dialog|message",
-    "plugin:dialog|confirm",
-    "plugin:dialog|ask",
-    "plugin:menu|set-window-menu",
-    "plugin:menu|update-item",
-    "plugin:menu|append",
-    "plugin:menu|insert",
-    "plugin:menu|remove",
-    "plugin:menu|remove-window-menu",
-    "plugin:menu|show-context-menu",
-    "plugin:window-state|save",
-    "plugin:window-state|restore",
-    "plugin:window-state|clear",
-    "plugin:tray|create",
-    "plugin:tray|set-menu",
-    "plugin:tray|set-icon",
-    "plugin:tray|set-tooltip",
-    "plugin:tray|set-visible",
-    "plugin:tray|remove",
-    "plugin:notification|permission-state",
-    "plugin:notification|request-permission",
-    "plugin:notification|show",
-    "plugin:notification|cancel",
-    "plugin:autostart|is-enabled",
-    "plugin:autostart|enable",
-    "plugin:autostart|disable",
+
+    "plugin:dialog|default",
+    "plugin:menu|default",
+    "plugin:window-state|default",
+    "plugin:tray|default",
+    "plugin:notification|default",
+    "plugin:autostart|default",
+    "plugin:updater|default",
+    "plugin:deep-link|default",
+    "plugin:persisted-scope|default",
+
     {
       "identifier": "plugin:global-shortcut|register",
       "allow": [
@@ -159,7 +78,30 @@
         { "path": "Ctrl+Alt+F4" }
       ]
     },
+    {
+      "identifier": "plugin:global-shortcut|unregister",
+      "allow": [
+        { "path": "Ctrl+Shift+P" },
+        { "path": "Ctrl+Shift+Y" },
+        { "path": "Ctrl+Alt+*" }
+      ],
+      "deny": [
+        { "path": "Ctrl+Alt+F4" }
+      ]
+    },
+    {
+      "identifier": "plugin:global-shortcut|is-registered",
+      "allow": [
+        { "path": "Ctrl+Shift+P" },
+        { "path": "Ctrl+Shift+Y" },
+        { "path": "Ctrl+Alt+*" }
+      ],
+      "deny": [
+        { "path": "Ctrl+Alt+F4" }
+      ]
+    },
     "plugin:global-shortcut|unregister-all",
+
     {
       "identifier": "plugin:store|get",
       "allow": [
@@ -202,31 +144,9 @@
         { "base": "appConfig", "path": "**/*.json" }
       ]
     },
+
     "plugin:log|record",
-    "plugin:deep-link|get-current",
-    "plugin:deep-link|feed",
-    {
-      "identifier": "plugin:global-shortcut|unregister",
-      "allow": [
-        { "path": "Ctrl+Shift+P" },
-        { "path": "Ctrl+Shift+Y" },
-        { "path": "Ctrl+Alt+*" }
-      ],
-      "deny": [
-        { "path": "Ctrl+Alt+F4" }
-      ]
-    },
-    {
-      "identifier": "plugin:global-shortcut|is-registered",
-      "allow": [
-        { "path": "Ctrl+Shift+P" },
-        { "path": "Ctrl+Shift+Y" },
-        { "path": "Ctrl+Alt+*" }
-      ],
-      "deny": [
-        { "path": "Ctrl+Alt+F4" }
-      ]
-    },
+
     {
       "identifier": "plugin:fs|read-text-file",
       "allow": [
@@ -338,6 +258,7 @@
       ]
     },
     "plugin:fs|unwatch",
+
     {
       "identifier": "plugin:http|fetch",
       "allow": [
@@ -362,13 +283,17 @@
     },
     "plugin:shell|stdin",
     "plugin:shell|kill",
-    "plugin:updater|check",
-    "plugin:updater|download",
-    "plugin:updater|apply",
-    "plugin:cookie|list",
-    "plugin:cookie|set",
-    "plugin:cookie|remove",
-    "plugin:cookie|flush",
+
+    "plugin:sql|default",
+    {
+      "identifier": "plugin:sql|allow-load",
+      "allow": [
+        { "base": "appData", "path": "notes.db" }
+      ]
+    },
+
+    "plugin:cookie|default",
+
     {
       "identifier": "plugin:websocket|connect",
       "allow": [
@@ -378,18 +303,7 @@
     },
     "plugin:websocket|send",
     "plugin:websocket|close",
-    "plugin:positioner|set-position",
-    {
-      "identifier": "plugin:sql|allow-load",
-      "allow": [
-        { "base": "appData", "path": "notes.db" }
-      ]
-    },
-    "plugin:sql|allow-select",
-    "plugin:sql|allow-execute",
-    "plugin:sql|allow-close",
-    "plugin:persisted-scope|scope-allow",
-    "plugin:persisted-scope|scope-deny",
-    "plugin:persisted-scope|scope-reset"
+
+    "plugin:positioner|set-position"
   ]
 }

@@ -8,5 +8,16 @@
     <ProjectReference Include="..\..\src\core\Tarui.Contracts\Tarui.Contracts.csproj" />
     <ProjectReference Include="..\..\src\core\Tarui.Ipc\Tarui.Ipc.csproj" />
     <ProjectReference Include="..\..\src\desktop\Tarui.Shell\Tarui.Shell.csproj" />
+    <!--
+      The demo capability fixtures are validated against the permissions the real plugins register,
+      so this test project references the plugins "Tarui.Shell" does not pull in transitively.
+    -->
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Cookie\Tarui.Plugins.Cookie.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.FileSystem\Tarui.Plugins.FileSystem.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Http\Tarui.Plugins.Http.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.PersistedScope\Tarui.Plugins.PersistedScope.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Shell\Tarui.Plugins.Shell.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Sql\Tarui.Plugins.Sql.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Websocket\Tarui.Plugins.Websocket.csproj" />
   </ItemGroup>
 </Project>

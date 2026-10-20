@@ -24,6 +24,7 @@
     },
     "permissions": {
       "type": "array",
+      "description": "Permissions this capability grants. An entry is either a permission id, a permission set identifier such as 'core:window|default' / 'plugin:sql|default', or an object narrowing one permission with allow/deny path scopes. Set identifiers expand into the permissions the plugins registered and must not carry scopes: declare the scope on the individual permissions instead.",
       "items": {
         "oneOf": [
           { "type": "string", "minLength": 1 },

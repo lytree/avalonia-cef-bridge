@@ -59,7 +59,7 @@
 | `windows` | 适用的窗口 label 列表(`["main"]`、`["editor"]`) |
 | `platforms` | 平台白名单(`["windows", "macos", "linux"]`) |
 | `events` | 允许 **接收** 的事件(原生 + 自定义) |
-| `permissions` | 允许 **调用** 的命令,字符串=全权;对象=细化 scope |
+| `permissions` | 允许 **调用** 的命令:字符串=全权(或权限集合标识);对象=细化 scope |
 
 ## 4. `permissions` 形式
 
@@ -119,7 +119,43 @@
 }
 ```
 
-## 5. `events` 形式
+## 5. 权限集合(推荐写法)
+
+capability 不必逐条罗列命令,可以直接引用**权限集合**。集合在加载期展开为具体权限,清单因此只描述「要哪些能力面」,不随插件新增命令而腐化。
+
+```jsonc
+"permissions": [
+  "core:window|default",        // 本窗口的窗口控制:close / set-title / get-state …
+  "core:window|other-window",   // 跨窗口操作:close-other-window …
+  "plugin:sql|default",         // 该插件的全部标准权限
+  "app|default",                // 应用自有命令(无 core:/plugin: 前缀)
+  {
+    "identifier": "core:window|create",
+    "allow": [{ "path": "editor" }]
+  }
+]
+```
+
+命名规则:
+
+| 集合 | 含义 |
+| --- | --- |
+| `{命名空间}\|default` | 该命名空间下除跨目标守卫外的全部权限。`plugin:fs|default`、`core:window|default` |
+| `{命名空间}\|other-window` | `-other-window` 守卫权限(操作其他窗口) |
+| `{命名空间}\|other-webview` | `-other-webview` 守卫权限(操作其他 WebView) |
+| `app\|default` | 应用自有命令的隐式集合 |
+
+`{命名空间}` 是权限 ID 最后一个 `|` 之前的部分:`plugin:fs|read-text-file` → `plugin:fs`。
+
+三条硬规则:
+
+1. **`|default` 不含跨目标守卫**。要操作别的窗口/WebView,必须额外声明 `|other-window` / `|other-webview`。
+2. **集合不能带 `allow` / `deny`**。scope 属于单条权限;需要细化路径或 URL 时,把该权限单独写一条带 scope 的条目(集合与显式条目可以并存,scope 以显式条目为准)。
+3. **敏感权限可能被插件排除在 `|default` 之外**。例:`plugin:webview|send-devtools-message`(CDP 通道)必须显式授予,`plugin:webview|default` 不含它。
+
+启动期校验:未知集合标识、展开循环、集合成员未注册都会让 `CommandRouterComposer.Compose(...)` 抛 `InvalidOperationException`,并在消息里列出当前可用的集合标识。
+
+## 6. `events` 形式
 
 ```jsonc
 "events": [
@@ -143,7 +179,7 @@
 - **`window://*`** 与 **`shell://theme-changed`** 由 shell 主动发出。
 - 缺省即拒绝。
 
-## 6. 多窗口隔离
+## 7. 多窗口隔离
 
 `create-window` 时只有两个窗口的 ID / events / permissions 完全匹配时才允许;创建者上下文通过 `CommandContext.Capabilities` 做提权防护:
 
@@ -170,7 +206,7 @@
 
 主窗口通过 `core:window|create` 创建 editor 窗口时,shell 校验目标 capability `editor` 存在,且创建者有 `core:window|create` 权限。无提权路径。
 
-## 7. 协作式关闭
+## 8. 协作式关闭
 
 title-bar 关闭请求先发出 `window://close-requested` 事件,前端必须显式调用以下命令之一:
 
@@ -179,7 +215,7 @@ title-bar 关闭请求先发出 `window://close-requested` 事件,前端必须�
 
 `Tarui:Window:CloseRequestTimeout` 控制超时;默认 3 秒后强制关闭。设为 `0` 时必须显式 `core:window|close force=true`。
 
-## 8. Persisted Scope(运行时权限扩展)
+## 9. Persisted Scope(运行时权限扩展)
 
 `plugin:persisted-scope|scope-allow` / `scope-deny` / `scope-reset` 在 `appData/scope.json` 中持久化运行时 scope 变更。`IRuntimeScopeOverlay` 在 IPC 层与静态 capability scope 合并,**deny 优先**。仅扩展已声明 scope 的权限。
 
@@ -191,7 +227,7 @@ await denyScope('plugin:http|fetch', { path: 'https://evil.example/**' });
 await resetScope('plugin:fs|read-text-file'); // 清除持久化覆盖
 ```
 
-## 9. 完整示例:多窗口应用
+## 10. 完整示例:多窗口应用
 
 ```text
 capabilities/
