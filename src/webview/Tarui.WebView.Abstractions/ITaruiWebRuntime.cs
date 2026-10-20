@@ -23,6 +23,21 @@ public interface ITaruiWebRuntime
     TaruiAppOrigin Origin { get; }
 
     /// <summary>
+    /// Resolves a runtime-specific extension (Tauri v3: a runtime crate's extension trait). Returns
+    /// <see langword="false"/> when this runtime does not provide
+    /// <typeparamref name="TExtension"/>; use
+    /// <see cref="TaruiRuntimeExtensionAccess.GetRequiredExtension{TExtension}"/> to turn that into a
+    /// hard <c>RUNTIME_TYPE_MISMATCH</c> failure. The default implementation reports every extension
+    /// as unavailable, so a backend only has to override it for the surfaces it actually offers.
+    /// </summary>
+    bool TryGetExtension<TExtension>([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TExtension? extension)
+        where TExtension : class, ITaruiRuntimeExtension
+    {
+        extension = null;
+        return false;
+    }
+
+    /// <summary>
     /// How the runtime serves the application's web assets: <c>http</c> when pages load from an
     /// HTTP(S) origin, <c>scheme</c> when they load from the runtime's custom, portless scheme.
     /// Mirrors the resource-mode decision Tauri v3 moved into the runtime.

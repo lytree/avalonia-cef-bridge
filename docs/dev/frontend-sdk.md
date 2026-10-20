@@ -44,6 +44,72 @@ web/
 
 构建:`tsc -b`(`composite` + `declaration` + `sourcemap`,ESM-only),产物 `dist/` 保留子路径结构。零新增构建依赖。
 
+### 2.1 生成的命令契约 `generated/commands.ts`
+
+`Tarui.Ipc.Generators` 从 `commands.Add("id", …, "permission")` 的调用点生成每程序集 `{Assembly}CommandCatalog`,同时产出两份元数据:
+
+- `Contracts`(`TaruiCommandContract`):command id、入参 / 出参 DTO 名、门控 permission;
+- `Types`(`TaruiTypeContract`):入参 / 出参的 **JSON 形状**。
+
+`Types` 由 `DtoShapeReader` 在编译期解析 `TaruiJsonContext.Default.{Name}` 背后的 `JsonTypeInfo<T>` 得到,映射规则与序列化器设置一致:
+
+| C# | TypeScript | 说明 |
+| --- | --- | --- |
+| `string` / `bool` / 数值 / `char` | `string` / `boolean` / `number` / `string` | |
+| `string?`、`long?` 等**可空成员** | `readonly path?: string` | `DefaultIgnoreCondition = WhenWritingNull` ⇒ 写成可选属性,而不是 `string \| null` |
+| `byte[]` | `string` | STJ 序列化为 base64 |
+| `T[]`、`IReadOnlyList<T>`、`ImmutableArray<T>` | `T[]` | |
+| `IReadOnlyDictionary<string, T>` | `Record<string, T>` | |
+| `JsonElement`、未建模泛型 | `unknown` | 不猜形状 |
+| 枚举 | `number` | `TaruiJsonContext` 未注册 `JsonStringEnumConverter` |
+| `DateTime` / `Guid` / `Uri` 等 | `string` | |
+| 嵌套 DTO | 同名 interface | 递归展开;自引用直接引用自身(`MenuItemDefinition.items?: MenuItemDefinition[]`) |
+
+成员名按 `PropertyNamingPolicy = CamelCase` 生成(含首字母缩写:`IOStream` → `ioStream`),`[JsonPropertyName]` 显式名优先;空 DTO(`EmptyArgs`、`Unit`)生成 `export type X = Record<string, never>`。
+
+[`tests/Tarui.Bindings.Tests`](../../tests/Tarui.Bindings.Tests) 汇总全部 catalog,产出并校验 `web/packages/api/generated/commands.ts`:
+
+```ts
+export interface FsPathOptions {
+  readonly base: string
+  readonly path?: string
+}
+
+export interface TaruiCommandContracts { /* id → permission + DTO 名 */ }
+export interface TaruiCommandTypes {
+  readonly "plugin:fs|read-text-file": {
+    readonly input: FsPathOptions
+    readonly output: FsReadTextResult
+  }
+  // …
+}
+
+export type TaruiCommandId = keyof TaruiCommandContracts
+export type TaruiCommandInput<T extends TaruiCommandId> = TaruiCommandTypes[T]['input']
+export type TaruiCommandResult<T extends TaruiCommandId> = TaruiCommandTypes[T]['output']
+```
+
+调用侧用类型化入口即可,与 `invoke` 共用同一条桥,只是命令 id、入参与返回值都受契约约束:
+
+```ts
+import { invokeTyped, invokeTypedEmpty } from '@lytree/api'
+
+const result = await invokeTyped('plugin:fs|read-text-file', { base: 'appData', path: 'a.txt' })
+result.contents // string
+
+const state = await invokeTypedEmpty('plugin:autostart|is-enabled')
+state.enabled // boolean
+```
+
+契约漂移门禁:
+
+```powershell
+dotnet run --project tests/Tarui.Bindings.Tests            # 校验(CI)
+dotnet run --project tests/Tarui.Bindings.Tests -- --update # 原生命令或 DTO 变更后重生成
+```
+
+同一个门禁还会校验:前端 `invoke('…')` 字面量必须都在生成契约内;每个生成命令都被前端调用或列在 `InternalOnlyCommands` 白名单里;每个命令的入参 / 出参都必须解析到类型形状;同一个 catalog 名不得描述两种不同形状;形状里的成员行必须以 `;` 结尾。
+
 ## 3. 新增模块步骤
 
 1. 在 `web/packages/api/src/<name>.ts` 创建模块并定义类型 + `invoke` 包装。

@@ -91,7 +91,8 @@ public interface IFileAccessPolicy
 public sealed record FileAccessPolicyOptions(
     long MaxReadBytes = 8 * 1024 * 1024,
     long MaxWriteBytes = 8 * 1024 * 1024,
-    long MaxTotalBytes = long.MaxValue);
+    long MaxTotalBytes = long.MaxValue,
+    string? ResourcesDirectory = null);
 
 /// <summary>
 /// Default <see cref="IFileAccessPolicy"/> implementation. Performs lexical containment checks and
@@ -143,7 +144,7 @@ public sealed class FileAccessPolicy : IFileAccessPolicy
     };
 
     /// <inheritdoc />
-    public string? ResolveBase(string baseName) => ResolveBaseInternal(baseName);
+    public string? ResolveBase(string baseName) => ResolveBaseInternal(baseName, _options.ResourcesDirectory);
 
     public string Authorize(FileAccessKind kind, string baseDirectory, string requestPath)
     {
@@ -364,7 +365,7 @@ public sealed class FileAccessPolicy : IFileAccessPolicy
             || path.StartsWith("\\.\\", StringComparison.Ordinal);
     }
 
-    private static string? ResolveBaseInternal(string? kind) => kind switch
+    private static string? ResolveBaseInternal(string? kind, string? resourcesDirectory) => kind switch
     {
         "appData" => UnderApp(Environment.SpecialFolder.ApplicationData),
         "appLocalData" => UnderApp(Environment.SpecialFolder.LocalApplicationData),
@@ -380,7 +381,9 @@ public sealed class FileAccessPolicy : IFileAccessPolicy
         "music" => Environment.GetFolderPath(Environment.SpecialFolder.MyMusic),
         "video" => Environment.GetFolderPath(Environment.SpecialFolder.MyVideos),
         "fonts" => Environment.GetFolderPath(Environment.SpecialFolder.Fonts),
-        "resources" => AppContext.BaseDirectory,
+        // The native resource root is configurable (Tauri v3 T6): an explicit directory, else the
+        // packaged resources folder next to the executable, else the executable directory itself.
+        "resources" => resourcesDirectory ?? AppContext.BaseDirectory,
         _ => null,
     };
 
@@ -404,8 +407,20 @@ public sealed class FileAccessPolicy : IFileAccessPolicy
 
 public static class FileAccessPolicyServiceCollectionExtensions
 {
+    /// <summary>
+    /// Registers the single file access policy. When a <see cref="ResourceDirectoryOptions"/> is
+    /// registered, its root becomes the read-only <c>resources</c> base so the file system plugin and
+    /// <see cref="ITaruiResourceDirectory"/> cannot disagree about where native resources live.
+    /// </summary>
     public static IServiceCollection AddFileAccessPolicy(
         this IServiceCollection services,
         FileAccessPolicyOptions? options = null)
-        => services.AddSingleton<IFileAccessPolicy>(_ => new FileAccessPolicy(options ?? new()));
+        => services.AddSingleton<IFileAccessPolicy>(sp =>
+        {
+            var configured = options ?? new FileAccessPolicyOptions();
+            var resourceRoot = configured.ResourcesDirectory
+                ?? ResourceDirectory.ResolveRoot(
+                    sp.GetService<ResourceDirectoryOptions>() ?? new ResourceDirectoryOptions());
+            return new FileAccessPolicy(configured with { ResourcesDirectory = resourceRoot });
+        });
 }

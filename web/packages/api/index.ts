@@ -36,8 +36,17 @@
  * exports keep their Tauri-style short names.
  */
 
-export { invoke, listen, Channel, IpcCommandError } from './ipc'
+export { invoke, invokeTyped, invokeTypedEmpty, listen, Channel, IpcCommandError } from './ipc'
 export type { Unlisten } from './ipc'
+
+// Generated from the native command catalogs (tests/Tarui.Bindings.Tests keeps it in step).
+export type {
+  TaruiCommandContracts,
+  TaruiCommandId,
+  TaruiCommandTypes,
+  TaruiCommandInput,
+  TaruiCommandResult,
+} from './generated/commands'
 
 export { getAppInfo } from './app'
 export type { AppInfo } from './app'

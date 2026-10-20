@@ -16,6 +16,7 @@ namespace Tarui.WebView.CefGlueNext;
 public sealed class CefGlueNextWebRuntime : ITaruiWebRuntime
 {
     private readonly CefGlueNextWebAppOptions _options;
+    private readonly CefWebRuntimeExtension _extension = new();
 
     public CefGlueNextWebRuntime(CefGlueNextWebAppOptions options)
     {
@@ -35,6 +36,25 @@ public sealed class CefGlueNextWebRuntime : ITaruiWebRuntime
 
     /// <inheritdoc />
     public string ResourceMode => _options.Mode == TaruiWebResourceMode.Scheme ? "scheme" : "http";
+
+    /// <summary>
+    /// Exposes the CEF-specific surface (<see cref="CefWebRuntimeExtension"/>). Any other requested
+    /// extension reports <see langword="false"/> so the caller surfaces
+    /// <c>RUNTIME_TYPE_MISMATCH</c> rather than silently degrading.
+    /// </summary>
+    public bool TryGetExtension<TExtension>(
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out TExtension? extension)
+        where TExtension : class, ITaruiRuntimeExtension
+    {
+        if (_extension is TExtension typed)
+        {
+            extension = typed;
+            return true;
+        }
+
+        extension = null;
+        return false;
+    }
 
     /// <inheritdoc />
     public ValueTask InitializeAsync(CancellationToken cancellationToken = default)

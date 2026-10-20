@@ -43,6 +43,12 @@ public static class TaruiShellServiceCollectionExtensions
         })
         .AddSingleton<EventHub>()
         .AddSingleton<EventRouter>()
+        // Native resource directory (Tauri v3 T6): packaged root, development source root and the
+        // remapped-resource mirror are one concept, shared with the file system "resources" base.
+        .AddSingleton(sp => BuildResourceDirectoryOptions(sp.GetService<IConfiguration>()))
+        .AddSingleton<ITaruiResourceDirectory>(sp => new ResourceDirectory(
+            sp.GetRequiredService<ResourceDirectoryOptions>(),
+            sp.GetService<IFileAccessPolicy>()))
         .AddSingleton<WebViewRequestPolicy>(sp => BuildWebViewRequestPolicy(
             sp.GetService<IConfiguration>(),
             sp.GetRequiredService<TaruiAppOrigin>()))
@@ -251,5 +257,32 @@ public static class TaruiShellServiceCollectionExtensions
         }
 
         return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    /// <summary>
+    /// Reads the native resource directory settings (<c>Tarui:Resources:*</c>). Unset keys stay null
+    /// so <see cref="ResourceDirectory"/> can fall back to the <c>TARUI_RESOURCE_*</c> environment
+    /// variables and, finally, to the packaged layout.
+    /// </summary>
+    private static ResourceDirectoryOptions BuildResourceDirectoryOptions(IConfiguration? configuration)
+    {
+        if (configuration is null)
+        {
+            return new ResourceDirectoryOptions();
+        }
+
+        return new ResourceDirectoryOptions
+        {
+            Root = ReadOptional(configuration, "Tarui:Resources:Root"),
+            DevelopmentRoot = ReadOptional(configuration, "Tarui:Resources:DevelopmentRoot"),
+            MirrorDirectory = ReadOptional(configuration, "Tarui:Resources:MirrorDirectory"),
+            MirroredResources = ReadList(configuration, "Tarui:Resources:Mirrored") ?? [],
+        };
+    }
+
+    private static string? ReadOptional(IConfiguration configuration, string key)
+    {
+        var value = configuration[key];
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 }

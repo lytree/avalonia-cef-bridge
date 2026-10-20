@@ -17,6 +17,7 @@ internal static class Program
         ExposesRouterRegisteredPermissions();
         await HandlerExceptionsDoNotCorruptDispatcherAsync();
         await MapsNotSupportedExceptionToNotSupportedCode();
+        await MapsRuntimeTypeMismatchToStableCode();
         await StreamsProgressFramesThroughBoundChannelAsync();
         await ChannelDegradesToInMemoryBufferWithoutSinkAsync();
         await DeniesStreamingCommandOutsideCapabilityAsync();
@@ -29,6 +30,11 @@ internal static class Program
         await WriteChunkRejectsOutOfOrderSequenceAsync();
         await WriteCleanupRemovesSessionsForWindowAsync();
         LazilyCreatesAppOwnedBaseDirectory();
+        ResourceDirectoryResolvesWithinConfiguredRoot();
+        ResourceDirectoryPrefersDevelopmentRoot();
+        await ResourceDirectoryMirrorsRemappedResources();
+        ResourcesBaseFollowsConfiguredResourceDirectory();
+        FileAccessPolicySharesResourceDirectoryOptions();
         Console.WriteLine("Tarui.Ipc self-tests passed.");
         return 0;
     }
@@ -60,9 +66,166 @@ internal static class Program
         }
     }
 
-    private static async Task DeniesCommandsOutsideCapability()
+    private static void ResourceDirectoryResolvesWithinConfiguredRoot()
     {
-        var builder = new CommandRouterBuilder();
+        // Tauri v3 T6: the native resource root is configurable and every lookup is a relative path
+        // contained by the shared file access policy, not a second, weaker path check.
+        var root = CreateTempDirectory();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "assets"));
+            File.WriteAllText(Path.Combine(root, "assets", "seed.json"), """{"seed":true}""");
+
+            var directory = new ResourceDirectory(new ResourceDirectoryOptions { Root = root });
+
+            var resolved = directory.TryResolve("assets/seed.json");
+            Assert(resolved is not null, "A resource inside the root must resolve.");
+            Assert(Path.GetFullPath(resolved!) == Path.GetFullPath(Path.Combine(root, "assets", "seed.json")),
+                "The resolved path must point at the configured resource root.");
+
+            Assert(directory.TryResolve("../outside.txt") is null,
+                "A path escaping the resource root must not resolve.");
+            Assert(directory.TryResolve(Path.Combine(root, "assets", "seed.json")) is null,
+                "An absolute path must not resolve.");
+            Assert(directory.TryResolve("assets/missing.json") is null,
+                "A missing resource must not resolve.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void ResourceDirectoryPrefersDevelopmentRoot()
+    {
+        // In development the source tree wins, so an edit is visible without a rebuild (Tauri v3 T6
+        // stops copying resources into the target directory).
+        var packaged = CreateTempDirectory();
+        var development = CreateTempDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(packaged, "data.txt"), "packaged");
+            File.WriteAllText(Path.Combine(development, "data.txt"), "development");
+
+            var directory = new ResourceDirectory(new ResourceDirectoryOptions
+            {
+                Root = packaged,
+                DevelopmentRoot = development,
+            });
+
+            Assert(directory.IsDevelopment, "A present development root must switch the directory to development mode.");
+            Assert(directory.Root == Path.GetFullPath(development), "The development root must be the effective root.");
+
+            var resolved = directory.TryResolve("data.txt");
+            Assert(resolved is not null, "A development resource must resolve.");
+            File.WriteAllText(resolved!, "edited");
+            Assert(
+                File.ReadAllText(directory.TryResolve("data.txt")!) == "edited",
+                "Development resource reads must observe edits immediately.");
+        }
+        finally
+        {
+            Directory.Delete(packaged, recursive: true);
+            Directory.Delete(development, recursive: true);
+        }
+    }
+
+    private static async Task ResourceDirectoryMirrorsRemappedResources()
+    {
+        var root = CreateTempDirectory();
+        var mirror = CreateTempDirectory();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "assets"));
+            File.WriteAllText(Path.Combine(root, "assets", "icon.txt"), "v1");
+
+            var directory = new ResourceDirectory(new ResourceDirectoryOptions
+            {
+                Root = root,
+                MirrorDirectory = mirror,
+                MirroredResources = ["assets/icon.txt"],
+            });
+
+            await directory.MirrorRemappedAsync();
+
+            var mirrored = Path.Combine(mirror, "assets", "icon.txt");
+            Assert(File.Exists(mirrored), "A remapped resource must be mirrored next to the executable.");
+            Assert(File.ReadAllText(mirrored) == "v1", "The mirror must carry the resource content.");
+
+            var writtenAt = File.GetLastWriteTimeUtc(mirrored);
+            await directory.MirrorRemappedAsync();
+            Assert(
+                File.GetLastWriteTimeUtc(mirrored) == writtenAt,
+                "Mirroring must be idempotent and leave an up-to-date resource untouched.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+            Directory.Delete(mirror, recursive: true);
+        }
+    }
+
+    private static void ResourcesBaseFollowsConfiguredResourceDirectory()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var policy = new FileAccessPolicy(new FileAccessPolicyOptions { ResourcesDirectory = root });
+            Assert(
+                policy.TryGetBaseDirectory("resources", out var path, out var readOnly),
+                "The resources base must resolve when a resource directory is configured.");
+            Assert(
+                Path.GetFullPath(path) == Path.GetFullPath(root),
+                "The resources base must point at the configured resource directory.");
+            Assert(readOnly, "The resources base must stay read-only.");
+
+            var defaultPolicy = new FileAccessPolicy();
+            Assert(
+                defaultPolicy.ResolveBase("resources") == AppContext.BaseDirectory,
+                "Without configuration the resources base keeps falling back to the executable directory.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void FileAccessPolicySharesResourceDirectoryOptions()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var services = new ServiceCollection();
+            services.AddTaruiResourceDirectory(new ResourceDirectoryOptions { Root = root });
+            services.AddFileAccessPolicy();
+            using var provider = services.BuildServiceProvider();
+
+            var policy = provider.GetRequiredService<IFileAccessPolicy>();
+            Assert(
+                policy.ResolveBase("resources") == Path.GetFullPath(root),
+                "Registering the resource directory must move the resources base with it.");
+
+            var directory = provider.GetRequiredService<ITaruiResourceDirectory>();
+            Assert(directory.Root == Path.GetFullPath(root), "The resource directory must use the same root.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static string CreateTempDirectory()
+    {
+        var path = Path.Combine(
+            Path.GetTempPath(),
+            "tarui-resource-tests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    private static async Task DeniesCommandsOutsideCapability()
+    {        var builder = new CommandRouterBuilder();
         builder.Add(
             "test:echo",
             TaruiJsonContext.Default.EmptyArgs,
@@ -98,6 +261,31 @@ internal static class Program
         Assert(
             response.Error?.Code == "NOT_SUPPORTED",
             $"The error must be NOT_SUPPORTED but was '{response.Error?.Code}'.");
+    }
+
+    private static async Task MapsRuntimeTypeMismatchToStableCode()
+    {
+        // A runtime-specific surface requested from the wrong runtime reports RUNTIME_TYPE_MISMATCH
+        // (Tauri v3 RuntimeTypeMismatch), so hosts can tell "wrong backend" from "not implemented".
+        var builder = new CommandRouterBuilder();
+        builder.Add(
+            "test:echo",
+            TaruiJsonContext.Default.EmptyArgs,
+            TaruiJsonContext.Default.Unit,
+            static (_, _, _) => throw new TaruiRuntimeTypeMismatchException("wry", "CefWebRuntimeExtension"),
+            "test:echo");
+
+        var response = await builder.Build().InvokeAsync(
+            Request("4"),
+            new CommandContext("main", "main", new CapabilitySet(["test:echo"])));
+
+        Assert(!response.Success, "A runtime type mismatch must fail the command.");
+        Assert(
+            response.Error?.Code == TaruiRuntimeTypeMismatchException.ErrorCode,
+            $"The error must be {TaruiRuntimeTypeMismatchException.ErrorCode} but was '{response.Error?.Code}'.");
+        Assert(
+            response.Error?.Message.Contains("wry", StringComparison.Ordinal) == true,
+            "The error message must name the runtime that was asked.");
     }
 
     private static async Task DispatchesRegisteredCommandWithoutDynamicBinding()

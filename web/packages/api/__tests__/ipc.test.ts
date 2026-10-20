@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { Channel, DEFAULT_INVOKE_TIMEOUT_MS, IpcCommandError, invoke, listen, reset } from '../ipc'
+import {
+  Channel,
+  DEFAULT_INVOKE_TIMEOUT_MS,
+  IpcCommandError,
+  invoke,
+  invokeTyped,
+  invokeTypedEmpty,
+  listen,
+  reset,
+} from '../ipc'
 
 type PendingEnvelope =
   | { protocol: number; id: string; success: boolean; payload?: unknown; error?: { code: string; message: string } }
@@ -115,6 +124,40 @@ describe('invoke', () => {
     const pending = invoke('plugin:demo|slow', {}, { signal: controller.signal, timeoutMs: 5_000 })
     setTimeout(() => controller.abort(), 5)
     await expect(pending).rejects.toMatchObject({ code: 'INVOKE_ABORTED' })
+  })
+})
+
+describe('invokeTyped', () => {
+  it('forwards the typed command and payload through the same bridge', async () => {
+    let received: { command?: string; payload?: unknown } = {}
+    window.invokeCSharpAction = message => {
+      const parsed = JSON.parse(message) as { id: string; command: string; payload: unknown }
+      received = { command: parsed.command, payload: parsed.payload }
+      sendResponse({ protocol: 1, id: parsed.id, success: true, payload: { contents: 'hello' } })
+    }
+
+    const result = await invokeTyped('plugin:fs|read-text-file', {
+      base: 'appData',
+      path: 'notes.txt',
+    })
+
+    expect(received.command).toBe('plugin:fs|read-text-file')
+    expect(received.payload).toEqual({ base: 'appData', path: 'notes.txt' })
+    expect(result.contents).toBe('hello')
+  })
+
+  it('sends an empty payload for argument-less commands', async () => {
+    let payload: unknown = null
+    window.invokeCSharpAction = message => {
+      const parsed = JSON.parse(message) as { id: string; payload: unknown }
+      payload = parsed.payload
+      sendResponse({ protocol: 1, id: parsed.id, success: true, payload: { enabled: true } })
+    }
+
+    const state = await invokeTypedEmpty('plugin:autostart|is-enabled')
+
+    expect(payload).toEqual({})
+    expect(state.enabled).toBe(true)
   })
 })
 

@@ -1,3 +1,9 @@
+import type {
+  TaruiCommandId,
+  TaruiCommandInput,
+  TaruiCommandResult,
+} from './generated/commands'
+
 export type Unlisten = () => void
 
 type InvokeEnvelope = {
@@ -191,6 +197,32 @@ export async function invoke<TResult = unknown>(
       clearResolver(resolver)
     }
   }
+}
+
+/**
+ * Typed variant of {@link invoke}: the command id, its argument shape and its result type all come
+ * from the generated contract (`generated/commands.ts`), so a wrong command id or a renamed DTO field
+ * fails at type-check time instead of at runtime.
+ *
+ * ```ts
+ * const args = await invokeTyped('plugin:fs|read-text-file', { base: 'appData', path: 'a.txt' })
+ * args.contents // string
+ * ```
+ */
+export async function invokeTyped<TCommand extends TaruiCommandId>(
+  command: TCommand,
+  payload: TaruiCommandInput<TCommand>,
+  options?: InvokeOptions,
+): Promise<TaruiCommandResult<TCommand>> {
+  return invoke<TaruiCommandResult<TCommand>>(command, payload, options)
+}
+
+/** Typed variant of {@link invoke} for commands that take no arguments. */
+export async function invokeTypedEmpty<TCommand extends TaruiCommandId>(
+  command: TCommand,
+  options?: InvokeOptions,
+): Promise<TaruiCommandResult<TCommand>> {
+  return invoke<TaruiCommandResult<TCommand>>(command, {}, options)
 }
 
 /**

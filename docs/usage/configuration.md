@@ -87,20 +87,48 @@
 
 环境变量兜底(`TARUI_WEB_MODE` / `TARUI_WEB_URL` / `TARUI_WEB_ROOT` / `TARUI_WEB_CSP` / `TARUI_WEB_USER_AGENT` / `TARUI_WEB_PROXY_SERVER`)等。
 
-## 5. `Tarui:Application:*` 键
+## 5. `Tarui:Resources:*` 键(原生资源目录)
+
+应用自带资源(图标、种子数据、模板、数据库初始文件)统一走 `resources` 目录,与 web 资源(§4)是两套边界。文件系统插件的 `resources` 基目录、`ITaruiResourceDirectory` 与打包布局共享同一根,避免出现第二个资源边界。
+
+| 键 | 取值 | 说明 |
+| --- | --- | --- |
+| `Root` | 路径 | 打包资源根。缺省依次回退 `TARUI_RESOURCE_DIR` → `{可执行文件目录}/resources`(存在时) → 可执行文件目录 |
+| `DevelopmentRoot` | 路径 | 开发期源码资源根。存在时**优先于** `Root`,资源改动即时可见,不经过任何拷贝步骤 |
+| `MirrorDirectory` | 路径 | remap 资源镜像目录(通常是可执行文件目录);缺省不镜像 |
+| `MirroredResources` | 相对路径数组 | 需要镜像的 remap 资源,如 `[ "assets/seed.db" ]` |
+
+环境变量兜底:`TARUI_RESOURCE_DIR` / `TARUI_RESOURCE_DEV_DIR` / `TARUI_RESOURCE_MIRROR_DIR` / `TARUI_RESOURCE_MIRRORED`(逗号分隔)。
+
+```jsonc
+{
+  "Tarui": {
+    "Resources": {
+      "Root": "resources",
+      "DevelopmentRoot": "../../resources",
+      "MirrorDirectory": ".",
+      "MirroredResources": ["assets/seed.db"]
+    }
+  }
+}
+```
+
+镜像在首次访问时执行一次:目标文件已是最新(长度与时间戳一致)则跳过,因此重启不会重写全部资源。资源查找只接受相对路径,越界、绝对路径与符号链接逃逸由 `IFileAccessPolicy` 统一拒绝。
+
+## 6. `Tarui:Application:*` 键
 
 | 键 | 作用 |
 | --- | --- |
 | `DeepLinkSchemes` | 注册的 deep-link schemes(`Tarui:Application:DeepLinkSchemes: ["tarui"]`) |
 
-## 6. `Tarui:Notification:*` 键(Windows)
+## 7. `Tarui:Notification:*` 键(Windows)
 
 | 键 | 作用 |
 | --- | --- |
 | `AumId` | Windows Toast AUMID 注册(默认 = `product.identifier`) |
 | `DisplayName` | 通知中心显示名 |
 
-## 7. `Tarui:FileAssociations`(Windows portable zip)
+## 8. `Tarui:FileAssociations`(Windows portable zip)
 
 ```json
 "FileAssociations": [
@@ -114,7 +142,7 @@
 
 运行时由 `WindowsFileAssociationRegistrar` 在 HKCU 注册 ProgID + `.ext` 映射;MSIX 走 `bundle.fileAssociations` + `uap:fileTypeAssociation`;macOS 走 `bundle.macOS.schemes` + InfoPlist `CFBundleDocumentTypes`。
 
-## 8. `Logging:LogLevel:*`
+## 9. `Logging:LogLevel:*`
 
 标准 `Microsoft.Extensions.Logging`:
 
@@ -130,7 +158,7 @@
 }
 ```
 
-## 9. 运行时诊断
+## 10. 运行时诊断
 
 ```powershell
 # 启用 Debug 日志

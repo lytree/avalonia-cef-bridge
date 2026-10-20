@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Tarui.Contracts;
 using Tarui.WebView.Abstractions;
 using Tarui.WebView.Avalonia;
 using Tarui.WebView.CefGlueNext;
@@ -24,6 +25,7 @@ internal static class Program
         TestFromConfigurationSchemeSettings(fixture);
         TestAddCefGlueWebView();
         TestTaruiAppOrigin();
+        TestRuntimeExtensionSurface();
         TestGetMimeAndQuery(fixture);
         TestHeadLength(fixture);
         TestMethodAndAuthorityRejection(fixture);
@@ -328,6 +330,59 @@ internal static class Program
             "tarui://localhost/",
             multi.SchemeOrigin?.ToString(),
             "The scheme origin should round-trip unchanged.");
+    }
+
+    private static void TestRuntimeExtensionSurface()
+    {
+        // Tauri v3 parity (T2): the runtime-specific surface is reachable only through the extension,
+        // and asking the wrong runtime for it fails with RUNTIME_TYPE_MISMATCH instead of degrading.
+        var runtime = new CefGlueNextWebRuntime(
+            CefGlueNextWebAppOptions.CreateHttp(new Uri("http://127.0.0.1:5173/")));
+
+        Assert(
+            runtime.TryGetExtension<CefWebRuntimeExtension>(out var extension) && extension is not null,
+            "The CEF runtime must expose its CEF-specific extension.");
+        AssertEqual("cef", extension!.RuntimeName, "The extension must report its owning runtime.");
+        AssertEqual("cef", extension.BrowserRuntimeStyle, "The browser runtime style must identify CEF.");
+        Assert(extension.SupportsDevToolsProtocol, "CEF must report DevTools Protocol support.");
+
+        Assert(
+            ReferenceEquals(extension, runtime.GetRequiredExtension<CefWebRuntimeExtension>()),
+            "The required-extension accessor must return the same extension instance.");
+
+        Assert(
+            !runtime.TryGetExtension<INonCefExtension>(out _),
+            "A runtime must report extensions it does not implement as unavailable.");
+
+        ITaruiWebRuntime other = new NonCefRuntime();
+        Assert(
+            !other.TryGetExtension<CefWebRuntimeExtension>(out _),
+            "A non-CEF runtime must not expose the CEF extension.");
+        AssertThrows<TaruiRuntimeTypeMismatchException>(
+            () => other.GetRequiredExtension<CefWebRuntimeExtension>(),
+            static exception => exception.RuntimeName == "wry" &&
+                exception.ExpectedExtension == nameof(CefWebRuntimeExtension),
+            "Requesting a CEF extension from another runtime must report a runtime type mismatch.");
+    }
+
+    /// <summary>An extension only a hypothetical non-CEF runtime would implement.</summary>
+    private interface INonCefExtension : ITaruiRuntimeExtension;
+
+    /// <summary>A minimal non-CEF runtime used to prove the mismatch path.</summary>
+    private sealed class NonCefRuntime : ITaruiWebRuntime
+    {
+        public string Name => "wry";
+
+        public string WebviewVersion => "0.0.0";
+
+        public TaruiAppOrigin Origin { get; } = new(new Uri("https://example.test/"));
+
+        public string ResourceMode => "http";
+
+        public ValueTask InitializeAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask ShutdownAsync() => ValueTask.CompletedTask;
     }
 
     private static void TestGetMimeAndQuery(TestFixture fixture)
