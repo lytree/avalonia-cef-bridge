@@ -7,7 +7,7 @@
 
 ## 1. 背景与问题
 
-Tauri v2 的 macOS 分发产物是 `*.app`（Apple Bundle）而不是 zip/MSIX。Tarui 此前只定义了 `zip` 与 `msix` 两个 bundle target，导致 macOS 用户必须自行拼装 `.app` 才能运行 `Demo.Desktop`，与 §10 计划目标"对标 Tauri 的 macOS 体验"严重不一致。
+macOS 应用的标准分发产物是 `*.app`（Apple Bundle）而不是 zip/MSIX。Tarui 此前只定义了 `zip` 与 `msix` 两个 bundle target，导致 macOS 用户必须自行拼装 `.app` 才能运行 `Demo.Desktop`，与 §10 计划目标"提供 macOS 原生分发体验"严重不一致。
 
 落地 ADR-0001（macOS DeepLink 通过 `NSAppleEventManager` 桥接 `DeepLinkService`）后，runtime 已能在 macOS 上接收 warm `openURLs:` 激活，但**缺少一个能在 macOS 真机构建出可直接分发的 `.app` 的管道**。任何把 AppleEvent 行为接上 `Info.plist` 的尝试，最终都需要 `.app/Contents/Info.plist` 含正确的 `CFBundleURLTypes`、可执行被 `Contents/MacOS` 接管、CEF 原生运行时到位、最终被 `codesign --deep` 与 `xcrun notarytool` 公证。
 
@@ -209,5 +209,5 @@ sequenceDiagram
   - [`src/tarui-cli/TarArchive.cs`](../../src/tarui-cli/TarArchive.cs)
   - [`.github/workflows/ci-macos.yml`](../../.github/workflows/ci-macos.yml)
   - [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
-  - [`docs/tauri-desktop-alignment-plan.md` §15 Phase 6](../tauri-desktop-alignment-plan.md)
+  - [`docs/design/alignment-plan.md` §15 Phase 6](../design/alignment-plan.md)
   - [`docs/design/gap-analysis.md` §1/§4 P1-14](../design/gap-analysis.md)

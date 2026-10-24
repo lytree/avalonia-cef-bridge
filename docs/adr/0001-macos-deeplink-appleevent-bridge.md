@@ -7,7 +7,7 @@
 
 ## 1. 背景与问题
 
-Tauri 桌面壳层需要支持 macOS 上自定义 URL Scheme（`tarui://...`）的 cold/warm 激活。对标框架 Tauri v2 的 macOS 实现依赖 AppKit 的 `application(_:openURLs:)` 委托或更底层的 Apple Event `kAEGetURL` 通道；它**不**走 `argv`，因为 macOS 的 `LaunchServices` 在 App 已运行时把 URL 直接发给已运行实例的 `NSApplication`，不再 fork 新进程。
+Tarui 桌面壳层需要支持 macOS 上自定义 URL Scheme（`tarui://...`）的 cold/warm 激活。macOS 的 LaunchServices 在 App 已运行时把 URL 直接发给已运行实例的 `NSApplication`，不再 fork 新进程；因此 warm 激活经受 AppKit 的 `application(_:openURLs:)` 委托或底层 Apple Event `kAEGetURL` 通道投递，**不**走 `argv`。
 
 Tarui 现有接线（截至 2026-09-19）：
 
@@ -16,7 +16,7 @@ Tarui 现有接线（截至 2026-09-19）：
 - macOS 注册是**打包期**动作（`Info.plist` 的 `CFBundleURLTypes`），运行时不需要 `LSSetDefaultHandlerForURLScheme`。
 - 但 **AppKit → 托管代码的桥目前不存在**：warm 期收到 `application:openURLs:` 时，没有代码把 URL 转给 `DeepLinkService.Deliver`，导致 macOS 上 deep-link warm 投递完全失效。
 
-设计稿 `docs/tauri-desktop-alignment-plan.md §10.3`（2026-08-22 验收条目）已要求：
+设计稿 `docs/design/alignment-plan.md §10.3`（2026-08-22 验收条目）已要求：
 
 > 在 Cocoa AppDelegate 中把 `openURLs` 的 URL 交给现有 `DeepLinkService`（此类已暴露 `Deliver`，且实现 `ISecondActivationSink`，勿新增第二个 URL 入口）。
 
@@ -256,12 +256,12 @@ public void Deliver(string url)
 1. macOS 真机验收：m 系列 Mac 上 `dotnet run --project examples/demo/Demo.Desktop` + `open "tarui://hello?x=1"`（冷/热）覆盖 §7 测试矩阵。
 2. CI 平台矩阵扩大：在 macOS runner 跑无 UI 的策略/契约/权限类（含 `Tarui.DeepLink.Tests` 中 `MacBridge*` 用例）。
 3. 文档同步：
-   - `docs/tauri-desktop-alignment-plan.md §15` Phase 6 §6.3 DeepLink 行：从"macOS delegate 桥骨架已写未真机"改为"AppleEvent 桥已落地，macOS 真机未验"。
+   - `docs/design/alignment-plan.md §15` Phase 6 §6.3 DeepLink 行：从"macOS delegate 桥骨架已写未真机"改为"AppleEvent 桥已落地，macOS 真机未验"。
    - `docs/design/gap-analysis.md §4` P1-14 与 §6 推进顺序同步 macOS DeepLink 状态。
 
 ## 10. 参考
 
 - [Apple Developer — NSAppleEventManager](https://developer.apple.com/documentation/foundation/nsappleeventmanager)
 - [Apple Developer — Handling URL Schemes](https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app)
-- Tauri v2 DeepLink plugin（warm `application:openURLs:` + cold argv 双路径）
-- 仓库内：[`docs/tauri-desktop-alignment-plan.md §10.3`](../../docs/tauri-desktop-alignment-plan.md) / [`src/desktop/Tarui.Shell/DeepLinkService.cs`](../../src/desktop/Tarui.Shell/DeepLinkService.cs) / [`DeepLinkRegistrarHostedService.cs`](../../src/desktop/Tarui.Shell/DeepLinkRegistrarHostedService.cs)
+- Tarui macOS DeepLink 桥（`MacDeepLinkBridge` warm `kAEGetURL` + cold `argv` 双路径）
+- 仓库内：[`docs/design/alignment-plan.md §10.3`](../../docs/design/alignment-plan.md) / [`src/desktop/Tarui.Shell/DeepLinkService.cs`](../../src/desktop/Tarui.Shell/DeepLinkService.cs) / [`DeepLinkRegistrarHostedService.cs`](../../src/desktop/Tarui.Shell/DeepLinkRegistrarHostedService.cs)

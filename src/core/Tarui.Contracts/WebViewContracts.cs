@@ -47,7 +47,7 @@ public sealed record WebviewLabels(string[] Labels);
 /// <summary>
 /// The identity of the browser runtime backing every web view: the runtime name, the underlying
 /// engine version, the asset resource mode (<c>http</c> or <c>scheme</c>) and the application origin.
-/// Mirrors Tauri v3's runtime identity surface (<c>webview_version</c> + <c>custom_scheme_url</c>).
+/// Exposed by <c>plugin:webview|runtime-info</c>.
 /// </summary>
 public sealed record WebviewRuntimeInfo(
     string Name,

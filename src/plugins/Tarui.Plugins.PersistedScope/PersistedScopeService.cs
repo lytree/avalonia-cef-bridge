@@ -138,7 +138,7 @@ public sealed class PersistedScopeService : IPersistedScopeService, IRuntimeScop
             foreach (var path in paths)
             {
                 // A grant replaces the opposite ruling: allowing a denied path lifts the deny and
-                // vice versa, mirroring Tauri's persisted-scope semantics.
+                // vice versa; persisted scope keeps allow and deny mutually exclusive.
                 if (removeFrom.RemoveAll(candidate => candidate == path) > 0)
                 {
                     changed = true;

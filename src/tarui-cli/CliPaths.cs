@@ -2,7 +2,7 @@ namespace Tarui.Cli;
 
 /// <summary>
 /// Resolves the manifest path and interprets manifest-relative paths against the
-/// manifest directory (Tauri semantics: relative paths are relative to the app dir).
+/// manifest directory (relative paths resolve against the app dir).
 /// </summary>
 internal sealed record CliPaths(string ManifestPath, string ManifestDirectory)
 {

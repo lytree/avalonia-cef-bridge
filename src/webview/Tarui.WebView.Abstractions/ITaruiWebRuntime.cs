@@ -1,12 +1,12 @@
 namespace Tarui.WebView.Abstractions;
 
 /// <summary>
-/// The browser runtime that backs an application's web views. Mirrors Tauri v3's runtime identity
-/// (T1/T4): the application selects one runtime and then asks it for the origin, the engine version
-/// and the resource mode, instead of assuming a specific browser engine in the shell and hosting
-/// layers. Tarui ships a single implementation (<c>CefGlueNextWebRuntime</c>); the abstraction exists
-/// so those layers depend on the concept rather than the CEF adapter, leaving a slot for any future
-/// engine without introducing runtime reflection or assembly scanning.
+/// The browser runtime that backs an application's web views. The application selects one runtime
+/// and then asks it for the origin, the engine version and the resource mode, instead of assuming a
+/// specific browser engine in the shell and hosting layers. Tarui ships a single implementation
+/// (<c>CefGlueNextWebRuntime</c>); the abstraction exists so those layers depend on the concept
+/// rather than the CEF adapter, leaving a slot for any future engine without introducing runtime
+/// reflection or assembly scanning.
 /// </summary>
 public interface ITaruiWebRuntime
 {
@@ -14,8 +14,7 @@ public interface ITaruiWebRuntime
     string Name { get; }
 
     /// <summary>
-    /// The underlying browser engine version, for example CEF <c>150.0.11</c>. Mirrors Tauri v3's
-    /// <c>RuntimeHandle::webview_version</c>.
+    /// The underlying browser engine version, for example CEF <c>150.0.11</c>.
     /// </summary>
     string WebviewVersion { get; }
 
@@ -25,7 +24,7 @@ public interface ITaruiWebRuntime
     /// <summary>
     /// How the runtime serves the application's web assets: <c>http</c> when pages load from an
     /// HTTP(S) origin, <c>scheme</c> when they load from the runtime's custom, portless scheme.
-    /// Mirrors the resource-mode decision Tauri v3 moved into the runtime.
+    /// The runtime owns this decision so the shell and hosting layers stay engine-neutral.
     /// </summary>
     string ResourceMode { get; }
 
