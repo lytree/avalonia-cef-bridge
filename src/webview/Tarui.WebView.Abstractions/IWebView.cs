@@ -69,12 +69,6 @@ public interface ITaruiWebView : IDisposable
     /// </summary>
     void SetDevTools(bool open);
 
-    /// <summary>Sets the page zoom factor (1.0 = 100%, must be finite and positive).</summary>
-    void SetZoom(double factor);
-
-    /// <summary>Opens the browser print dialog for this web view.</summary>
-    void Print();
-
     /// <summary>
     /// Evaluates <paramref name="script"/> in the renderer's main frame. The current implementation
     /// does not return a value because the bundled CEF fork's <c>ExecuteJavaScript</c> surface is

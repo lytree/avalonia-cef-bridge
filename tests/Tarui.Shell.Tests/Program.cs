@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.Configuration;
@@ -69,7 +69,6 @@ internal static class Program
         WindowCapabilityResolverAllowsCallerWithWildcard();
         await WebViewHostDeliversRenderProcessGoneToAuthorizedWindow();
         await WebViewHostSuppressesRenderProcessGoneWithoutCapability();
-        EntryCancelsPendingCloseFallback();
         BuildsEvalCallbackWrapperScript();
         RegistrarBuildsRegistryShape();
         FileAssociationConfigurationReadsSegments();
@@ -1428,20 +1427,6 @@ internal static class Program
 
         public List<bool> DevToolsCalls { get; } = new();
 
-        public void SetZoom(double factor)
-        {
-            ZoomCalls.Add(factor);
-        }
-
-        public List<double> ZoomCalls { get; } = new();
-
-        public int PrintCallCount { get; private set; }
-
-        public void Print()
-        {
-            PrintCallCount++;
-        }
-
         public ValueTask ExecuteScriptAsync(string script, CancellationToken cancellationToken = default)
         {
             ExecutedScripts.Add(script);
@@ -1716,21 +1701,6 @@ internal static class Program
             sink.Events.Count == 0,
             "A window without the event capability must never observe renderer terminations.");
         return Task.CompletedTask;
-    }
-
-    private static void EntryCancelsPendingCloseFallback()
-    {
-        var entry = CreateEntry(new FakeSink(), new CommandContext("main", "main", new CapabilitySet([])));
-        var fallback = new CancellationTokenSource();
-        var token = fallback.Token;
-        entry.CloseFallback = fallback;
-
-        entry.CancelCloseFallback();
-        Assert(token.IsCancellationRequested, "Denying a close must cancel the forced-close fallback.");
-        Assert(entry.CloseFallback is null, "The fallback must be detached after cancellation.");
-
-        entry.CancelCloseFallback();
-        Assert(entry.CloseFallback is null, "Denying close twice must stay idempotent.");
     }
 
     private static void BuildsEvalCallbackWrapperScript()

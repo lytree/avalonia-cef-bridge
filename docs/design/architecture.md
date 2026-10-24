@@ -83,15 +83,15 @@ The `Tarui.WebView.CefGlueNext` nupkg contains `Tarui.WebView.CefGlueNext.dll` p
 5. `IpcDispatcher` — wraps the frozen command router; every `WebViewHost` dispatches with the `CommandContext` of its own window, so the shell-side label is authoritative even when the Web envelope carries a stale one.
 6. Window services — `ShellWindowFactory`, `AvaloniaWindowService`, `AvaloniaDialogService`, `AvaloniaClipboardService`, and `MainWindowLauncher` for the `main` window entry and lifecycle wiring.
 
-`AvaloniaWindowService` implements the 24 `core:window|*` commands over `WindowRegistry` and `ShellWindow`, including monitor discovery. `AvaloniaDialogService` and `AvaloniaClipboardService` resolve the owner window from the registry so dialogs and clipboard access stay attached to the requesting window.
+`AvaloniaWindowService` implements the 26 `core:window|*` commands over `WindowRegistry` and `ShellWindow`, including monitor discovery. `AvaloniaDialogService` and `AvaloniaClipboardService` resolve the owner window from the registry so dialogs and clipboard access stay attached to the requesting window.
 
-Window lifecycle events are wired per entry: `window://moved`, `window://resized`, `window://focus-changed`, and `window://close-requested` are routed to the owning window's Webview; `window://destroyed` and `shell://theme-changed` broadcast to all windows. Closing is cooperative — the OS close request is cancelled and surfaced as `window://close-requested`; only `core:window|close` (which sets the entry's close-pending flag) actually destroys the window. `core:window|deny-close` is the Web-side receipt that cancels the force-close fallback timer (front-end never confirms). The timeout is configurable via `Tarui:Window:CloseRequestTimeout` (seconds; `0` requires explicit `core:window|close force=true`).
+Window lifecycle events are wired per entry: `window://moved`, `window://resized`, and `window://focus-changed` are routed to the owning window's Webview; `window://destroyed` and `shell://theme-changed` broadcast to all windows. Closing is immediate: `core:window|close` destroys the window without an interception or receipt channel.
 
 Reserved native events are delivered to a window only when its capability `events` list authorizes receiving them (`capabilities/*.json` declares `window://*` and `shell://theme-changed` for the demo windows); `user://` events carry no native data and reach any window. This prevents second-instance arguments, file paths, and notification actions from leaking to unauthorized windows.
 
 ## Frontend bridge
 
-`@lytree/api` mirrors the plugin contracts as typed TypeScript modules (`ipc`, `app`, `window`, `event`, `dialog`, `os`, `path`, `process`, `shell`, `clipboard`, ...). The `Window` class addresses the current Webview's window when label-less and a specific window via `getByLabel`; lifecycle subscriptions (`onMoved`, `onResized`, `onFocusChanged`, `onCloseRequested`, `onDestroyed`, `denyClose`) wrap the shared `listen` registry. Responses resolve through the base64 dispatch channel installed by `WebViewHost`; failures reject with `IpcCommandError` carrying the router's error code.
+`@lytree/api` mirrors the plugin contracts as typed TypeScript modules (`ipc`, `app`, `window`, `event`, `dialog`, `os`, `path`, `process`, `shell`, `clipboard`, ...). The `Window` class addresses the current Webview's window when label-less and a specific window via `getByLabel`; lifecycle subscriptions (`onMoved`, `onResized`, `onFocusChanged`, `onDestroyed`) wrap the shared `listen` registry. Responses resolve through the base64 dispatch channel installed by `WebViewHost`; failures reject with `IpcCommandError` carrying the router's error code.
 
 ## Process model
 

@@ -35,7 +35,6 @@ builder.Services
     .AddCookiePlugin()
     .AddWebsocketPlugin()
     .AddPersistedScopePlugin()
-    .AddPositionerPlugin()
     .AddSqlPlugin();
 ```
 
@@ -46,8 +45,8 @@ builder.Services
 | 插件 | 命令前缀 | 关键命令 | 用途 |
 | --- | --- | --- | --- |
 | `Tarui.Plugins.Core` | `core:app|*` | `get-info` | 壳握手(产品、版本、能力列表) |
-| `Tarui.Plugins.Window` | `core:window|*` | 24 条 | 窗口生命周期、几何、装饰、监视器 |
-| `Tarui.Plugins.Webview` | `plugin:webview|*` | `navigate` / `get-state` / `devtools` / `eval` / `eval-with-callback` / `set-zoom` / `print` / `runtime-info` / `create` / `set-bounds` / `destroy` / `send-devtools-message` | 当前 Webview + 多 Webview 寻址 + DevTools + 脚本回执 + 运行时身份 + 多 surface 挂载 + CDP 通道 |
+| `Tarui.Plugins.Window` | `core:window|*` | 26 条 | 窗口生命周期、几何、装饰、监视器 |
+| `Tarui.Plugins.Webview` | `plugin:webview|*` | `navigate` / `get-state` / `devtools` / `eval` / `eval-with-callback` / `runtime-info` / `create` / `set-bounds` / `destroy` / `send-devtools-message` | 当前 Webview + 多 Webview 寻址 + DevTools + 脚本回执 + 运行时身份 + 多 surface 挂载 + CDP 通道 |
 | `Tarui.Plugins.WindowState` | `plugin:window-state|*` | `save` / `restore` / `clear` | 持久化窗口尺寸/位置(显示器拟合) |
 | `Tarui.Plugins.Event` | `core:event|*` | `emit` | Web 发出事件(限于 `user://` 前缀) |
 | `Tarui.Plugins.Dialog` | `plugin:dialog|*` | `open` / `save` / `message` / `confirm` / `ask` | 文件/目录/消息/确认/ask |
@@ -68,7 +67,6 @@ builder.Services
 | `Tarui.Plugins.Cookie` | `plugin:cookie|*` | `list` / `set` / `remove` / `flush` | Cookie 管理 |
 | `Tarui.Plugins.Websocket` | `plugin:websocket|*` | `connect` / `send` / `close` | WebSocket(Channel 帧推送) |
 | `Tarui.Plugins.PersistedScope` | `plugin:persisted-scope|*` | `scope-allow` / `scope-deny` / `scope-reset` | 运行时 scope 扩展 |
-| `Tarui.Plugins.Positioner` | `plugin:positioner|*` | `set-position` | 8 屏幕锚位 + 6 Tray* 锚位 |
 
 完整插件清单与命令 ID 见 [`../design/plugin-system.md`](../design/plugin-system.md) §3。
 

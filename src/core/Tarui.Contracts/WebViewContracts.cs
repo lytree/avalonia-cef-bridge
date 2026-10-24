@@ -9,9 +9,6 @@ public sealed record WebviewNavigateOptions(string Url, string? Label = null);
 /// <summary>Opens (<see cref="Open"/> = true) or closes the browser developer tools of a web view.</summary>
 public sealed record WebviewDevToolsOptions(bool Open = true, string? Label = null);
 
-/// <summary>Sets the page zoom factor for a web view (1.0 = 100%).</summary>
-public sealed record WebviewSetZoomOptions(double Factor, string? Label = null);
-
 /// <summary>Position and size of a web view surface inside its host window (logical units).</summary>
 public sealed record WebviewBounds(double X, double Y, double Width, double Height);
 

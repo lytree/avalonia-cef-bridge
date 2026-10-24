@@ -41,7 +41,7 @@
 | D10 | T8 macOS 私有 API 退役 | 透明窗口走 Avalonia `TransparencyLevelHint`，Tarui 从未有 `macos-private-api` 类开关 | 不适用 | — |
 | D11 | T8 specta 类型化 bindings | 已实施（V3-3 v1）：`Tarui.Ipc.Generators` 从 `commands.Add("id", …)` 调用点生成每程序集 `{Assembly}CommandCatalog`（`{ Id, Input, Output }` 契约）；新增 `tests/Tarui.Bindings.Tests` 把生成契约与手写 `@lytree/api` 的 `invoke('…')` 字面量做双向漂移校验。全量 `.d.ts` 生成与权限字段仍延后 | 中（v1 已实施） | V3-3 |
 | D12 | T8 `tauri migrate` / NSIS 键名 / MSRV | Tarui 无历史版本迁移负担；产物为 zip / MSIX / `.app` / `.app.tar.gz`，无 NSIS；MSRV 是 Rust 侧概念 | 不适用 | — |
-| D13 | 单窗口多 WebView（v2 既有模型，v3 保留 Window/Webview 独立实体） | **架构级缺口**（gap-analysis §3.1 / §4 P0-0）：`WindowOptions`→`IWebViewFactory` 为窗口↔webview 一对一强绑定。`Tarui.Plugins.Webview` 的 `IWebviewService` 契约已声明"webview 与宿主窗口解耦、可按 `webviewLabel` 独立寻址"（`navigate/get-state/devtools/set-zoom/print/eval/eval-with-callback/list` 命令 + own/other-webview 权限），即**插件层寻址已就绪，缺底层多 WebView 挂载** | **高**（已实施 V3-1） | V3-1 |
+| D13 | 单窗口多 WebView（v2 既有模型，v3 保留 Window/Webview 独立实体） | **架构级缺口**（gap-analysis §3.1 / §4 P0-0）：`WindowOptions`→`IWebViewFactory` 为窗口↔webview 一对一强绑定。`Tarui.Plugins.Webview` 的 `IWebviewService` 契约已声明"webview 与宿主窗口解耦、可按 `webviewLabel` 独立寻址"（`navigate/get-state/devtools/eval/eval-with-callback/list` 命令 + own/other-webview 权限），即**插件层寻址已就绪，缺底层多 WebView 挂载** | **高**（已实施 V3-1） | V3-1 |
 | D14 | T8 tracing 观测 | `Tarui.Plugins.Log` 已实现 renderer→MEL 双向桥接，等价 | 小/已等价 | — |
 | D15 | Android 绑定宏迁移（`android_binding!` 移至 wry 运行时） | 移动端为对齐计划 §1 明确非目标 | 不适用 | — |
 

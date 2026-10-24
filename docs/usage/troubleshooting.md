@@ -19,7 +19,6 @@
 | `not_authorized` 抛出 | 调用方窗口 capability 未授权;对照 `capabilities/<window>.json` 的 `permissions` 数组补全 |
 | IPC 无响应 | 命令名拼写不一致、TaruiJsonContext 未注册该 DTO、Capability `permissions` 缺对应 ID |
 | `scope_denied` | scope allow/deny 命中拒绝;检查 `base` / `path` glob 是否被 `deny` 命中 |
-| `core:window|deny-close` 不生效 | 必须收到 `window://close-requested` 事件之后才回执;同时未触发超时强制关闭 |
 | `create-window` 失败 | 目标 label 的 capability 文件不存在;shell 不回退 main,要求显式声明 |
 
 ## 3. Channel 与流式

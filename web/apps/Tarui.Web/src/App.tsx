@@ -43,8 +43,6 @@ function App() {
   const [windowCount, setWindowCount] = useState<number | null>(null)
   const [lastCommand, setLastCommand] = useState('No native command invoked')
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const [closeRequested, setCloseRequested] = useState(false)
-
   const currentWindow = useMemo(() => getCurrentWindow(), [])
 
   const addLog = useCallback((source: string, detail: string) => {
@@ -95,10 +93,6 @@ function App() {
       currentWindow.onResized(geometry =>
         addLog('window', `resized → ${geometry.width}×${geometry.height}`),
       ),
-      currentWindow.onCloseRequested(() => {
-        addLog('window', 'close requested — awaiting confirmation')
-        setCloseRequested(true)
-      }),
       currentWindow.onDestroyed(() => addLog('window', 'window destroyed')),
       on<{ message: string }>('demo://ping', payload =>
         addLog('event', `demo://ping "${payload.message}"`),
@@ -196,11 +190,6 @@ function App() {
         refreshState()
         return 'secondary window created'
       }),
-    confirmClose: () =>
-      void run('window.close', async () => {
-        await currentWindow.close()
-        return 'close confirmed'
-      }),
   }
 
   return (
@@ -216,24 +205,6 @@ function App() {
           {statusLabel}
         </div>
       </header>
-
-      {closeRequested && (
-        <div className="close-bar" role="alert">
-          <span>Close requested by the window manager.</span>
-          <div className="close-bar-actions">
-            <button type="button" onClick={actions.confirmClose}>
-              Confirm close
-            </button>
-            <button
-              type="button"
-              className="quiet"
-              onClick={() => setCloseRequested(false)}
-            >
-              Stay
-            </button>
-          </div>
-        </div>
-      )}
 
       <section className="hero-grid">
         <div className="intro-panel">

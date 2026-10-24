@@ -117,6 +117,6 @@ describe('@lytree/api/window', () => {
 - `Tarui.ShellPlugin.Tests` —— 插件层集成
 - `Tarui.DeepLink.Tests` —— DeepLink 桥(Windows + macOS 桥单元)
 - `Tarui.Cli.Tests` —— CLI 编排 / 清单校验
-- `Tarui.PersistedScope.Tests` / `Tarui.Positioner.Tests` / `Tarui.WebSocket.Tests` —— Phase 4+ 新插件
+- `Tarui.PersistedScope.Tests` / `Tarui.WebSocket.Tests` —— Phase 4+ 新插件
 
 完整清单见 `tests/` 目录。

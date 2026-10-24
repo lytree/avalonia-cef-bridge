@@ -40,15 +40,14 @@ const state = await win.getState();
 
 // 控制
 await win.setTitle('Hello');
-await win.close();  // 协作式:仅设置 close-pending;真正退出由 native 完成
-win.denyClose();    // 取消强制关闭回退定时器
+await win.close();
 
 // 监听
 const off = await win.onMoved(({ x, y }) => console.log('moved', x, y));
 // off() 解除监听
 ```
 
-生命周期订阅:`onMoved` / `onResized` / `onFocusChanged` / `onCloseRequested` / `onDestroyed`,统一包装 `listen`。
+生命周期订阅:`onMoved` / `onResized` / `onFocusChanged` / `onDestroyed`,统一包装 `listen`。
 
 ## 3. 错误码语义
 
@@ -152,7 +151,6 @@ Channel 背压由 `WebviewSession.SendAsync` await 天然成立:JS 调度满时,
 | `http` | `@lytree/api/http` | 类(HTTP) |
 | `websocket` | `@lytree/api/websocket` | 类(TaruiWebSocket) |
 | `cookie` | `@lytree/api/cookie` | 函数式 |
-| `positioner` | `@lytree/api/positioner` | 函数式 |
 | `persisted-scope` | `@lytree/api/persisted-scope` | allowScope / denyScope / resetScope |
 
 完整类型与函数签名见 `web/packages/api/src/<name>.ts`。
@@ -179,8 +177,6 @@ const wv = Webview.getCurrent();
 await wv.navigate('tarui://localhost/settings');
 const state = await wv.getState();              // { label, windowLabel, url, title }
 await wv.openDevtools();
-await wv.setZoom(1.25);
-await wv.print();
 await wv.evalScript('window.scrollTo(0, 0)');
 const value = await wv.evalWithCallback<number>('1 + 1');
 

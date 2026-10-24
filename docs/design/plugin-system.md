@@ -61,7 +61,6 @@ public static IServiceCollection AddPlugin<TPlugin>(this IServiceCollection serv
 | `Tarui.Plugins.Cookie` | `plugin:cookie|*` | 4 | list / set / remove / flush |
 | `Tarui.Plugins.Websocket` | `plugin:websocket|*` | 3 | connect / send / close |
 | `Tarui.Plugins.PersistedScope` | `plugin:persisted-scope|*` | 3 | 运行时 scope 变更 |
-| `Tarui.Plugins.Positioner` | `plugin:positioner|*` | 1 | set-position |
 
 ## 3. 新增插件流程
 

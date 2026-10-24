@@ -18,7 +18,7 @@ internal static class Program
     {
         await RegistersWindowCommandsWithPermissions();
         await DispatchesWindowCreateWithOptions();
-        await DispatchesWindowCreateWithTransparencyAndModalOptions();
+        await DispatchesWindowCreateWithTransparencyOptions();
         await FallsBackToContextWindowLabel();
         await SetsWindowIconAndTheme();
         await ReturnsWindowStateAndLabels();
@@ -52,7 +52,6 @@ internal static class Program
         await RejectsEmptyDevToolsMessage();
         await EvaluatesScriptsThroughWebviewCommands();
         await CompletesEvalCallbackOnBoundChannel();
-        await DeniesCloseThroughWindowCommand();
         ResolvesCorePluginThroughServiceCollection();
         ResolvesWindowPluginThroughServiceCollection();
         ResolvesEventPluginThroughServiceCollection();
@@ -123,7 +122,7 @@ internal static class Program
             "The service must receive the deserialized window options.");
     }
 
-    private static async Task DispatchesWindowCreateWithTransparencyAndModalOptions()
+    private static async Task DispatchesWindowCreateWithTransparencyOptions()
     {
         var service = new FakeWindowService();
         var router = BuildRouter(service);
@@ -136,35 +135,14 @@ internal static class Program
                     Width = 420,
                     Height = 300,
                     Transparent = true,
-                    Parent = "editor",
-                    Modal = true,
                 },
                 TaruiJsonContext.Default.WindowOptions),
             AllowAll());
 
-        Assert(response.Success, "Creating a transparent modal child window must succeed.");
+        Assert(response.Success, "Creating a transparent window must succeed.");
         Assert(
-            service.Calls.Contains("create|palette|Palette|420x300|transparent|parent:editor|modal:true"),
-            "The service must receive the transparency, parent and modal options.");
-
-        var ownedResponse = await router.InvokeAsync(
-            Request(
-                "core:window|create",
-                new WindowOptions("inspector")
-                {
-                    Title = "Inspector",
-                    Width = 320,
-                    Height = 240,
-                    Parent = "editor",
-                    Modal = false,
-                },
-                TaruiJsonContext.Default.WindowOptions),
-            AllowAll());
-
-        Assert(ownedResponse.Success, "Creating a non-modal owned child window must succeed.");
-        Assert(
-            service.Calls.Contains("create|inspector|Inspector|320x240|parent:editor|modal:false"),
-            "The service must record a non-modal parent association.");
+            service.Calls.Contains("create|palette|Palette|420x300|transparent"),
+            "The service must receive the transparency option.");
     }
 
     private static async Task FallsBackToContextWindowLabel()
@@ -762,20 +740,6 @@ internal static class Program
         Assert(
             payload is { Ok: true, Value: "42", Error: null },
             "The completion frame must carry the eval outcome.");
-    }
-
-    private static async Task DeniesCloseThroughWindowCommand()
-    {
-        var service = new FakeWindowService();
-        var router = BuildRouter(service);
-        var response = await router.InvokeAsync(
-            Request("core:window|deny-close", new WindowLabelOptions(), TaruiJsonContext.Default.WindowLabelOptions),
-            new CommandContext("main", "main", new CapabilitySet(["core:window|deny-close"])));
-
-        Assert(response.Success, "Denying a pending close must succeed.");
-        Assert(
-            service.Calls.Contains("deny-close|main"),
-            "A missing label must fall back to the context window label.");
     }
 
     private sealed class RecordingChannelSink : IChannelSink

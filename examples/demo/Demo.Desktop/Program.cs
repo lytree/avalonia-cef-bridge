@@ -14,7 +14,6 @@ using Tarui.Plugins.Log;
 using Tarui.Plugins.Menu;
 using Tarui.Plugins.Notification;
 using Tarui.Plugins.PersistedScope;
-using Tarui.Plugins.Positioner;
 using Tarui.Plugins.Store;
 using Tarui.Plugins.System;
 using Tarui.Plugins.Shell;
@@ -96,7 +95,6 @@ internal static class Program
             .AddCookiePlugin()
             .AddWebsocketPlugin()
             .AddPersistedScopePlugin()
-            .AddPositionerPlugin()
             .AddSqlPlugin()
             .AddPlugin<DemoChannelPlugin>();
 

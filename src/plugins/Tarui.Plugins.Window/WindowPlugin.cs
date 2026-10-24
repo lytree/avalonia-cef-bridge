@@ -9,11 +9,9 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
     private static readonly string[] OtherWindowCapablePermissions =
     [
         "core:window|close",
-        "core:window|deny-close",
         "core:window|minimize",
         "core:window|maximize",
         "core:window|unmaximize",
-        "core:window|unminimize",
         "core:window|toggle-maximize",
         "core:window|hide",
         "core:window|show",
@@ -25,7 +23,6 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
         "core:window|set-min-size",
         "core:window|set-max-size",
         "core:window|set-always-on-top",
-        "core:window|set-skip-taskbar",
         "core:window|set-resizable",
         "core:window|set-decorations",
         "core:window|set-fullscreen",
@@ -54,13 +51,6 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             "core:window|close");
 
         commands.Add(
-            "core:window|deny-close",
-            TaruiJsonContext.Default.WindowLabelOptions,
-            TaruiJsonContext.Default.Unit,
-            handlers.DenyCloseAsync,
-            "core:window|deny-close");
-
-        commands.Add(
             "core:window|minimize",
             TaruiJsonContext.Default.WindowLabelOptions,
             TaruiJsonContext.Default.Unit,
@@ -80,13 +70,6 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             TaruiJsonContext.Default.Unit,
             handlers.UnmaximizeAsync,
             "core:window|unmaximize");
-
-        commands.Add(
-            "core:window|unminimize",
-            TaruiJsonContext.Default.WindowLabelOptions,
-            TaruiJsonContext.Default.Unit,
-            handlers.UnminimizeAsync,
-            "core:window|unminimize");
 
         commands.Add(
             "core:window|toggle-maximize",
@@ -164,13 +147,6 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetAlwaysOnTopAsync,
             "core:window|set-always-on-top");
-
-        commands.Add(
-            "core:window|set-skip-taskbar",
-            TaruiJsonContext.Default.SetFlagOptions,
-            TaruiJsonContext.Default.Unit,
-            handlers.SetSkipTaskbarAsync,
-            "core:window|set-skip-taskbar");
 
         commands.Add(
             "core:window|set-icon",
@@ -294,14 +270,7 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             CloseWindowOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.CloseAsync(Resolve(options.Label, context, "core:window|close"), options.Force, cancellationToken);
-
-        [TaruiCommand("core:window|deny-close")]
-        public ValueTask<Unit> DenyCloseAsync(
-            WindowLabelOptions options,
-            CommandContext context,
-            CancellationToken cancellationToken) =>
-            service.DenyCloseAsync(Resolve(options.Label, context, "core:window|deny-close"), cancellationToken);
+            service.CloseAsync(Resolve(options.Label, context, "core:window|close"), cancellationToken);
 
         [TaruiCommand("core:window|minimize")]
         public ValueTask<Unit> MinimizeAsync(
@@ -323,13 +292,6 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.UnmaximizeAsync(Resolve(options.Label, context, "core:window|unmaximize"), cancellationToken);
-
-        [TaruiCommand("core:window|unminimize")]
-        public ValueTask<Unit> UnminimizeAsync(
-            WindowLabelOptions options,
-            CommandContext context,
-            CancellationToken cancellationToken) =>
-            service.UnminimizeAsync(Resolve(options.Label, context, "core:window|unminimize"), cancellationToken);
 
         [TaruiCommand("core:window|toggle-maximize")]
         public ValueTask<Unit> ToggleMaximizeAsync(
@@ -407,13 +369,6 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.SetAlwaysOnTopAsync(Resolve(options.Label, context, "core:window|set-always-on-top"), options.Value, cancellationToken);
-
-        [TaruiCommand("core:window|set-skip-taskbar")]
-        public ValueTask<Unit> SetSkipTaskbarAsync(
-            SetFlagOptions options,
-            CommandContext context,
-            CancellationToken cancellationToken) =>
-            service.SetSkipTaskbarAsync(Resolve(options.Label, context, "core:window|set-skip-taskbar"), options.Value, cancellationToken);
 
         [TaruiCommand("core:window|set-icon")]
         public ValueTask<Unit> SetIconAsync(

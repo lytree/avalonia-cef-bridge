@@ -25,23 +25,13 @@ internal sealed class FakeWindowService : IWindowService
             call += "|transparent";
         }
 
-        if (options.Parent is { } parent)
-        {
-            call += $"|parent:{parent}";
-        }
-
-        if (options.Modal is { } modal)
-        {
-            call += $"|modal:{(modal ? "true" : "false")}";
-        }
-
         Calls.Add(call);
         return ValueTask.FromResult(new Unit());
     }
 
-    public ValueTask<Unit> CloseAsync(string label, bool force, CancellationToken cancellationToken)
+    public ValueTask<Unit> CloseAsync(string label, CancellationToken cancellationToken)
     {
-        Calls.Add($"close|{label}|{force}");
+        Calls.Add($"close|{label}");
         return ValueTask.FromResult(new Unit());
     }
 
@@ -53,9 +43,6 @@ internal sealed class FakeWindowService : IWindowService
 
     public ValueTask<Unit> UnmaximizeAsync(string label, CancellationToken cancellationToken) =>
         RecordUnit($"unmaximize|{label}");
-
-    public ValueTask<Unit> UnminimizeAsync(string label, CancellationToken cancellationToken) =>
-        RecordUnit($"unminimize|{label}");
 
     public ValueTask<Unit> ToggleMaximizeAsync(string label, CancellationToken cancellationToken) =>
         RecordUnit($"toggle-maximize|{label}");
@@ -90,9 +77,6 @@ internal sealed class FakeWindowService : IWindowService
     public ValueTask<Unit> SetAlwaysOnTopAsync(string label, bool value, CancellationToken cancellationToken) =>
         RecordUnit($"set-always-on-top|{label}|{value}");
 
-    public ValueTask<Unit> SetSkipTaskbarAsync(string label, bool value, CancellationToken cancellationToken) =>
-        RecordUnit($"set-skip-taskbar|{label}|{value}");
-
     public ValueTask<Unit> SetIconAsync(string label, byte[]? png, CancellationToken cancellationToken) =>
         RecordUnit($"set-icon|{label}|{(png is null ? "clear" : $"png:{png.Length}")}");
 
@@ -101,9 +85,6 @@ internal sealed class FakeWindowService : IWindowService
 
     public ValueTask<Unit> SetResizableAsync(string label, bool value, CancellationToken cancellationToken) =>
         RecordUnit($"set-resizable|{label}|{value}");
-
-    public ValueTask<Unit> DenyCloseAsync(string label, CancellationToken cancellationToken) =>
-        RecordUnit($"deny-close|{label}");
 
     public ValueTask<Unit> SetDecorationsAsync(string label, bool value, CancellationToken cancellationToken) =>
         RecordUnit($"set-decorations|{label}|{value}");
@@ -198,18 +179,6 @@ internal sealed class FakeWebviewService : IWebviewService
     public ValueTask<Unit> SetDevToolsAsync(string webviewLabel, bool open, CancellationToken cancellationToken)
     {
         Calls.Add($"devtools|{webviewLabel}|{(open ? "open" : "close")}");
-        return ValueTask.FromResult(new Unit());
-    }
-
-    public ValueTask<Unit> SetZoomAsync(string webviewLabel, double factor, CancellationToken cancellationToken)
-    {
-        Calls.Add($"set-zoom|{webviewLabel}|{factor}");
-        return ValueTask.FromResult(new Unit());
-    }
-
-    public ValueTask<Unit> PrintAsync(string webviewLabel, CancellationToken cancellationToken)
-    {
-        Calls.Add($"print|{webviewLabel}");
         return ValueTask.FromResult(new Unit());
     }
 

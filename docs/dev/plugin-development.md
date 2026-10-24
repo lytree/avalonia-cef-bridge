@@ -74,8 +74,7 @@ permission ID 与 command ID 通常一致(`core:window|create` 等);`RegisteredP
 | `Tarui.Plugins.Shell` | `plugin:shell|*` | 4 | spawn / stdin / kill |
 | `Tarui.Plugins.Cookie` | `plugin:cookie|*` | 4 | list / set / remove / flush |
 | `Tarui.Plugins.Websocket` | `plugin:websocket|*` | 3 | connect / send / close |
-| `Tarui.Plugins.PersistedScope` | `plugin:persisted-scope|*` | 3 | 运行时 scope 变更 |
-| `Tarui.Plugins.Positioner` | `plugin:positioner|*` | 1 | set-position |
+| `Tarui.Plugins.PersistedScope` | `plugin:persisted-scope|*` | 3 | scope-allow / scope-deny / scope-reset |
 
 ## 4. 新增插件步骤
 

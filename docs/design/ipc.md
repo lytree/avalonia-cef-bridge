@@ -73,7 +73,7 @@ Web: Channel.onmessage(chunk) → … → Channel.onclose()
   "platforms": ["windows", "macos", "linux"],
   "events": [
     "window://moved", "window://resized", "window://focus-changed",
-    "window://close-requested", "shell://theme-changed",
+    "window://destroyed", "shell://theme-changed",
     "tray://clicked", "notification://activated",
     "deeplink://tarui", "updater://status", "demo://echo"
   ],
@@ -112,9 +112,9 @@ Web: Channel.onmessage(chunk) → … → Channel.onclose()
 
 `create-window` 时只有两个窗口的 ID / events / permissions 完全匹配时才允许;创建者上下文通过 `CommandContext.Capabilities` 做提权防护。
 
-### 3.5 协作式关闭
+### 3.5 窗口关闭
 
-title-bar 关闭请求先发出 `window://close-requested` 事件;前端必须显式调用 `core:window|close`(或 `core:window|deny-close` 取消强制回退)才真正退出。`Tarui:Window:CloseRequestTimeout` 控制超时;默认 3 秒后强制关闭。
+`core:window|close` 直接请求关闭窗口，无协作式拦截或回执通道。
 
 ## 4. 错误码语义
 
@@ -149,7 +149,7 @@ import { openExternal } from "@lytree/api/shell"      // OS 默认处理器
 import { fs, store, log } from "@lytree/api/fs"       // 命名空间风格
 ```
 
-`Window.getCurrent()` 无 label 时指向当前 Webview 所在窗口,`getByLabel('editor')` 寻址其它窗口。生命周期订阅(`onMoved` / `onResized` / `onFocusChanged` / `onCloseRequested` / `onDestroyed`)统一包装 `listen`;`Channel` 通过 `stream` 工具与原生 `plugin:fs|read-file-stream` 等命令对接。
+`Window.getCurrent()` 无 label 时指向当前 Webview 所在窗口,`getByLabel('editor')` 寻址其它窗口。生命周期订阅(`onMoved` / `onResized` / `onFocusChanged` / `onDestroyed`)统一包装 `listen`;`Channel` 通过 `stream` 工具与原生 `plugin:fs|read-file-stream` 等命令对接。
 
 ## 6. 事件命名空间
 

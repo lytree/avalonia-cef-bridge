@@ -51,7 +51,6 @@ $env:TARUI_LOG_LEVEL__DEFAULT = "Debug"
 | `core:platform|capabilities` 报 `notification: false` | 当前平台不支持通知;前端应禁用 UI;Windows 已实现,macOS/Linux 诚实降级 |
 | Channel 流式背压 | 已有 await `WebviewSession.SendAsync` 自动背压;无需额外机制 |
 | File Watch 不触发 | 检查 capability `events` 含 `fs://watch-change`;`plugin:fs|watch` scope 命中 |
-| `core:window|deny-close` 不生效 | 必须收到 `window://close-requested` 事件之后才回执;同时未触发超时强制关闭 |
 
 ## 4. 性能与诊断
 

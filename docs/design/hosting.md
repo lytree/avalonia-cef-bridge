@@ -182,7 +182,6 @@ public sealed class TaruiApplication     // Services;StartAsync/StopAsync;Run() 
 | `Tarui:Window:Decorations` | 系统标题栏/边框 | true |
 | `Tarui:Window:AlwaysOnTop` | 置顶 | false |
 | `Tarui:Window:Visible` | 启动即显示 | true |
-| `Tarui:Window:CloseRequestTimeout` | `core:window|close` 未确认时的强制关闭超时(秒) | 3.0;`0` 表示必须显式 `force=true` |
 | `Tarui:Web:Mode` | `http` / `scheme` | 自动推断 |
 | `Tarui:Web:Url` / `Root` / `Scheme` / `Host` / `SpaFallback` / `Csp` / `MaxAssetBytes` | WebView 资源模式参数 | 对应 `TARUI_WEB_*` 环境变量默认 |
 | `Tarui:Notification:AumId` / `DisplayName` | Windows Toast AUMID 注册 | 应用 identifier |

@@ -188,34 +188,6 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
         });
     }
 
-    /// <summary>Sets the page zoom factor (1.0 = 100%, must be finite and positive).</summary>
-    public void SetZoom(double factor)
-    {
-        if (!double.IsFinite(factor) || factor <= 0)
-        {
-            throw new ArgumentException("The zoom factor must be finite and positive.", nameof(factor));
-        }
-
-        ThrowIfDisposed();
-        InvokeOnUiThread(() =>
-        {
-            ThrowIfDisposed();
-            // CEF defines the zoom level as the base-1.2 logarithm of the factor: factor = 1.2^level.
-            _browser.ZoomLevel = Math.Log(factor) / Math.Log(1.2);
-        });
-    }
-
-    /// <summary>Opens the browser print dialog for this web view.</summary>
-    public void Print()
-    {
-        ThrowIfDisposed();
-        InvokeOnUiThread(() =>
-        {
-            ThrowIfDisposed();
-            _browser.ExecuteJavaScript("window.print();", "about:blank", 1);
-        });
-    }
-
     public void ExecuteScript(string script, string? sourceUrl = null, int line = 1)
     {
         ThrowIfDisposed();

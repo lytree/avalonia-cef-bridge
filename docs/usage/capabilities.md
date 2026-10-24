@@ -24,7 +24,6 @@
     "window://moved",
     "window://resized",
     "window://focus-changed",
-    "window://close-requested",
     "window://destroyed",
     "shell://theme-changed",
     "tray://clicked",
@@ -126,7 +125,6 @@
   "window://moved",             // 窗口移动
   "window://resized",           // 窗口缩放
   "window://focus-changed",     // 焦点变化
-  "window://close-requested",   // 关闭请求(协作式)
   "window://destroyed",         // 窗口销毁
   "shell://theme-changed",      // 主题广播
   "tray://clicked",             // 托盘点击
@@ -170,14 +168,9 @@
 
 主窗口通过 `core:window|create` 创建 editor 窗口时,shell 校验目标 capability `editor` 存在,且创建者有 `core:window|create` 权限。无提权路径。
 
-## 7. 协作式关闭
+## 7. 窗口关闭
 
-title-bar 关闭请求先发出 `window://close-requested` 事件,前端必须显式调用以下命令之一:
-
-- `core:window|close`(默认 3 秒超时后强制关闭)
-- `core:window|deny-close`(取消强制关闭回退定时器,需要重新触发关闭事件才能再次关闭)
-
-`Tarui:Window:CloseRequestTimeout` 控制超时;默认 3 秒后强制关闭。设为 `0` 时必须显式 `core:window|close force=true`。
+`core:window|close` 直接请求关闭窗口，无协作式拦截或回执通道。
 
 ## 8. Persisted Scope(运行时权限扩展)
 
