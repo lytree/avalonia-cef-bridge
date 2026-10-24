@@ -21,6 +21,7 @@ internal static class Program
         await DispatchesWindowCreateWithTransparencyOptions();
         await FallsBackToContextWindowLabel();
         await SetsWindowIconAndTheme();
+        await SetsWindowEffectsThroughCommands();
         await ReturnsWindowStateAndLabels();
         await EmitsEventsThroughEventPlugin();
         await ResolvesPathsThroughSystemPlugin();
@@ -85,6 +86,10 @@ internal static class Program
             "core:window|set-min-size",
             "core:window|set-max-size",
             "core:window|set-always-on-top",
+            "core:window|set-always-on-bottom",
+            "core:window|set-shadow",
+            "core:window|set-badge-count",
+            "core:window|set-progress-bar",
             "core:window|set-icon",
             "core:window|set-theme",
             "core:window|set-resizable",
@@ -185,6 +190,75 @@ internal static class Program
         Assert(
             service.Calls.Contains("set-theme|main|dark"),
             "The theme must reach the service with the caller window label.");
+    }
+
+    private static async Task SetsWindowEffectsThroughCommands()
+    {
+        var service = new FakeWindowService();
+        var router = BuildRouter(service);
+
+        var bottom = await router.InvokeAsync(
+            Request(
+                "core:window|set-always-on-bottom",
+                new SetFlagOptions(true),
+                TaruiJsonContext.Default.SetFlagOptions),
+            AllowAll());
+        Assert(bottom.Success, "Setting always-on-bottom must succeed.");
+        Assert(
+            service.Calls.Contains("set-always-on-bottom|main|True"),
+            "The bottom z-order flag must reach the service with the caller window label.");
+
+        var shadow = await router.InvokeAsync(
+            Request(
+                "core:window|set-shadow",
+                new SetFlagOptions(false),
+                TaruiJsonContext.Default.SetFlagOptions),
+            AllowAll());
+        Assert(shadow.Success, "Setting the frame shadow must succeed.");
+        Assert(
+            service.Calls.Contains("set-shadow|main|False"),
+            "The shadow flag must reach the service with the caller window label.");
+
+        var badge = await router.InvokeAsync(
+            Request(
+                "core:window|set-badge-count",
+                new SetBadgeCountOptions(7),
+                TaruiJsonContext.Default.SetBadgeCountOptions),
+            AllowAll());
+        Assert(badge.Success, "Setting the badge count must succeed.");
+        Assert(
+            service.Calls.Contains("set-badge-count|main|7"),
+            "The badge count must reach the service.");
+
+        var clear = await router.InvokeAsync(
+            Request(
+                "core:window|set-badge-count",
+                new SetBadgeCountOptions(null),
+                TaruiJsonContext.Default.SetBadgeCountOptions),
+            AllowAll());
+        Assert(clear.Success, "Clearing the badge count must succeed.");
+        Assert(
+            service.Calls.Contains("set-badge-count|main|clear"),
+            "A null badge count must clear the badge.");
+
+        var progress = await router.InvokeAsync(
+            Request(
+                "core:window|set-progress-bar",
+                new SetProgressBarOptions("paused", 42.5),
+                TaruiJsonContext.Default.SetProgressBarOptions),
+            AllowAll());
+        Assert(progress.Success, "Setting the progress bar must succeed.");
+        Assert(
+            service.Calls.Contains("set-progress-bar|main|paused|42.5"),
+            "The progress status and percentage must reach the service.");
+
+        var denied = await router.InvokeAsync(
+            Request(
+                "core:window|set-badge-count",
+                new SetBadgeCountOptions(3, "editor"),
+                TaruiJsonContext.Default.SetBadgeCountOptions),
+            new CommandContext("main", "main", new CapabilitySet(["core:window|set-badge-count"])));
+        Assert(!denied.Success, "Cross-window badge updates must require the -other-window permission.");
     }
 
     private static async Task ReturnsWindowStateAndLabels()
@@ -433,6 +507,9 @@ internal static class Program
         Assert(
             caps.DeepLinkSupported == (OperatingSystem.IsWindows() || OperatingSystem.IsLinux()),
             "Deep-link availability must honestly reflect the current OS footprint.");
+        Assert(
+            caps.WindowEffectsSupported == OperatingSystem.IsWindows(),
+            "Window effects must be reported as Windows-only.");
     }
 
     private static async Task OpensDialogsForRequestingWindow()

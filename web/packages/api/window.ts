@@ -60,6 +60,14 @@ export type WindowGeometry = {
   height: number
 }
 
+export type ProgressBarStatus = 'none' | 'normal' | 'indeterminate' | 'paused' | 'error'
+
+export type ProgressBarState = {
+  status: ProgressBarStatus
+  /** Completion percentage (0-100) used by the determinate statuses. */
+  progress?: number
+}
+
 type WindowFocusChanged = { focused: boolean }
 type WindowLabelPayload = { label: string }
 
@@ -200,6 +208,36 @@ export class Window {
   /** Sets the window theme variant: 'system' | 'light' | 'dark'. */
   async setTheme(theme: 'system' | 'light' | 'dark'): Promise<void> {
     await invoke('core:window|set-theme', { theme, ...this.target() })
+  }
+
+  /**
+   * Pushes the window behind other windows. Windows only; the effect is best-effort and lasts until
+   * another window is activated. Check `platform.capabilities().windowEffectsSupported` first.
+   */
+  async setAlwaysOnBottom(value: boolean): Promise<void> {
+    await invoke('core:window|set-always-on-bottom', { value, ...this.target() })
+  }
+
+  /** Enables or disables the frame shadow (Windows only). */
+  async setShadow(value: boolean): Promise<void> {
+    await invoke('core:window|set-shadow', { value, ...this.target() })
+  }
+
+  /**
+   * Sets the taskbar badge count; a null or non-positive count clears it. On Windows the count is
+   * rendered as a taskbar overlay icon. Windows only.
+   */
+  async setBadgeCount(count: number | null): Promise<void> {
+    await invoke('core:window|set-badge-count', { count, ...this.target() })
+  }
+
+  /** Sets the taskbar progress indicator; null (or status `none`) removes it. Windows only. */
+  async setProgressBar(progress: ProgressBarState | null): Promise<void> {
+    await invoke('core:window|set-progress-bar', {
+      status: progress?.status ?? 'none',
+      progress: progress?.progress,
+      ...this.target(),
+    })
   }
 
   async setResizable(value: boolean): Promise<void> {

@@ -80,6 +80,16 @@ public sealed record SetIconOptions(byte[]? Png = null, string? Label = null);
 /// defaulting to <c>system</c>.</summary>
 public sealed record SetThemeOptions(string? Theme = "system", string? Label = null);
 
+/// <summary>
+/// Sets the taskbar progress indicator. <see cref="Status"/> is one of <c>none</c>/<c>normal</c>/
+/// <c>indeterminate</c>/<c>paused</c>/<c>error</c>; <see cref="Progress"/> is a percentage (0-100)
+/// consumed by the determinate states.
+/// </summary>
+public sealed record SetProgressBarOptions(string? Status = "none", double? Progress = null, string? Label = null);
+
+/// <summary>Sets the taskbar badge count; a null or non-positive count clears the badge.</summary>
+public sealed record SetBadgeCountOptions(int? Count = null, string? Label = null);
+
 public sealed record WindowLabels(string[] Labels);
 
 public sealed record EventEmitOptions(

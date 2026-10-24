@@ -57,6 +57,7 @@
 | 现象 | 处置 |
 | --- | --- |
 | `core:platform\|capabilities` 报 `notification: false` | 当前平台不支持通知;前端应禁用 UI;Windows 已实现,macOS/Linux 诚实降级 |
+| `core:platform\|capabilities` 报 `windowEffectsSupported: false` | 任务栏进度/徽标、窗口阴影与置底仅 Windows 实现;macOS/Linux 调用为诚实 no-op,前端应隐藏对应 UI |
 | macOS / Linux DeepLink 不工作 | 当前仅 Windows / Linux 已真机验证;macOS `NSAppleEventManager` 桥已落地但真机验收待执行(见 [`../adr/0001-macos-deeplink-appleevent-bridge.md`](../adr/0001-macos-deeplink-appleevent-bridge.md)) |
 | Autostart 注册失败 | Linux 需 `~/.config/autostart/` 可写;macOS LaunchAgents 需 `~/Library/LaunchAgents/` 可写 |
 | Global Shortcut 冲突 | `plugin:global-shortcut\|register` 已被其他应用占用;前端用 `is-registered` 探测 |

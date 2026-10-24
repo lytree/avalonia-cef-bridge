@@ -9,6 +9,9 @@ export interface PlatformCapabilities {
   autostartSupported: boolean
   deepLinkSupported: boolean
   deepLinkReason?: string | null
+  /** Taskbar badge/progress, frame shadow and always-on-bottom window effects (Windows only). */
+  windowEffectsSupported: boolean
+  windowEffectsReason?: string | null
 }
 
 /**

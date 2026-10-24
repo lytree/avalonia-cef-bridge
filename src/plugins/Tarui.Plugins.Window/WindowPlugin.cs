@@ -23,6 +23,10 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
         "core:window|set-min-size",
         "core:window|set-max-size",
         "core:window|set-always-on-top",
+        "core:window|set-always-on-bottom",
+        "core:window|set-shadow",
+        "core:window|set-badge-count",
+        "core:window|set-progress-bar",
         "core:window|set-resizable",
         "core:window|set-decorations",
         "core:window|set-fullscreen",
@@ -161,6 +165,34 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetThemeAsync,
             "core:window|set-theme");
+
+        commands.Add(
+            "core:window|set-always-on-bottom",
+            TaruiJsonContext.Default.SetFlagOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.SetAlwaysOnBottomAsync,
+            "core:window|set-always-on-bottom");
+
+        commands.Add(
+            "core:window|set-shadow",
+            TaruiJsonContext.Default.SetFlagOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.SetShadowAsync,
+            "core:window|set-shadow");
+
+        commands.Add(
+            "core:window|set-badge-count",
+            TaruiJsonContext.Default.SetBadgeCountOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.SetBadgeCountAsync,
+            "core:window|set-badge-count");
+
+        commands.Add(
+            "core:window|set-progress-bar",
+            TaruiJsonContext.Default.SetProgressBarOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.SetProgressBarAsync,
+            "core:window|set-progress-bar");
 
         commands.Add(
             "core:window|set-resizable",
@@ -383,6 +415,34 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.SetThemeAsync(Resolve(options.Label, context, "core:window|set-theme"), options.Theme, cancellationToken);
+
+        [TaruiCommand("core:window|set-always-on-bottom")]
+        public ValueTask<Unit> SetAlwaysOnBottomAsync(
+            SetFlagOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.SetAlwaysOnBottomAsync(Resolve(options.Label, context, "core:window|set-always-on-bottom"), options.Value, cancellationToken);
+
+        [TaruiCommand("core:window|set-shadow")]
+        public ValueTask<Unit> SetShadowAsync(
+            SetFlagOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.SetShadowAsync(Resolve(options.Label, context, "core:window|set-shadow"), options.Value, cancellationToken);
+
+        [TaruiCommand("core:window|set-badge-count")]
+        public ValueTask<Unit> SetBadgeCountAsync(
+            SetBadgeCountOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.SetBadgeCountAsync(Resolve(options.Label, context, "core:window|set-badge-count"), options.Count, cancellationToken);
+
+        [TaruiCommand("core:window|set-progress-bar")]
+        public ValueTask<Unit> SetProgressBarAsync(
+            SetProgressBarOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.SetProgressBarAsync(Resolve(options.Label, context, "core:window|set-progress-bar"), options.Status, options.Progress, cancellationToken);
 
         [TaruiCommand("core:window|set-resizable")]
         public ValueTask<Unit> SetResizableAsync(

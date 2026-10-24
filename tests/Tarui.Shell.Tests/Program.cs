@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.Configuration;
@@ -50,6 +50,8 @@ internal static class Program
         await CapabilityLoaderHandlesMissingDirectory();
         ComposerRegistersPluginCommands();
         ComposerRejectsUnregisteredPermissions();
+        WindowEffectsMapProgressStatusesAndClampValues();
+        WindowEffectBadgeLabelsCollapseAboveNine();
         CapabilitySetProviderCachesDirectorySnapshot();
         AddTaruiShellRegistersShellServices();
         await AutostartPlatformServicesRoundTripLaunchEntries();
@@ -316,6 +318,57 @@ internal static class Program
         }
 
         Assert(rejected, "Compose must reject capability files that reference unregistered permissions.");
+    }
+
+    private static void WindowEffectsMapProgressStatusesAndClampValues()
+    {
+        Assert(
+            WindowsWindowEffects.ProgressFlagsFor(null) == WindowsWindowEffects.ProgressNoProgress &&
+            WindowsWindowEffects.ProgressFlagsFor("none") == WindowsWindowEffects.ProgressNoProgress,
+            "An absent or 'none' status must map to no progress.");
+        Assert(
+            WindowsWindowEffects.ProgressFlagsFor("normal") == WindowsWindowEffects.ProgressNormal,
+            "The normal status must map to the normal TBPFLAG.");
+        Assert(
+            WindowsWindowEffects.ProgressFlagsFor("indeterminate") == WindowsWindowEffects.ProgressIndeterminate,
+            "The indeterminate status must map to the indeterminate TBPFLAG.");
+        Assert(
+            WindowsWindowEffects.ProgressFlagsFor("paused") == WindowsWindowEffects.ProgressPaused,
+            "The paused status must map to the paused TBPFLAG.");
+        Assert(
+            WindowsWindowEffects.ProgressFlagsFor("error") == WindowsWindowEffects.ProgressError,
+            "The error status must map to the error TBPFLAG.");
+
+        var rejected = false;
+        try
+        {
+            WindowsWindowEffects.ProgressFlagsFor("bogus");
+        }
+        catch (NotSupportedException)
+        {
+            rejected = true;
+        }
+
+        Assert(rejected, "An unknown progress status must fail honestly.");
+
+        var (completed, total) = WindowsWindowEffects.ProgressValuesFor(42.5);
+        Assert(completed == 425 && total == 1000, "42.5 percent must map to 425/1000.");
+        Assert(
+            WindowsWindowEffects.ProgressValuesFor(null).Completed == 0,
+            "A missing percentage must report zero progress.");
+        Assert(
+            WindowsWindowEffects.ProgressValuesFor(250).Completed == 1000,
+            "Percentages above 100 must be clamped.");
+        Assert(
+            WindowsWindowEffects.ProgressValuesFor(-5).Completed == 0,
+            "Negative percentages must be clamped to zero.");
+    }
+
+    private static void WindowEffectBadgeLabelsCollapseAboveNine()
+    {
+        Assert(WindowsBadgeIcon.LabelFor(3) == "3", "Single-digit badges must render verbatim.");
+        Assert(WindowsBadgeIcon.LabelFor(9) == "9", "Nine must render verbatim.");
+        Assert(WindowsBadgeIcon.LabelFor(10) == "9+", "Counts above nine must collapse to 9+.");
     }
 
     private static void CapabilitySetProviderCachesDirectorySnapshot()

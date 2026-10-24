@@ -140,6 +140,18 @@ public sealed class AvaloniaWindowService(
             },
             cancellationToken);
 
+    public ValueTask<Unit> SetAlwaysOnBottomAsync(string label, bool value, CancellationToken cancellationToken) =>
+        RunWindowActionAsync(label, window => WindowsWindowEffects.SetAlwaysOnBottom(window, value), cancellationToken);
+
+    public ValueTask<Unit> SetShadowAsync(string label, bool value, CancellationToken cancellationToken) =>
+        RunWindowActionAsync(label, window => WindowsWindowEffects.SetShadow(window, value), cancellationToken);
+
+    public ValueTask<Unit> SetBadgeCountAsync(string label, int? count, CancellationToken cancellationToken) =>
+        RunWindowActionAsync(label, window => WindowsWindowEffects.SetBadgeCount(window, count), cancellationToken);
+
+    public ValueTask<Unit> SetProgressBarAsync(string label, string? status, double? progress, CancellationToken cancellationToken) =>
+        RunWindowActionAsync(label, window => WindowsWindowEffects.SetProgressBar(window, status, progress), cancellationToken);
+
     public ValueTask<Unit> SetResizableAsync(string label, bool value, CancellationToken cancellationToken) =>
         RunWindowActionAsync(label, window => window.CanResize = value, cancellationToken);
 

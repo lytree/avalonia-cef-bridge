@@ -61,6 +61,8 @@ export type {
   WindowState,
   WindowOptions,
   WindowGeometry,
+  ProgressBarState,
+  ProgressBarStatus,
   FileDropEvent,
   DownloadRequestEvent,
   NavigationRequestEvent,

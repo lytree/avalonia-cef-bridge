@@ -41,6 +41,14 @@ public interface IWindowService
 
     ValueTask<Unit> SetThemeAsync(string label, string? theme, CancellationToken cancellationToken);
 
+    ValueTask<Unit> SetAlwaysOnBottomAsync(string label, bool value, CancellationToken cancellationToken);
+
+    ValueTask<Unit> SetShadowAsync(string label, bool value, CancellationToken cancellationToken);
+
+    ValueTask<Unit> SetBadgeCountAsync(string label, int? count, CancellationToken cancellationToken);
+
+    ValueTask<Unit> SetProgressBarAsync(string label, string? status, double? progress, CancellationToken cancellationToken);
+
     ValueTask<Unit> SetResizableAsync(string label, bool value, CancellationToken cancellationToken);
 
     ValueTask<Unit> SetDecorationsAsync(string label, bool value, CancellationToken cancellationToken);

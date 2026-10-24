@@ -52,7 +52,8 @@
 | --- | --- | --- |
 | IPC（无反射、源生成元数据） | 已实现 | `Tarui.Ipc/CommandRouter.cs`、`Tarui.Contracts` DTO + `TaruiJsonContext` |
 | Capability v2（allow/deny scope、glob、事件接收授权） | 已实现 | `Tarui.Ipc/CapabilitySet.cs`、`examples/demo/capabilities/*.json`（各应用自有目录） |
-| 多窗口管理（创建/显隐/焦点/置顶/全屏/去装饰/显示器） | 已实现 | `Tarui.Shell/AvaloniaWindowService.cs`、`Tarui.Plugins.Window` |
+| 多窗口管理（创建/显隐/焦点/置顶/全屏/透明/去装饰/显示器） | 已实现 | `Tarui.Shell/AvaloniaWindowService.cs`、`Tarui.Plugins.Window` |
+| 窗口效果（always-on-bottom / shadow / badge / progress） | 已实现(Windows) | `Tarui.Shell/WindowsWindowEffects.cs`、`WindowsBadgeIcon.cs`（SetWindowPos / DWM 非客户区渲染 / 任务栏叠加图标 / `ITaskbarList3`；非 Windows 诚实降级，经 `core:platform|capabilities` 的 `windowEffectsSupported` 暴露） |
 | WebView（CEF 150.x、`tarui://` 自定义协议、HTTP 模式、CSP、SPA fallback） | 已实现 | `Tarui.WebView.CefGlueNext/CefGlueNextWebViewFactory.cs`、`CefGlueNextWebAppOptions.cs` |
 | 导航/下载策略（allow/external/deny glob、host allow 默认 deny） | 已实现 | `Tarui.WebView.Abstractions/WebViewRequestPolicy.cs` |
 | 文件拖放 + 拖拽区域（NoDrag 覆盖、差异比较） | 已实现 | `DraggableRegion.cs`、`CefGlueNextNativeHandlers.cs`、`webview://*`、`window://file-drop-*` 事件 |
@@ -88,7 +89,7 @@
 | Channel 流式数据 | ✅ | 端到端流式协议已接线；fs 大文件流式读/分片写与 HTTP 流式响应已解锁 |
 | 多窗口 | ✅ | create/getAll/by label，能力对齐 |
 | 单窗口多 webview | ✅ | 已实现（2026-10-17，V3-1）。`WebviewRegistry`（webview label → 会话）独立于 `WindowRegistry`，窗口经 `WindowEventFanout` 向托管的全部 webview 投递 `window://` 事件、`webview://*` 按 label 定向；`plugin:webview|create` / `set-bounds` / `destroy` 在既有窗口内按 bounds 挂载/定位/卸载多个 surface；`plugin:webview|*` 按 webview label 独立寻址（own/other-webview + 跨窗口 `-other-window`）。详见 [`tauri-v3-alignment.md`](tauri-v3-alignment.md) §4.2 |
-| 窗口 API 全集 | 🟡 | ✅ 已补齐 setIcon/setTheme、Transparent（acrylic/transparent）、close；缺 always-on-bottom、setShadow、setBadgeCount/setProgressBar、父子/模态窗口、可取消关闭、unminimize/setSkipTaskbar/destroy、setZoom/print 等 |
+| 窗口 API 全集 | 🟡 | ✅ 已补齐 setIcon/setTheme、Transparent（acrylic/transparent）、close、setAlwaysOnBottom/setShadow/setBadgeCount/setProgressBar（Windows 原生：`SetWindowPos` 置底、DWM 非客户区渲染、任务栏叠加图标、`ITaskbarList3` 进度；非 Windows 诚实降级）；父子/模态窗口、可取消关闭、unminimize/setSkipTaskbar/destroy、setZoom/print 已于 2026-10-24 移除，不再计为缺口 |
 | 自定义协议 + CSP | ✅ | `tarui://localhost`、CSP、SPA fallback |
 | 导航/下载策略 | ✅ | 策略引擎 + capability 双重授权，语义等价 |
 | 事件 emit/listen（含 once、定向） | ✅ | 等价且多一层接收权限 |
@@ -153,7 +154,7 @@
 | 9 | fs watch 目录监听 | Tauri fs | ✅ 已完成（`plugin:fs|watch`/`unwatch`：`FileSystemWatcher` + `fs://watch-change` 定向事件） |
 | 10 | Cookie 管理 API | CEF 原生 | ✅ 已完成（`plugin:cookie|list|set|remove|flush`：`CefGlueCookieStore` 组件 + `Tarui.Plugins.Cookie`，无宿主时可读降级） |
 | 11 | DevTools 开关 | Tauri webview | ✅ 已完成（`plugin:webview|devtools`：CEF `ShowDevTools/CloseDevTools`，webview 权限门控 + `-other-webview` 变体） |
-| 12 | 窗口增强：setIcon、setTheme、transparent | Tauri window | ✅ 已完成（`core:window|set-icon`、`set-theme`；`WindowOptions.Transparent` 映射 Avalonia acrylic/transparent） |
+| 12 | 窗口增强：setIcon、setTheme、transparent、always-on-bottom、shadow、badge、progress | Tauri window | ✅ 已完成（`core:window|set-icon`、`set-theme`；`WindowOptions.Transparent` 映射 Avalonia acrylic/transparent；`set-always-on-bottom`/`set-shadow`/`set-badge-count`/`set-progress-bar` 走 Windows 原生实现，badge 以任务栏叠加图标承载计数，非 Windows 诚实降级并由平台能力矩阵报告） |
 | 14 | macOS/Linux 平台补齐（notification、global-shortcut、deep-link 真机验收） | Tauri 跨平台 | 🟡 进展：autostart 已三平台落地；`core:platform|capabilities` 能力矩阵已暴露；macOS deep-link `NSAppleEventManager` `kAEGetURL` 桥（`MacDeepLinkBridge` + 2s 去重窗口）已落地，真机验收待执行；notification / global-shortcut 仍待真机验收 |
 | 15 | 结构化 CLI 参数解析插件 | Tauri cli | ✅ 已完成（`core:cli|parse`：声明式 `--long`/`-x` 选项 + 位置参数，flag/文本/多值/数字类型、必需校验，未知或类型错误诚实失败） |
 

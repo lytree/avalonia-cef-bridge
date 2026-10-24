@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -82,6 +83,18 @@ internal sealed class FakeWindowService : IWindowService
 
     public ValueTask<Unit> SetThemeAsync(string label, string? theme, CancellationToken cancellationToken) =>
         RecordUnit($"set-theme|{label}|{theme ?? "system"}");
+
+    public ValueTask<Unit> SetAlwaysOnBottomAsync(string label, bool value, CancellationToken cancellationToken) =>
+        RecordUnit($"set-always-on-bottom|{label}|{value}");
+
+    public ValueTask<Unit> SetShadowAsync(string label, bool value, CancellationToken cancellationToken) =>
+        RecordUnit($"set-shadow|{label}|{value}");
+
+    public ValueTask<Unit> SetBadgeCountAsync(string label, int? count, CancellationToken cancellationToken) =>
+        RecordUnit($"set-badge-count|{label}|{(count is null ? "clear" : count.Value.ToString(CultureInfo.InvariantCulture))}");
+
+    public ValueTask<Unit> SetProgressBarAsync(string label, string? status, double? progress, CancellationToken cancellationToken) =>
+        RecordUnit($"set-progress-bar|{label}|{status ?? "none"}|{progress?.ToString(CultureInfo.InvariantCulture) ?? "null"}");
 
     public ValueTask<Unit> SetResizableAsync(string label, bool value, CancellationToken cancellationToken) =>
         RecordUnit($"set-resizable|{label}|{value}");
