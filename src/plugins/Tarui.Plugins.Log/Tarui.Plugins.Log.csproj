@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
@@ -10,5 +10,8 @@
     <ProjectReference Include="..\..\core\Tarui.Contracts\Tarui.Contracts.csproj" />
     <ProjectReference Include="..\..\core\Tarui.Ipc\Tarui.Ipc.csproj" />
     <ProjectReference Include="..\..\generators\Tarui.Ipc.Generators\Tarui.Ipc.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Tarui.Plugins.Event\Tarui.Plugins.Event.csproj" />
   </ItemGroup>
 </Project>

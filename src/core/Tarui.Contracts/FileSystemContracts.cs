@@ -19,7 +19,7 @@ public sealed record FsDirEntry(string Name, bool IsDirectory, long? Size = null
 
 /// <summary>
 /// Snapshot metadata for a file or directory entry. Timestamps are expressed as milliseconds since
-/// the Unix epoch so the JSON surface stays integer-based and Tauri-compatible.
+/// the Unix epoch so the JSON surface stays integer-based and platform-neutral.
 /// </summary>
 public sealed record FsStatResult(
     bool IsDirectory,

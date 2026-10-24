@@ -1,3 +1,4 @@
+﻿using Tarui.Plugins.Events;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -58,6 +59,11 @@ public sealed class GlobalShortcutPlugin(IGlobalShortcutService service) : ITaru
 
 public static class GlobalShortcutPluginServiceCollectionExtensions
 {
-    public static IServiceCollection AddGlobalShortcutPlugin(this IServiceCollection services)
-        => services.AddPlugin<GlobalShortcutPlugin>();
+    /// <summary>
+    /// Registers the global shortcut command surface and its process-wide registration backend.
+    /// </summary>
+    public static IServiceCollection AddGlobalShortcutPlugin(this IServiceCollection services) => services
+        .AddPlugin<GlobalShortcutPlugin>()
+        .AddSingleton<IGlobalShortcutService>(static sp =>
+            new WindowsGlobalShortcutService(sp.GetRequiredService<IEventSender>()));
 }

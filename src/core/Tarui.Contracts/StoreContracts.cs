@@ -11,7 +11,7 @@ public sealed record StoreFileOptions(string Base = "appData", string? Path = "s
 public sealed record StoreKeyOptions(string Key, string Base = "appData", string? Path = "settings.json");
 
 /// <summary>Writes <see cref="Value"/> at <see cref="Key"/> on a JSON store file. A <see langword="null"/>
-/// value removes the key, matching Tauri's <c>store</c> plugin erase semantics.</summary>
+/// value removes the key and clears its stored value.</summary>
 public sealed record StoreSetOptions(string Key, string? Value, string Base = "appData", string? Path = "settings.json");
 
 /// <summary>Result of <c>plugin:store|get</c>; a missing key yields <see langword="null"/>.</summary>

@@ -28,7 +28,7 @@ internal sealed record AppManifestBundle(
     IReadOnlyList<AppManifestFileAssociation> FileAssociations);
 
 /// <summary>
-/// One bundle file association (Tauri-aligned <c>bundle.fileAssociations</c>). <see cref="Ext"/> is
+/// One bundle file association (<c>bundle.fileAssociations</c>). <see cref="Ext"/> is
 /// normalized to a leading dot by the loader; <see cref="Role"/> defaults to <c>Editor</c> and must
 /// be one of Editor / Viewer / Shell / None (validated by <see cref="AppManifestValidator"/>).
 /// Consumed by the MSIX packer (<c>uap:FileTypeAssociation</c>) and the macOS

@@ -42,8 +42,7 @@
       "Height": 820,
       "Center": true,
       "Decorations": true,
-      "Resizable": true,
-      "CloseRequestTimeout": 3.0
+      "Resizable": true
     },
     "Web": {
       "Policy": { "NavExternal": "https:*" }
@@ -64,7 +63,6 @@
 | `MaxWidth` / `MaxHeight` | 最大尺寸 | 不限 |
 | `X` / `Y` / `Center` | 启动位置 / 居中 | 居中 |
 | `Resizable` / `Decorations` / `AlwaysOnTop` / `Visible` | 窗口外观 | `true` / `true` / `false` / `true` |
-| `CloseRequestTimeout` | `core:window|close` 未确认时的强制关闭超时(秒) | `3.0`;`0` 表示必须显式 `force=true` |
 
 `builder.Window.Configure(...)` 代码配置在合并链最末,数值/布尔字段直接覆盖 `appsettings.json`。
 

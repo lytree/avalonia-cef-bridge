@@ -15,7 +15,7 @@
 补充参考:
 
 - [`docs/design/alignment-plan.md`](docs/design/alignment-plan.md) —— 与 Tauri v2 桌面能力的逐项对齐进度表
-- [`docs/design/gap-analysis.md`](docs/design/gap-analysis.md) —— 与 Tauri v2 / Wails v3 的功能差距分析
+- [`docs/design/gap-analysis.md`](docs/design/gap-analysis.md) —— 与 Tauri v2 的功能差距分析
 - [`docs/design/cli-workflow.md`](docs/design/cli-workflow.md) —— CLI / SDK / 插件分发设计稿
 - [`docs/adr/`](docs/adr/) —— 架构决策记录(macOS DeepLink 桥、macOS 真机构建管道 等)
 
@@ -108,9 +108,9 @@ dotnet run --project tests/Tarui.Architecture.Tests --no-build
 - **单实例 + 窗口状态** —— Mutex / Unix socket 抢占 + Named Pipe / socket 转发;`plugin:window-state|save|restore|clear` 显示器拟合。
 - **平台能力矩阵 + 跨平台自启** —— `core:platform|capabilities` 暴露真实可用性;Autostart 三平台(Windows registry / macOS LaunchAgents / Linux `.desktop`)。
 - **Cookie / DevTools / Clipboard / CLI** —— `plugin:cookie|list|set|remove|flush`(CEF 全局存储,无宿主时降级);`plugin:webview|devtools`(权限门控);剪贴板扩展(HTML + PNG 字节);`core:cli|parse` 结构化参数解析。
-- **窗口增强** —— `set-icon` / `set-theme` / `Transparent` / `Parent`+`Modal` / `deny-close` 可取消关闭钩子。
+- **窗口增强** —— `set-icon` / `set-theme` / `Transparent`。
 - **WebView 深度集成** —— 真实 windowed CEF:`window://file-drop-*` 定向事件、`webview://download-requested/navigation-requested` 策略化决策、`DraggableRegion` 命中与 NoDrag 覆盖;`webview://render-process-gone` 渲染进程崩溃事件;`plugin:webview|eval`/`eval-with-callback` 脚本回执。
-- **Websocket / Persisted Scope / Positioner** —— `plugin:websocket|connect/send/close`(`ClientWebSocket` + Channel 帧推送);`plugin:persisted-scope|scope-allow/deny/reset` + `scope://changed` 事件 + `appData/scope.json` 原子持久化;`plugin:positioner|set-position`(8 屏幕锚位 + 6 Tray* 锚位)。
+- **Websocket / Persisted Scope** —— `plugin:websocket|connect/send/close`(`ClientWebSocket` + Channel 帧推送);`plugin:persisted-scope|scope-allow/deny/reset` + `scope://changed` 事件 + `appData/scope.json` 原子持久化。
 - **打包与 CI/CD** —— `tarui build` 产出 `zip` / 自研 MSIX 打包器 / 签名 `latest.json`;新增 `app-bundle` target 走 `MacOsBundleBuilder` + `InfoPlistBuilder` 输出 `<name>.app` 与 `<name>.app.tar.gz`;macOS 真机构建管道见 [docs/adr/0002](docs/adr/0002-macos-real-build-pipeline.md)。
 
 权威状态表见 [`docs/design/alignment-plan.md §15`](docs/design/alignment-plan.md);缺口分析见 [`docs/design/gap-analysis.md`](docs/design/gap-analysis.md)。

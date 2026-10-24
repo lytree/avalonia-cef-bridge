@@ -16,7 +16,7 @@ public static class EventNames
     /// forged by the Web renderer. Delivery of these events is additionally gated by per-window
     /// receive authorization.
     /// </summary>
-    private static readonly string[] ReservedPrefixes =
+    private static readonly string[] ReservedPrefixList =
     [
         "app://",
         "window://",
@@ -33,6 +33,12 @@ public static class EventNames
         "scope://"
     ];
 
+    /// <summary>
+    /// Every reserved native prefix. Exposed so contract tests can snapshot the reserved surface: adding
+    /// a prefix widens what the renderer may not forge and must be reviewed as a contract change.
+    /// </summary>
+    public static IReadOnlyList<string> ReservedPrefixes => ReservedPrefixList;
+
     /// <summary>Returns <see langword="true"/> when the event belongs to the <c>user://</c> namespace.</summary>
     public static bool IsUserEvent(string eventName)
         => !string.IsNullOrEmpty(eventName) &&
@@ -46,7 +52,7 @@ public static class EventNames
             return false;
         }
 
-        foreach (var prefix in ReservedPrefixes)
+        foreach (var prefix in ReservedPrefixList)
         {
             if (eventName.StartsWith(prefix, StringComparison.Ordinal))
             {

@@ -1,5 +1,7 @@
+﻿using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Channels;
 using Tarui.Contracts;
 using Tarui.Ipc;
 using Tarui.WebView.Abstractions;
@@ -27,12 +29,20 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
     private const string RenderProcessGoneEvent = "webview://render-process-gone";
     private const string DevToolsProtocolEvent = "webview://devtools-protocol";
     private const string BridgeErrorCode = "BRIDGE_ERROR";
+    private const string ChannelHandshakeType = "channel-handshake";
+    private const string ChannelAckType = "channel-ack";
+    private const string CreditCapability = "channel-credit-v1";
 
     private readonly IpcDispatcher _dispatcher;
     private readonly EventRouter _eventRouter;
     private readonly WebViewRequestPolicy _policy;
     private readonly ITaruiAvaloniaWebView _webView;
     private readonly ITaruiDevToolsProtocol? _devToolsProtocol;
+    // One bounded credit window per channel. Windows only exist once the renderer negotiated
+    // channel-credit-v1, so a legacy renderer keeps the previous "submit and continue" behavior
+    // instead of deadlocking on acknowledgements it will never send.
+    private readonly ConcurrentDictionary<string, ChannelCreditWindow> _creditWindows = new(StringComparer.Ordinal);
+    private int _creditFlow;
     private int _disposeState;
 
     /// <summary>The underlying web view and the Avalonia surface it carries.</summary>
@@ -80,6 +90,13 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         string json,
         CancellationToken cancellationToken = default)
     {
+        // Flow-control frames are bridge control messages, not application commands: they never reach
+        // the router and therefore need no capability entry of their own.
+        if (TryHandleChannelControl(json))
+        {
+            return string.Empty;
+        }
+
         var response = await _dispatcher.DispatchJsonAsync(
             json,
             Context,
@@ -108,10 +125,105 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var envelope = new ChannelEnvelope("channel", channelId, payload);
-        var json = JsonSerializer.Serialize(envelope, TaruiJsonContext.Default.ChannelEnvelope);
-        var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
-        await _webView.ExecuteScriptAsync($"window.__tarui_dispatchBase64?.('{encoded}')", cancellationToken);
+
+        // Credit flow: take a credit before the frame is serialized so a slow consumer holds the
+        // producer here instead of letting frames pile up inside the renderer. Without negotiation
+        // there is no window and the send stays fire-and-forget.
+        var credit = Volatile.Read(ref _creditFlow) != 0
+            ? _creditWindows.GetOrAdd(channelId, static _ => new ChannelCreditWindow())
+            : null;
+        if (credit is not null && !await credit.AcquireAsync(cancellationToken).ConfigureAwait(false))
+        {
+            throw new ChannelClosedException(
+                $"Channel '{channelId}' was closed or completed before the frame could be delivered.");
+        }
+
+        try
+        {
+            var envelope = new ChannelEnvelope("channel", channelId, payload);
+            var json = JsonSerializer.Serialize(envelope, TaruiJsonContext.Default.ChannelEnvelope);
+            var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+            await _webView.ExecuteScriptAsync($"window.__tarui_dispatchBase64?.('{encoded}')", cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            // The renderer never received the frame, so its credit must come back or the producer
+            // stays blocked forever on a channel that is still alive.
+            credit?.TryRelease();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Producer-side completion: the stream is over, so a producer parked on flow control is woken
+    /// instead of waiting for an acknowledgement the renderer will never send.
+    /// </summary>
+    public void Complete(string channelId)
+    {
+        if (_creditWindows.TryRemove(channelId, out var window))
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// Handles the two reserved control frames a credit-aware renderer uses: the one-time handshake that
+    /// enables flow control for this surface, and the per-frame acknowledgement that releases a credit.
+    /// Anything else is an ordinary invocation.
+    /// </summary>
+    private bool TryHandleChannelControl(string json)
+    {
+        // Cheap pre-filter: every control frame starts with {"protocol" and carries a "type" member.
+        if (json.Length < 24 || !json.Contains("\"type\"", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object ||
+                !document.RootElement.TryGetProperty("type", out var typeElement) ||
+                typeElement.ValueKind != JsonValueKind.String)
+            {
+                return false;
+            }
+
+            switch (typeElement.GetString())
+            {
+                case ChannelHandshakeType:
+                    if (document.RootElement.TryGetProperty("capabilities", out var capabilities) &&
+                        capabilities.ValueKind == JsonValueKind.Array &&
+                        capabilities.EnumerateArray().Any(static item =>
+                            item.ValueKind == JsonValueKind.String &&
+                            string.Equals(item.GetString(), CreditCapability, StringComparison.Ordinal)))
+                    {
+                        Interlocked.Exchange(ref _creditFlow, 1);
+                    }
+
+                    return true;
+
+                case ChannelAckType:
+                    if (document.RootElement.TryGetProperty("channel", out var channelElement) &&
+                        channelElement.ValueKind == JsonValueKind.String &&
+                        channelElement.GetString() is { Length: > 0 } channelId &&
+                        _creditWindows.TryGetValue(channelId, out var window))
+                    {
+                        // Unknown, duplicate or stale acknowledgements are ignored by the window itself.
+                        window.TryRelease();
+                    }
+
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private void OnFileDropEntered(object? sender, TaruiWebViewFileDropEventArgs args)
@@ -347,6 +459,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         }
 
         DetachWebViewEvents();
+        CloseCreditWindows();
         _webView.Dispose();
     }
 
@@ -358,6 +471,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         }
 
         DetachWebViewEvents();
+        CloseCreditWindows();
         if (_webView is IAsyncDisposable asyncDisposable)
         {
             await asyncDisposable.DisposeAsync();
@@ -365,6 +479,17 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         else
         {
             _webView.Dispose();
+        }
+    }
+
+    private void CloseCreditWindows()
+    {
+        foreach (var channelId in _creditWindows.Keys)
+        {
+            if (_creditWindows.TryRemove(channelId, out var window))
+            {
+                window.Close();
+            }
         }
     }
 

@@ -7,8 +7,8 @@ namespace Tarui.Plugins.Sql;
 
 /// <summary>
 /// SQL commands. Every command maps to a distinct permission so a capability can authorize reads
-/// without granting writes, mirroring Tauri's split between <c>sql:allow-load</c>,
-/// <c>sql:allow-select</c> and <c>sql:allow-execute</c>.
+/// without granting writes: <c>sql:allow-load</c>, <c>sql:allow-select</c> and
+/// <c>sql:allow-execute</c> are separate permissions.
 /// </summary>
 public sealed class SqlPlugin(ISqlService service) : ITaruiPlugin
 {

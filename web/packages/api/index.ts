@@ -27,7 +27,6 @@
  * - deep-link       : current launch URL and custom-protocol activation events
  * - updater         : signed update check and download staging
  * - websocket       : capability-scoped native websocket connections
- * - positioner      : anchor a window to a screen/work-area slot
  * - persisted-scope : runtime fs/http scope entries persisted across restarts
  * - sql            : scoped SQL database access (SQLite by default)
  *
@@ -57,7 +56,6 @@ export {
   WINDOW_MOVED_EVENT,
   WINDOW_RESIZED_EVENT,
   WINDOW_FOCUS_CHANGED_EVENT,
-  WINDOW_CLOSE_REQUESTED_EVENT,
   WINDOW_DESTROYED_EVENT,
   FILE_DROP_ENTERED_EVENT,
   FILE_DROP_LEFT_EVENT,
@@ -72,6 +70,8 @@ export type {
   WindowState,
   WindowOptions,
   WindowGeometry,
+  ProgressBarState,
+  ProgressBarStatus,
   FileDropEvent,
   DownloadRequestEvent,
   NavigationRequestEvent,
@@ -264,9 +264,6 @@ export type { Cookie, CookieListOptions, CookieListResult, CookieSetOptions, Coo
 
 export { TaruiWebSocket, websocket } from './websocket'
 export type { WsMessageFrame, WsConnectConfig } from './websocket'
-
-export { positioner, setPosition, setTrayPosition } from './positioner'
-export type { PositionerAnchor, PositionerPlacement } from './positioner'
 
 export {
   persistedScope,

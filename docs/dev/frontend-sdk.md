@@ -139,7 +139,7 @@ dotnet run --project tests/Tarui.Bindings.Tests -- --update # 原生命令或 DT
 | `plugin:deep-link` | `plugin:deep-link|*` | `@lytree/api/deep-link` | 函数式 |
 | `plugin:updater` | `plugin:updater|*` | `@lytree/api/updater` | 类(Updater) |
 | `plugin:http` / `websocket` | 各自前缀 | `@lytree/api/{http,websocket}` | 类(HTTP / TaruiWebSocket) |
-| `plugin:cookie` / `positioner` / `persisted-scope` | 各自前缀 | `@lytree/api/{cookie,positioner,persisted-scope}` | 函数式 |
+| `plugin:cookie` / `persisted-scope` | 各自前缀 | `@lytree/api/{cookie,persisted-scope}` | 函数式 |
 | `plugin:webview` | `plugin:webview|*` | `@lytree/api/webview` | 类(Webview) |
 
 `Window.getCurrent()` 无 label 时指向当前 webview 所在窗口,`getByLabel('editor')` 寻址其它窗口。Barrel 导出把两个 `open` helper 重命名为 `openDialog` 与 `openExternal`;子路径导出保留 Tauri 风格的简短名。

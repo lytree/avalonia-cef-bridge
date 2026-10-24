@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
 
@@ -100,6 +100,16 @@ public static class WindowStatePermissionGuard
 
 public static class WindowStatePluginServiceCollectionExtensions
 {
-    public static IServiceCollection AddWindowStatePlugin(this IServiceCollection services)
-        => services.AddPlugin<WindowStatePlugin>();
+    /// <summary>
+    /// Registers the window state command surface, its on-disk store and the service that applies a
+    /// persisted snapshot back to a window.
+    /// </summary>
+    public static IServiceCollection AddWindowStatePlugin(this IServiceCollection services) => services
+        .AddPlugin<WindowStatePlugin>()
+        .AddSingleton<IWindowStateStore>(static _ => new JsonWindowStateStore(
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "tarui.net",
+                "window-state")))
+        .AddSingleton<IWindowStateService, AvaloniaWindowStateService>();
 }

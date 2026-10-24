@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -7,7 +8,7 @@ namespace Tarui.Capabilities.Tests;
 
 internal static class Program
 {
-    public static async Task<int> Main()
+    public static async Task<int> Main(string[] args)
     {
         CapabilitySetAllowsAndDeniesPermissions();
         CapabilitySetTracksEventsAndScopes();
@@ -27,6 +28,7 @@ internal static class Program
         LoaderKeepsScopedGrantAlongsideSetMember();
         LoaderRejectsScopeOnPermissionSet();
         DemoCapabilitiesResolveAgainstRegisteredPlugins();
+        CapabilitySurfaceSnapshotMatchesContract(args.Contains("--update", StringComparer.Ordinal));
         await RouterEnforcesScopedPermissions();
         await RouterDeniesScopedPermission();
         EventNamesRestrictWebEmitsToUserNamespace();
@@ -71,7 +73,7 @@ internal static class Program
         var authorized = registry.Add("authorized", new CapabilitySet([], ["window://focus-changed"], []));
         var unauthorized = registry.Add("unauthorized", new CapabilitySet([], [], []));
         var userSink = registry.Add("user-sink", new CapabilitySet([], [], []));
-        var router = new EventRouter(registry, new EventHub());
+        var router = new EventRouter(registry, new WebviewRegistry(), new EventHub());
 
         var focusPayload = JsonSerializer.SerializeToElement(
             new WindowFocusChanged(true),
@@ -718,12 +720,16 @@ internal static class Program
             !main.Allows("plugin:window-state|save-other-window"),
             "A namespace default set must never include its cross-window guards.");
 
-        // Documented widening accepted by the set rewrite (see docs/design/tauri-v3-alignment.md §4.3):
-        // a cross-window close veto is weaker than the cross-window close the demo already grants, so
-        // the guard set is allowed to carry it.
+        // The guard set expands to exactly the cross-window permissions the window plugin registers.
+        // It must cover them without inventing permissions the plugin never registered: an earlier build
+        // listed deny-close-other-window here, which the plugin no longer registers (close-other-window
+        // supersedes it), so asserting on that name only proved the fixture had drifted.
         Assert(
-            main.Allows("core:window|deny-close-other-window"),
-            "The cross-window guard set covers deny-close-other-window.");
+            main.Allows("core:window|close-other-window") && main.Allows("core:window|monitors-other-window"),
+            "The cross-window guard set must cover the plugin's cross-window permissions.");
+        Assert(
+            !main.Allows("core:window|deny-close-other-window"),
+            "The guard set must not carry cross-window permissions the window plugin does not register.");
 
         var editor = capabilities["editor"];
         Assert(
@@ -735,6 +741,88 @@ internal static class Program
         Assert(
             !editor.Allows("core:window|set-theme"),
             "The editor profile must not gain the whole window surface from a set it never names.");
+    }
+
+    /// <summary>
+    /// Freezes the authorization surface — every registered permission, every reserved native event
+    /// prefix and the demo manifests' expansion — into a checked-in snapshot. Later refactor phases
+    /// (moving services between Shell and plugins, resolving capabilities per web view) must not change
+    /// it implicitly: any diff here is a contract change that needs an explicit review, not a rebuild.
+    /// </summary>
+    private static void CapabilitySurfaceSnapshotMatchesContract(bool update)
+    {
+        var builder = new CommandRouterBuilder();
+        RegisterDemoPlugins(builder);
+        builder.AddPermission("core:channel|stream-echo");
+
+        var catalog = new PermissionSetCatalog(builder.BuildPermissionSets());
+        var capabilities = CapabilityLoader.Load(
+            Path.Combine(FindRepositoryRoot(), "examples", "demo", "capabilities"),
+            catalog);
+        var expected = BuildCapabilitySurfaceSnapshot(builder.RegisteredPermissions, capabilities);
+
+        var path = Path.Combine(
+            FindRepositoryRoot(), "tests", "Tarui.Capabilities.Tests", "contracts", "capability-surface.json");
+        if (update)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, expected, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            Console.WriteLine($"Updated {path}");
+            return;
+        }
+
+        Assert(
+            File.Exists(path),
+            $"The capability surface snapshot is missing at '{path}'. "
+                + "Run `dotnet run --project tests/Tarui.Capabilities.Tests -- --update`.");
+
+        var actual = File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal);
+        Assert(
+            string.Equals(actual, expected, StringComparison.Ordinal),
+            $"The capability surface snapshot at '{path}' is stale. A diff here changes the frozen permission "
+                + "or event surface: review it as a contract change before regenerating with --update.");
+    }
+
+    private static string BuildCapabilitySurfaceSnapshot(
+        IEnumerable<string> registeredPermissions,
+        IEnumerable<KeyValuePair<string, CapabilitySet>> capabilities)
+    {
+        var builder = new StringBuilder();
+        builder.Append("{\n");
+        AppendJsonArray(builder, "reservedEventPrefixes", "  ", EventNames.ReservedPrefixes.Order(StringComparer.Ordinal));
+        builder.Append(",\n");
+        AppendJsonArray(builder, "registeredPermissions", "  ", registeredPermissions.Order(StringComparer.Ordinal));
+        builder.Append(",\n");
+        builder.Append("  \"demoCapabilities\": {\n");
+
+        var windows = capabilities.OrderBy(static pair => pair.Key, StringComparer.Ordinal).ToArray();
+        for (var index = 0; index < windows.Length; index++)
+        {
+            var (label, capability) = windows[index];
+            builder.Append("    \"").Append(label).Append("\": {\n");
+            AppendJsonArray(builder, "events", "      ", capability.Events.Order(StringComparer.Ordinal));
+            builder.Append(",\n");
+            AppendJsonArray(builder, "permissions", "      ", capability.Permissions.Order(StringComparer.Ordinal));
+            builder.Append('\n');
+            builder.Append(index == windows.Length - 1 ? "    }\n" : "    },\n");
+        }
+
+        builder.Append("  }\n}\n");
+        return builder.ToString();
+    }
+
+    private static void AppendJsonArray(StringBuilder builder, string name, string indent, IEnumerable<string> values)
+    {
+        var items = values.ToArray();
+        builder.Append(indent).Append('"').Append(name).Append("\": [\n");
+        for (var index = 0; index < items.Length; index++)
+        {
+            builder.Append(indent).Append("  \"").Append(items[index].Replace("\\", "\\\\", StringComparison.Ordinal))
+                .Append('"');
+            builder.Append(index == items.Length - 1 ? "\n" : ",\n");
+        }
+
+        builder.Append(indent).Append(']');
     }
 
     /// <summary>
@@ -756,7 +844,6 @@ internal static class Program
             new global::Tarui.Plugins.Notification.NotificationPlugin(null!),
             new global::Tarui.Plugins.Autostart.AutostartPlugin(null!),
             new global::Tarui.Plugins.GlobalShortcut.GlobalShortcutPlugin(null!),
-            new global::Tarui.Plugins.Positioner.PositionerPlugin(null!),
             new global::Tarui.Plugins.WindowState.WindowStatePlugin(null!),
             new global::Tarui.Plugins.Store.StorePlugin(null!),
             new global::Tarui.Plugins.Log.LogPlugin(null!),

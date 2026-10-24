@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
 
@@ -44,6 +44,15 @@ public sealed class NotificationPlugin(INotificationService service) : ITaruiPlu
 
 public static class NotificationPluginServiceCollectionExtensions
 {
-    public static IServiceCollection AddNotificationPlugin(this IServiceCollection services)
-        => services.AddPlugin<NotificationPlugin>();
+    /// <summary>
+    /// Registers the notification command surface, the platform backend and the event bridge that
+    /// forwards activation/dismissal callbacks as reserved <c>notification://</c> events. A host that
+    /// wants richer toasts can decorate <see cref="INotificationService"/> afterwards (the shell's
+    /// toast package does exactly that).
+    /// </summary>
+    public static IServiceCollection AddNotificationPlugin(this IServiceCollection services) => services
+        .AddPlugin<NotificationPlugin>()
+        .AddSingleton<WindowsNotificationService>()
+        .AddSingleton<INotificationService>(static sp => sp.GetRequiredService<WindowsNotificationService>())
+        .AddSingleton<INotificationEventSink, NotificationEventBridge>();
 }

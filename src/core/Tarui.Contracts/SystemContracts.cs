@@ -98,7 +98,9 @@ public sealed record PlatformCapabilities(
     string? GlobalShortcutReason,
     bool AutostartSupported,
     bool DeepLinkSupported,
-    string? DeepLinkReason);
+    string? DeepLinkReason,
+    bool WindowEffectsSupported,
+    string? WindowEffectsReason);
 
 public sealed record SaveDialogOptions(string? DefaultName = null, string[]? Extensions = null);
 

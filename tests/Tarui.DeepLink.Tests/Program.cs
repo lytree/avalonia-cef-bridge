@@ -1,8 +1,9 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Tarui.Contracts;
 using Tarui.Ipc;
 using Tarui.Plugins.DeepLink;
+using Tarui.Plugins.Events;
 using Tarui.Shell;
 
 namespace Tarui.DeepLink.Tests;
@@ -111,12 +112,28 @@ internal static class Program
         Assert(schemes.Contains("market", StringComparer.Ordinal), "market must be present.");
     }
 
+    private static RouterEventSender Sender(EventRouter router) => new(router);
+
+    /// <summary>Adapts the shell router to the plugin-facing sender contract used by DeepLinkService.</summary>
+    private sealed class RouterEventSender(EventRouter router) : IEventSender
+    {
+        public async ValueTask<Unit> EmitAsync(
+            string eventName,
+            JsonElement payload,
+            string? targetWindow,
+            CancellationToken cancellationToken = default)
+        {
+            await router.EmitAsync(eventName, payload, targetWindow, cancellationToken);
+            return new Unit();
+        }
+    }
+
     private static async Task ColdStartSeedsFirstRegisteredUrlAsync()
     {
         var (router, _) = BuildRouter();
         var service = new DeepLinkService(
             ["--flag", "tarui://open/doc?id=1", "other"],
-            Schemes(["tarui"]), router);
+            Schemes(["tarui"]), Sender(router));
 
         var result = await service.GetCurrentAsync(default);
         Assert(result.Url == "tarui://open/doc?id=1", "The first registered-scheme startup URL must seed the current URL.");
@@ -127,7 +144,7 @@ internal static class Program
         var (router, _) = BuildRouter();
         var service = new DeepLinkService(
             ["--flag", "note.txt", "market://home"],
-            Schemes(["tarui"]), router);
+            Schemes(["tarui"]), Sender(router));
 
         var result = await service.GetCurrentAsync(default);
         Assert(result.Url is null, "Normal launches must report no active deep-link URL.");
@@ -136,7 +153,7 @@ internal static class Program
     private static async Task SecondActivationDeliversAndReportsAsync()
     {
         var (router, captured) = BuildRouter();
-        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+        var service = new DeepLinkService([], Schemes(["tarui"]), Sender(router));
 
         service.OnSecondActivation(new SecondInstanceArgs(
             ["--open", "tarui://open/doc?id=9"], "/tmp", Stamp()));
@@ -150,7 +167,7 @@ internal static class Program
     private static async Task DeliverEmitsPerSchemeEventAsync()
     {
         var (router, captured) = BuildRouter();
-        var service = new DeepLinkService([], Schemes(["tarui", "market"]), router);
+        var service = new DeepLinkService([], Schemes(["tarui", "market"]), Sender(router));
 
         service.Deliver("market://home?tab=favorites");
 
@@ -163,7 +180,7 @@ internal static class Program
     private static async Task DeliverIgnoresInvalidUrlAsync()
     {
         var (router, captured) = BuildRouter();
-        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+        var service = new DeepLinkService([], Schemes(["tarui"]), Sender(router));
 
         service.Deliver("market://home");
 
@@ -175,7 +192,7 @@ internal static class Program
     private static async Task FeedAsyncReproducesValidationPathAsync()
     {
         var (router, captured) = BuildRouter();
-        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+        var service = new DeepLinkService([], Schemes(["tarui"]), Sender(router));
 
         await service.FeedAsync(new DeepLinkFeedOptions(Url: "tarui://feed#demo"), default);
 
@@ -199,7 +216,7 @@ internal static class Program
     private static async Task DeliverDeduplicatesRepeatedUrlAsync()
     {
         var (router, captured) = BuildRouter();
-        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+        var service = new DeepLinkService([], Schemes(["tarui"]), Sender(router));
 
         service.Deliver("tarui://open/doc?id=1");
         // Same URL delivered again inside the dedup window must not emit a second event.
@@ -212,7 +229,7 @@ internal static class Program
     private static async Task DeliverKeepsCurrentUrlAfterDeduplicationAsync()
     {
         var (router, captured) = BuildRouter();
-        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+        var service = new DeepLinkService([], Schemes(["tarui"]), Sender(router));
 
         service.Deliver("tarui://open/doc?id=1");
         service.Deliver("tarui://open/doc?id=1");
@@ -235,7 +252,7 @@ internal static class Program
         }
 
         var (router, captured) = BuildRouter();
-        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+        var service = new DeepLinkService([], Schemes(["tarui"]), Sender(router));
         var extractor = new ScriptedExtractor("tarui://open/from-appleevent");
 
         var bridge = MacDeepLinkBridge.Factory(service, extractor);
@@ -255,7 +272,7 @@ internal static class Program
     private static async Task MacDeepLinkBridgeNonMacIsNoOpAsync()
     {
         var (router, captured) = BuildRouter();
-        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+        var service = new DeepLinkService([], Schemes(["tarui"]), Sender(router));
 
         var bridge = MacDeepLinkBridge.Factory(service, new ScriptedExtractor("tarui://ignored"));
         await bridge.StartAsync(default);
@@ -268,7 +285,7 @@ internal static class Program
     private static void MacDeepLinkBridgeFactorySelectsImplementation()
     {
         var (router, _) = BuildRouter();
-        var service = new DeepLinkService([], Schemes(["tarui"]), router);
+        var service = new DeepLinkService([], Schemes(["tarui"]), Sender(router));
 
         var bridge = MacDeepLinkBridge.Factory(service, new ScriptedExtractor(null));
         if (OperatingSystem.IsMacOS())
@@ -316,7 +333,7 @@ internal static class Program
     {
         var captured = new List<string>();
         var registry = new WindowRegistry();
-        var router = new EventRouter(registry, new EventHub());
+        var router = new EventRouter(registry, new WebviewRegistry(), new EventHub());
         router.Subscribe<JsonElement>("deeplink://tarui", p => captured.Add(p.GetString()!));
         router.Subscribe<JsonElement>("deeplink://market", p => captured.Add(p.GetString()!));
         return (router, captured);

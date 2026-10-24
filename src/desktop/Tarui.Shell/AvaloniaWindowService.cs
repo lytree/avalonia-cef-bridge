@@ -24,74 +24,21 @@ public sealed class AvaloniaWindowService(
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            WindowRegistry.Entry? parent = null;
-            if (options.Parent is { } parentLabel)
-            {
-                if (!registry.TryGet(parentLabel, out parent))
-                {
-                    throw new InvalidOperationException($"The parent window '{parentLabel}' is not registered.");
-                }
-            }
-
             var entry = windowFactory(options, callerContext);
             registry.Add(options.Label, entry);
-            if (parent is not null && (options.Modal ?? true))
-            {
-                // ShowDialog presents the window itself and blocks the parent until the child
-                // closes. The returned task is fire-and-forget so the create command returns
-                // immediately; no cleanup is needed on completion — Avalonia restores the
-                // parent's interactivity when the dialog task completes.
-                FireAndForget.Run(entry.Window.ShowDialog(parent.Window));
-                return;
-            }
-
             if (options.Visible)
             {
-                if (parent is not null)
-                {
-                    // Non-modal child: Show(owner) records the ownership association while both
-                    // windows stay interactive; Avalonia keeps the owner linked for lifetime
-                    // purposes (there is no public setter for WindowBase.Owner).
-                    entry.Window.Show(parent.Window);
-                }
-                else
-                {
-                    entry.Window.Show();
-                }
-
+                entry.Window.Show();
                 entry.Window.Activate();
             }
         });
         return new Unit();
     }
 
-    public async ValueTask<Unit> CloseAsync(string label, bool force, CancellationToken cancellationToken)
+    public async ValueTask<Unit> CloseAsync(string label, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        await Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            var entry = registry.Get(label);
-            if (force)
-            {
-                entry.ClosePending = true;
-            }
-
-            entry.Window.Close();
-        });
-        return new Unit();
-    }
-
-    public async ValueTask<Unit> DenyCloseAsync(string label, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        await Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            var entry = registry.Get(label);
-            if (!entry.ClosePending)
-            {
-                entry.CancelCloseFallback();
-            }
-        });
+        await Dispatcher.UIThread.InvokeAsync(() => registry.Get(label).Window.Close());
         return new Unit();
     }
 
@@ -102,13 +49,6 @@ public sealed class AvaloniaWindowService(
         RunWindowActionAsync(label, static window => window.WindowState = WindowState.Maximized, cancellationToken);
 
     public ValueTask<Unit> UnmaximizeAsync(string label, CancellationToken cancellationToken) =>
-        RunWindowActionAsync(label, static window => window.WindowState = WindowState.Normal, cancellationToken);
-
-    /// <summary>
-    /// Restores the window to <see cref="WindowState.Normal"/>. The pre-minimize state is not
-    /// tracked, so a window that was maximized before minimizing comes back as normal.
-    /// </summary>
-    public ValueTask<Unit> UnminimizeAsync(string label, CancellationToken cancellationToken) =>
         RunWindowActionAsync(label, static window => window.WindowState = WindowState.Normal, cancellationToken);
 
     public ValueTask<Unit> ToggleMaximizeAsync(string label, CancellationToken cancellationToken) =>
@@ -173,9 +113,6 @@ public sealed class AvaloniaWindowService(
     public ValueTask<Unit> SetAlwaysOnTopAsync(string label, bool value, CancellationToken cancellationToken) =>
         RunWindowActionAsync(label, window => window.Topmost = value, cancellationToken);
 
-    public ValueTask<Unit> SetSkipTaskbarAsync(string label, bool value, CancellationToken cancellationToken) =>
-        RunWindowActionAsync(label, window => window.ShowInTaskbar = value, cancellationToken);
-
     public ValueTask<Unit> SetIconAsync(string label, byte[]? png, CancellationToken cancellationToken) =>
         RunWindowActionAsync(
             label,
@@ -202,6 +139,18 @@ public sealed class AvaloniaWindowService(
                 _ => null,
             },
             cancellationToken);
+
+    public ValueTask<Unit> SetAlwaysOnBottomAsync(string label, bool value, CancellationToken cancellationToken) =>
+        RunWindowActionAsync(label, window => WindowsWindowEffects.SetAlwaysOnBottom(window, value), cancellationToken);
+
+    public ValueTask<Unit> SetShadowAsync(string label, bool value, CancellationToken cancellationToken) =>
+        RunWindowActionAsync(label, window => WindowsWindowEffects.SetShadow(window, value), cancellationToken);
+
+    public ValueTask<Unit> SetBadgeCountAsync(string label, int? count, CancellationToken cancellationToken) =>
+        RunWindowActionAsync(label, window => WindowsWindowEffects.SetBadgeCount(window, count), cancellationToken);
+
+    public ValueTask<Unit> SetProgressBarAsync(string label, string? status, double? progress, CancellationToken cancellationToken) =>
+        RunWindowActionAsync(label, window => WindowsWindowEffects.SetProgressBar(window, status, progress), cancellationToken);
 
     public ValueTask<Unit> SetResizableAsync(string label, bool value, CancellationToken cancellationToken) =>
         RunWindowActionAsync(label, window => window.CanResize = value, cancellationToken);

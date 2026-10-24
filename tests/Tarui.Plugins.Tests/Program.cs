@@ -18,9 +18,10 @@ internal static class Program
     {
         await RegistersWindowCommandsWithPermissions();
         await DispatchesWindowCreateWithOptions();
-        await DispatchesWindowCreateWithTransparencyAndModalOptions();
+        await DispatchesWindowCreateWithTransparencyOptions();
         await FallsBackToContextWindowLabel();
         await SetsWindowIconAndTheme();
+        await SetsWindowEffectsThroughCommands();
         await ReturnsWindowStateAndLabels();
         await EmitsEventsThroughEventPlugin();
         await ResolvesPathsThroughSystemPlugin();
@@ -52,7 +53,6 @@ internal static class Program
         await RejectsEmptyDevToolsMessage();
         await EvaluatesScriptsThroughWebviewCommands();
         await CompletesEvalCallbackOnBoundChannel();
-        await DeniesCloseThroughWindowCommand();
         ResolvesCorePluginThroughServiceCollection();
         ResolvesWindowPluginThroughServiceCollection();
         ResolvesEventPluginThroughServiceCollection();
@@ -86,6 +86,10 @@ internal static class Program
             "core:window|set-min-size",
             "core:window|set-max-size",
             "core:window|set-always-on-top",
+            "core:window|set-always-on-bottom",
+            "core:window|set-shadow",
+            "core:window|set-badge-count",
+            "core:window|set-progress-bar",
             "core:window|set-icon",
             "core:window|set-theme",
             "core:window|set-resizable",
@@ -123,7 +127,7 @@ internal static class Program
             "The service must receive the deserialized window options.");
     }
 
-    private static async Task DispatchesWindowCreateWithTransparencyAndModalOptions()
+    private static async Task DispatchesWindowCreateWithTransparencyOptions()
     {
         var service = new FakeWindowService();
         var router = BuildRouter(service);
@@ -136,35 +140,14 @@ internal static class Program
                     Width = 420,
                     Height = 300,
                     Transparent = true,
-                    Parent = "editor",
-                    Modal = true,
                 },
                 TaruiJsonContext.Default.WindowOptions),
             AllowAll());
 
-        Assert(response.Success, "Creating a transparent modal child window must succeed.");
+        Assert(response.Success, "Creating a transparent window must succeed.");
         Assert(
-            service.Calls.Contains("create|palette|Palette|420x300|transparent|parent:editor|modal:true"),
-            "The service must receive the transparency, parent and modal options.");
-
-        var ownedResponse = await router.InvokeAsync(
-            Request(
-                "core:window|create",
-                new WindowOptions("inspector")
-                {
-                    Title = "Inspector",
-                    Width = 320,
-                    Height = 240,
-                    Parent = "editor",
-                    Modal = false,
-                },
-                TaruiJsonContext.Default.WindowOptions),
-            AllowAll());
-
-        Assert(ownedResponse.Success, "Creating a non-modal owned child window must succeed.");
-        Assert(
-            service.Calls.Contains("create|inspector|Inspector|320x240|parent:editor|modal:false"),
-            "The service must record a non-modal parent association.");
+            service.Calls.Contains("create|palette|Palette|420x300|transparent"),
+            "The service must receive the transparency option.");
     }
 
     private static async Task FallsBackToContextWindowLabel()
@@ -207,6 +190,75 @@ internal static class Program
         Assert(
             service.Calls.Contains("set-theme|main|dark"),
             "The theme must reach the service with the caller window label.");
+    }
+
+    private static async Task SetsWindowEffectsThroughCommands()
+    {
+        var service = new FakeWindowService();
+        var router = BuildRouter(service);
+
+        var bottom = await router.InvokeAsync(
+            Request(
+                "core:window|set-always-on-bottom",
+                new SetFlagOptions(true),
+                TaruiJsonContext.Default.SetFlagOptions),
+            AllowAll());
+        Assert(bottom.Success, "Setting always-on-bottom must succeed.");
+        Assert(
+            service.Calls.Contains("set-always-on-bottom|main|True"),
+            "The bottom z-order flag must reach the service with the caller window label.");
+
+        var shadow = await router.InvokeAsync(
+            Request(
+                "core:window|set-shadow",
+                new SetFlagOptions(false),
+                TaruiJsonContext.Default.SetFlagOptions),
+            AllowAll());
+        Assert(shadow.Success, "Setting the frame shadow must succeed.");
+        Assert(
+            service.Calls.Contains("set-shadow|main|False"),
+            "The shadow flag must reach the service with the caller window label.");
+
+        var badge = await router.InvokeAsync(
+            Request(
+                "core:window|set-badge-count",
+                new SetBadgeCountOptions(7),
+                TaruiJsonContext.Default.SetBadgeCountOptions),
+            AllowAll());
+        Assert(badge.Success, "Setting the badge count must succeed.");
+        Assert(
+            service.Calls.Contains("set-badge-count|main|7"),
+            "The badge count must reach the service.");
+
+        var clear = await router.InvokeAsync(
+            Request(
+                "core:window|set-badge-count",
+                new SetBadgeCountOptions(null),
+                TaruiJsonContext.Default.SetBadgeCountOptions),
+            AllowAll());
+        Assert(clear.Success, "Clearing the badge count must succeed.");
+        Assert(
+            service.Calls.Contains("set-badge-count|main|clear"),
+            "A null badge count must clear the badge.");
+
+        var progress = await router.InvokeAsync(
+            Request(
+                "core:window|set-progress-bar",
+                new SetProgressBarOptions("paused", 42.5),
+                TaruiJsonContext.Default.SetProgressBarOptions),
+            AllowAll());
+        Assert(progress.Success, "Setting the progress bar must succeed.");
+        Assert(
+            service.Calls.Contains("set-progress-bar|main|paused|42.5"),
+            "The progress status and percentage must reach the service.");
+
+        var denied = await router.InvokeAsync(
+            Request(
+                "core:window|set-badge-count",
+                new SetBadgeCountOptions(3, "editor"),
+                TaruiJsonContext.Default.SetBadgeCountOptions),
+            new CommandContext("main", "main", new CapabilitySet(["core:window|set-badge-count"])));
+        Assert(!denied.Success, "Cross-window badge updates must require the -other-window permission.");
     }
 
     private static async Task ReturnsWindowStateAndLabels()
@@ -455,6 +507,9 @@ internal static class Program
         Assert(
             caps.DeepLinkSupported == (OperatingSystem.IsWindows() || OperatingSystem.IsLinux()),
             "Deep-link availability must honestly reflect the current OS footprint.");
+        Assert(
+            caps.WindowEffectsSupported == OperatingSystem.IsWindows(),
+            "Window effects must be reported as Windows-only.");
     }
 
     private static async Task OpensDialogsForRequestingWindow()
@@ -762,20 +817,6 @@ internal static class Program
         Assert(
             payload is { Ok: true, Value: "42", Error: null },
             "The completion frame must carry the eval outcome.");
-    }
-
-    private static async Task DeniesCloseThroughWindowCommand()
-    {
-        var service = new FakeWindowService();
-        var router = BuildRouter(service);
-        var response = await router.InvokeAsync(
-            Request("core:window|deny-close", new WindowLabelOptions(), TaruiJsonContext.Default.WindowLabelOptions),
-            new CommandContext("main", "main", new CapabilitySet(["core:window|deny-close"])));
-
-        Assert(response.Success, "Denying a pending close must succeed.");
-        Assert(
-            service.Calls.Contains("deny-close|main"),
-            "A missing label must fall back to the context window label.");
     }
 
     private sealed class RecordingChannelSink : IChannelSink

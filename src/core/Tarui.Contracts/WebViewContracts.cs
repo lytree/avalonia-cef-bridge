@@ -9,9 +9,6 @@ public sealed record WebviewNavigateOptions(string Url, string? Label = null);
 /// <summary>Opens (<see cref="Open"/> = true) or closes the browser developer tools of a web view.</summary>
 public sealed record WebviewDevToolsOptions(bool Open = true, string? Label = null);
 
-/// <summary>Sets the page zoom factor for a web view (1.0 = 100%).</summary>
-public sealed record WebviewSetZoomOptions(double Factor, string? Label = null);
-
 /// <summary>Position and size of a web view surface inside its host window (logical units).</summary>
 public sealed record WebviewBounds(double X, double Y, double Width, double Height);
 
@@ -47,7 +44,7 @@ public sealed record WebviewLabels(string[] Labels);
 /// <summary>
 /// The identity of the browser runtime backing every web view: the runtime name, the underlying
 /// engine version, the asset resource mode (<c>http</c> or <c>scheme</c>) and the application origin.
-/// Mirrors Tauri v3's runtime identity surface (<c>webview_version</c> + <c>custom_scheme_url</c>).
+/// Exposed by <c>plugin:webview|runtime-info</c>.
 /// </summary>
 public sealed record WebviewRuntimeInfo(
     string Name,

@@ -1,3 +1,6 @@
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Tarui.Plugins.Events;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -26,6 +29,27 @@ public sealed class DeepLinkPlugin(IDeepLinkService service) : ITaruiPlugin
 
 public static class DeepLinkPluginServiceCollectionExtensions
 {
-    public static IServiceCollection AddDeepLinkPlugin(this IServiceCollection services)
-        => services.AddPlugin<DeepLinkPlugin>();
+    /// <summary>
+    /// Registers the deep link command surface, the URL aggregator and the hosted registrars that
+    /// claim the configured schemes and file associations with the operating system.
+    /// </summary>
+    public static IServiceCollection AddDeepLinkPlugin(this IServiceCollection services) => services
+        .AddPlugin<DeepLinkPlugin>()
+        .AddSingleton(static sp => new DeepLinkService(
+            GetStartupArgs(),
+            DeepLinkConfiguration.ReadSchemes(sp.GetService<IConfiguration>()),
+            sp.GetRequiredService<IEventSender>()))
+        .AddSingleton<IDeepLinkService>(static sp => sp.GetRequiredService<DeepLinkService>())
+        // A second instance forwards its command line through the single-instance channel; the deep
+        // link aggregator is the component that knows how to interpret it.
+        .AddSingleton<ISecondActivationSink>(static sp => sp.GetRequiredService<DeepLinkService>())
+        .AddSingleton<IMacDeepLinkUrlExtractor, NoOpMacDeepLinkUrlExtractor>()
+        .AddHostedService<DeepLinkRegistrarHostedService>()
+        .AddHostedService<FileAssociationRegistrarHostedService>();
+
+    private static string[] GetStartupArgs()
+    {
+        var args = Environment.GetCommandLineArgs();
+        return args.Length > 1 ? args[1..] : [];
+    }
 }

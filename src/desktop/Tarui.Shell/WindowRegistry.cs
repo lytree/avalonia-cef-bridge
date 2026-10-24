@@ -51,22 +51,6 @@ public sealed class WindowRegistry : IWindowSinkRegistry
 
         /// <summary>The window-level fan-out sink that delivers window events to every hosted web view.</summary>
         public IEventSink Sink { get; }
-
-        internal bool ClosePending { get; set; }
-
-        /// <summary>
-        /// The scheduled force-close fallback for an in-flight <c>window://close-requested</c>.
-        /// Cancelled by an explicit <c>core:window|deny-close</c> receipt or a close confirmation.
-        /// </summary>
-        internal CancellationTokenSource? CloseFallback { get; set; }
-
-        /// <summary>Cancels and disposes the pending force-close fallback so the window stays open.</summary>
-        internal void CancelCloseFallback()
-        {
-            CloseFallback?.Cancel();
-            CloseFallback?.Dispose();
-            CloseFallback = null;
-        }
     }
 
     public IReadOnlyCollection<string> Labels

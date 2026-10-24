@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -11,7 +11,7 @@ public interface IEventSender
         string eventName,
         JsonElement payload,
         string? targetWindow,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class EventPlugin(IEventSender sender) : ITaruiPlugin

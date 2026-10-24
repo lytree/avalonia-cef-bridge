@@ -51,15 +51,6 @@ export type WindowOptions = {
   visible?: boolean
   /** Renders the window with a translucent backdrop (acrylic blur where the platform supports it). */
   transparent?: boolean
-  /**
-   * Makes the window a child of the window with this label, which must already exist.
-   * When set, the window becomes the parent's dialog: modal (blocking the parent until it
-   * closes) unless {@link WindowOptions.modal} is explicitly `false`, in which case it is a
-   * plain owned child window.
-   */
-  parent?: string
-  /** Whether a {@link WindowOptions.parent} child blocks its parent; defaults to `true`. */
-  modal?: boolean
 }
 
 export type WindowGeometry = {
@@ -69,13 +60,20 @@ export type WindowGeometry = {
   height: number
 }
 
+export type ProgressBarStatus = 'none' | 'normal' | 'indeterminate' | 'paused' | 'error'
+
+export type ProgressBarState = {
+  status: ProgressBarStatus
+  /** Completion percentage (0-100) used by the determinate statuses. */
+  progress?: number
+}
+
 type WindowFocusChanged = { focused: boolean }
 type WindowLabelPayload = { label: string }
 
 export const WINDOW_MOVED_EVENT = 'window://moved'
 export const WINDOW_RESIZED_EVENT = 'window://resized'
 export const WINDOW_FOCUS_CHANGED_EVENT = 'window://focus-changed'
-export const WINDOW_CLOSE_REQUESTED_EVENT = 'window://close-requested'
 export const WINDOW_DESTROYED_EVENT = 'window://destroyed'
 
 export const FILE_DROP_ENTERED_EVENT = 'window://file-drop-entered'
@@ -139,26 +137,8 @@ export class Window {
     return Window.getByLabel(options.label)
   }
 
-  async close(force = true): Promise<void> {
-    await invoke('core:window|close', { force, ...this.target() })
-  }
-
-  /**
-   * Destroys this window without emitting `window://close-requested`, matching the
-   * semantics of a forced close. Prefer {@link Window.close} (with `force = false`)
-   * when the close should stay interceptable by a close-requested handler.
-   */
-  async destroy(): Promise<void> {
-    await invoke('core:window|close', { force: true, ...this.target() })
-  }
-
-  /**
-   * Cancels the pending forced close the shell schedules after a close
-   * request was observed, keeping the window open when a close handler
-   * decided to veto. No-op once the shell entered the forced-close phase.
-   */
-  async denyClose(): Promise<void> {
-    await invoke('core:window|deny-close', this.target())
+  async close(): Promise<void> {
+    await invoke('core:window|close', this.target())
   }
 
   async minimize(): Promise<void> {
@@ -171,10 +151,6 @@ export class Window {
 
   async unmaximize(): Promise<void> {
     await invoke('core:window|unmaximize', this.target())
-  }
-
-  async unminimize(): Promise<void> {
-    await invoke('core:window|unminimize', this.target())
   }
 
   async toggleMaximize(): Promise<void> {
@@ -221,11 +197,6 @@ export class Window {
     await invoke('core:window|set-always-on-top', { value, ...this.target() })
   }
 
-  /** Shows or hides the window's taskbar button. */
-  async setSkipTaskbar(value: boolean): Promise<void> {
-    await invoke('core:window|set-skip-taskbar', { value, ...this.target() })
-  }
-
   /**
    * Sets the window icon from PNG bytes, or clears it when `png` is null.
    * The PNG is base64-encoded for the native bridge.
@@ -237,6 +208,36 @@ export class Window {
   /** Sets the window theme variant: 'system' | 'light' | 'dark'. */
   async setTheme(theme: 'system' | 'light' | 'dark'): Promise<void> {
     await invoke('core:window|set-theme', { theme, ...this.target() })
+  }
+
+  /**
+   * Pushes the window behind other windows. Windows only; the effect is best-effort and lasts until
+   * another window is activated. Check `platform.capabilities().windowEffectsSupported` first.
+   */
+  async setAlwaysOnBottom(value: boolean): Promise<void> {
+    await invoke('core:window|set-always-on-bottom', { value, ...this.target() })
+  }
+
+  /** Enables or disables the frame shadow (Windows only). */
+  async setShadow(value: boolean): Promise<void> {
+    await invoke('core:window|set-shadow', { value, ...this.target() })
+  }
+
+  /**
+   * Sets the taskbar badge count; a null or non-positive count clears it. On Windows the count is
+   * rendered as a taskbar overlay icon. Windows only.
+   */
+  async setBadgeCount(count: number | null): Promise<void> {
+    await invoke('core:window|set-badge-count', { count, ...this.target() })
+  }
+
+  /** Sets the taskbar progress indicator; null (or status `none`) removes it. Windows only. */
+  async setProgressBar(progress: ProgressBarState | null): Promise<void> {
+    await invoke('core:window|set-progress-bar', {
+      status: progress?.status ?? 'none',
+      progress: progress?.progress,
+      ...this.target(),
+    })
   }
 
   async setResizable(value: boolean): Promise<void> {
@@ -279,10 +280,6 @@ export class Window {
 
   onResized(handler: (geometry: WindowGeometry) => void): Unlisten {
     return listen<WindowGeometry>(WINDOW_RESIZED_EVENT, event => handler(event.payload))
-  }
-
-  onCloseRequested(handler: () => void): Unlisten {
-    return listen<WindowLabelPayload>(WINDOW_CLOSE_REQUESTED_EVENT, () => handler())
   }
 
   onDestroyed(handler: () => void): Unlisten {

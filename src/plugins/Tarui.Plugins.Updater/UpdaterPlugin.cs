@@ -1,3 +1,8 @@
+﻿using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using Tarui.Plugins.Events;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -33,6 +38,25 @@ public sealed class UpdaterPlugin(IUpdaterService service) : ITaruiPlugin
 
 public static class UpdaterPluginServiceCollectionExtensions
 {
+    /// <summary>
+    /// Registers the updater command surface together with the services it needs to run: the HTTP
+    /// client used to fetch signed manifests and packages, the platform update applier and the
+    /// service itself. Registering this plugin is sufficient — nothing is left to the shell.
+    /// </summary>
     public static IServiceCollection AddUpdaterPlugin(this IServiceCollection services)
-        => services.AddPlugin<UpdaterPlugin>();
+    {
+        // Shared when another package (for example the HTTP plugin host) already registered one.
+        services.TryAddSingleton<HttpClient>();
+        return services
+            .AddPlugin<UpdaterPlugin>()
+            .AddSingleton<IUpdateApplier>(static _ => OperatingSystem.IsWindows()
+                ? new WindowsMsixUpdateApplier()
+                : new NoOpUpdateApplier())
+            .AddSingleton<IUpdaterService>(static sp => new UpdaterService(
+                sp.GetRequiredService<HttpClient>(),
+                UpdaterConfiguration.ReadSettings(sp.GetService<IConfiguration>()),
+                sp.GetService<IEventSender>(),
+                sp.GetService<ILogger<UpdaterService>>() ?? NullLogger<UpdaterService>.Instance,
+                sp.GetRequiredService<IUpdateApplier>()));
+    }
 }

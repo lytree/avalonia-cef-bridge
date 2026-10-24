@@ -103,7 +103,6 @@ export interface ClipboardWriteTextOptions {
 
 export interface CloseWindowOptions {
   readonly label?: string;
-  readonly force: boolean;
 }
 
 export interface ConfirmOptions {
@@ -491,13 +490,8 @@ export interface PlatformCapabilities {
   readonly autostartSupported: boolean;
   readonly deepLinkSupported: boolean;
   readonly deepLinkReason?: string;
-}
-
-export interface PositionerOptions {
-  readonly anchor: string;
-  readonly label?: string;
-  readonly x?: number;
-  readonly y?: number;
+  readonly windowEffectsSupported: boolean;
+  readonly windowEffectsReason?: string;
 }
 
 export interface ProcessExitOptions {
@@ -511,6 +505,11 @@ export interface SaveDialogOptions {
 
 export interface SaveDialogResult {
   readonly path?: string;
+}
+
+export interface SetBadgeCountOptions {
+  readonly count?: number;
+  readonly label?: string;
 }
 
 export interface SetExtentOptions {
@@ -532,6 +531,12 @@ export interface SetIconOptions {
 export interface SetPositionOptions {
   readonly x: number;
   readonly y: number;
+  readonly label?: string;
+}
+
+export interface SetProgressBarOptions {
+  readonly status?: string;
+  readonly progress?: number;
   readonly label?: string;
 }
 
@@ -775,11 +780,6 @@ export interface WebviewSetBoundsOptions {
   readonly label?: string;
 }
 
-export interface WebviewSetZoomOptions {
-  readonly factor: number;
-  readonly label?: string;
-}
-
 export interface WebviewStateInfo {
   readonly label: string;
   readonly windowLabel: string;
@@ -813,8 +813,6 @@ export interface WindowOptions {
   readonly alwaysOnTop: boolean;
   readonly visible: boolean;
   readonly transparent?: boolean;
-  readonly parent?: string;
-  readonly modal?: boolean;
 }
 
 export interface WindowStateClearOptions {
@@ -982,11 +980,6 @@ export interface TaruiCommandContracts {
     readonly input: "WindowLabelOptions";
     readonly output: "MonitorInfo";
   };
-  readonly "core:window|deny-close": {
-    readonly permission: "core:window|deny-close";
-    readonly input: "WindowLabelOptions";
-    readonly output: "Unit";
-  };
   readonly "core:window|focus": {
     readonly permission: "core:window|focus";
     readonly input: "WindowLabelOptions";
@@ -1027,9 +1020,19 @@ export interface TaruiCommandContracts {
     readonly input: "WindowLabelOptions";
     readonly output: "MonitorInfo";
   };
+  readonly "core:window|set-always-on-bottom": {
+    readonly permission: "core:window|set-always-on-bottom";
+    readonly input: "SetFlagOptions";
+    readonly output: "Unit";
+  };
   readonly "core:window|set-always-on-top": {
     readonly permission: "core:window|set-always-on-top";
     readonly input: "SetFlagOptions";
+    readonly output: "Unit";
+  };
+  readonly "core:window|set-badge-count": {
+    readonly permission: "core:window|set-badge-count";
+    readonly input: "SetBadgeCountOptions";
     readonly output: "Unit";
   };
   readonly "core:window|set-decorations": {
@@ -1062,19 +1065,24 @@ export interface TaruiCommandContracts {
     readonly input: "SetPositionOptions";
     readonly output: "Unit";
   };
+  readonly "core:window|set-progress-bar": {
+    readonly permission: "core:window|set-progress-bar";
+    readonly input: "SetProgressBarOptions";
+    readonly output: "Unit";
+  };
   readonly "core:window|set-resizable": {
     readonly permission: "core:window|set-resizable";
+    readonly input: "SetFlagOptions";
+    readonly output: "Unit";
+  };
+  readonly "core:window|set-shadow": {
+    readonly permission: "core:window|set-shadow";
     readonly input: "SetFlagOptions";
     readonly output: "Unit";
   };
   readonly "core:window|set-size": {
     readonly permission: "core:window|set-size";
     readonly input: "SetSizeOptions";
-    readonly output: "Unit";
-  };
-  readonly "core:window|set-skip-taskbar": {
-    readonly permission: "core:window|set-skip-taskbar";
-    readonly input: "SetFlagOptions";
     readonly output: "Unit";
   };
   readonly "core:window|set-theme": {
@@ -1099,11 +1107,6 @@ export interface TaruiCommandContracts {
   };
   readonly "core:window|unmaximize": {
     readonly permission: "core:window|unmaximize";
-    readonly input: "WindowLabelOptions";
-    readonly output: "Unit";
-  };
-  readonly "core:window|unminimize": {
-    readonly permission: "core:window|unminimize";
     readonly input: "WindowLabelOptions";
     readonly output: "Unit";
   };
@@ -1362,11 +1365,6 @@ export interface TaruiCommandContracts {
     readonly input: "PersistedScopeResetOptions";
     readonly output: "Unit";
   };
-  readonly "plugin:positioner|set-position": {
-    readonly permission: "plugin:positioner|set-position";
-    readonly input: "PositionerOptions";
-    readonly output: "Unit";
-  };
   readonly "plugin:shell|kill": {
     readonly permission: "plugin:shell|kill";
     readonly input: "ShellKillOptions";
@@ -1537,11 +1535,6 @@ export interface TaruiCommandContracts {
     readonly input: "WebviewNavigateOptions";
     readonly output: "Unit";
   };
-  readonly "plugin:webview|print": {
-    readonly permission: "plugin:webview|print";
-    readonly input: "WebviewLabelOptions";
-    readonly output: "Unit";
-  };
   readonly "plugin:webview|runtime-info": {
     readonly permission: "plugin:webview|runtime-info";
     readonly input: "EmptyArgs";
@@ -1555,11 +1548,6 @@ export interface TaruiCommandContracts {
   readonly "plugin:webview|set-bounds": {
     readonly permission: "plugin:webview|set-bounds";
     readonly input: "WebviewSetBoundsOptions";
-    readonly output: "Unit";
-  };
-  readonly "plugin:webview|set-zoom": {
-    readonly permission: "plugin:webview|set-zoom";
-    readonly input: "WebviewSetZoomOptions";
     readonly output: "Unit";
   };
   readonly "plugin:window-state|clear": {
@@ -1657,10 +1645,6 @@ export interface TaruiCommandTypes {
     readonly input: WindowLabelOptions;
     readonly output: MonitorInfo;
   };
-  readonly "core:window|deny-close": {
-    readonly input: WindowLabelOptions;
-    readonly output: Unit;
-  };
   readonly "core:window|focus": {
     readonly input: WindowLabelOptions;
     readonly output: Unit;
@@ -1693,8 +1677,16 @@ export interface TaruiCommandTypes {
     readonly input: WindowLabelOptions;
     readonly output: MonitorInfo;
   };
+  readonly "core:window|set-always-on-bottom": {
+    readonly input: SetFlagOptions;
+    readonly output: Unit;
+  };
   readonly "core:window|set-always-on-top": {
     readonly input: SetFlagOptions;
+    readonly output: Unit;
+  };
+  readonly "core:window|set-badge-count": {
+    readonly input: SetBadgeCountOptions;
     readonly output: Unit;
   };
   readonly "core:window|set-decorations": {
@@ -1721,16 +1713,20 @@ export interface TaruiCommandTypes {
     readonly input: SetPositionOptions;
     readonly output: Unit;
   };
+  readonly "core:window|set-progress-bar": {
+    readonly input: SetProgressBarOptions;
+    readonly output: Unit;
+  };
   readonly "core:window|set-resizable": {
+    readonly input: SetFlagOptions;
+    readonly output: Unit;
+  };
+  readonly "core:window|set-shadow": {
     readonly input: SetFlagOptions;
     readonly output: Unit;
   };
   readonly "core:window|set-size": {
     readonly input: SetSizeOptions;
-    readonly output: Unit;
-  };
-  readonly "core:window|set-skip-taskbar": {
-    readonly input: SetFlagOptions;
     readonly output: Unit;
   };
   readonly "core:window|set-theme": {
@@ -1750,10 +1746,6 @@ export interface TaruiCommandTypes {
     readonly output: Unit;
   };
   readonly "core:window|unmaximize": {
-    readonly input: WindowLabelOptions;
-    readonly output: Unit;
-  };
-  readonly "core:window|unminimize": {
     readonly input: WindowLabelOptions;
     readonly output: Unit;
   };
@@ -1961,10 +1953,6 @@ export interface TaruiCommandTypes {
     readonly input: PersistedScopeResetOptions;
     readonly output: Unit;
   };
-  readonly "plugin:positioner|set-position": {
-    readonly input: PositionerOptions;
-    readonly output: Unit;
-  };
   readonly "plugin:shell|kill": {
     readonly input: ShellKillOptions;
     readonly output: Unit;
@@ -2101,10 +2089,6 @@ export interface TaruiCommandTypes {
     readonly input: WebviewNavigateOptions;
     readonly output: Unit;
   };
-  readonly "plugin:webview|print": {
-    readonly input: WebviewLabelOptions;
-    readonly output: Unit;
-  };
   readonly "plugin:webview|runtime-info": {
     readonly input: EmptyArgs;
     readonly output: WebviewRuntimeInfo;
@@ -2115,10 +2099,6 @@ export interface TaruiCommandTypes {
   };
   readonly "plugin:webview|set-bounds": {
     readonly input: WebviewSetBoundsOptions;
-    readonly output: Unit;
-  };
-  readonly "plugin:webview|set-zoom": {
-    readonly input: WebviewSetZoomOptions;
     readonly output: Unit;
   };
   readonly "plugin:window-state|clear": {

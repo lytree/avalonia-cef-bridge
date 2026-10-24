@@ -17,9 +17,8 @@ public sealed record MonitorInfo(
     bool IsCurrent);
 
 /// <summary>
-/// Options for creating a window. When <see cref="Parent"/> names a registered window, the new window
-/// becomes its child; unless <see cref="Modal"/> is <c>false</c> it is shown as a modal dialog of the
-/// parent. <see cref="Transparent"/> opts the window into a translucent (acrylic-blurred) backdrop.
+/// Options for creating a window. <see cref="Transparent"/> opts the window into a translucent
+/// (acrylic-blurred) backdrop.
 /// </summary>
 public sealed record WindowOptions(
     string Label,
@@ -38,9 +37,7 @@ public sealed record WindowOptions(
     bool Decorations = true,
     bool AlwaysOnTop = false,
     bool Visible = true,
-    bool? Transparent = null,
-    string? Parent = null,
-    bool? Modal = null);
+    bool? Transparent = null);
 
 public sealed record WindowStateInfo(
     string Label,
@@ -64,7 +61,7 @@ public sealed record WindowFocusChanged(bool Focused);
 
 public sealed record WindowLabelOptions(string? Label = null);
 
-public sealed record CloseWindowOptions(string? Label = null, bool Force = true);
+public sealed record CloseWindowOptions(string? Label = null);
 
 public sealed record SetTitleOptions(string Title, string? Label = null);
 
@@ -82,6 +79,16 @@ public sealed record SetIconOptions(byte[]? Png = null, string? Label = null);
 /// <summary>Sets the window theme variant. <see cref="Theme"/> is <c>system</c>/<c>light</c>/<c>dark</c>,
 /// defaulting to <c>system</c>.</summary>
 public sealed record SetThemeOptions(string? Theme = "system", string? Label = null);
+
+/// <summary>
+/// Sets the taskbar progress indicator. <see cref="Status"/> is one of <c>none</c>/<c>normal</c>/
+/// <c>indeterminate</c>/<c>paused</c>/<c>error</c>; <see cref="Progress"/> is a percentage (0-100)
+/// consumed by the determinate states.
+/// </summary>
+public sealed record SetProgressBarOptions(string? Status = "none", double? Progress = null, string? Label = null);
+
+/// <summary>Sets the taskbar badge count; a null or non-positive count clears the badge.</summary>
+public sealed record SetBadgeCountOptions(int? Count = null, string? Label = null);
 
 public sealed record WindowLabels(string[] Labels);
 

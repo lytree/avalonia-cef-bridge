@@ -1,4 +1,7 @@
-﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿using System.Text.Json;
+using System.Threading.Channels;
 using Avalonia;
 using Avalonia.Controls;
 using Microsoft.Extensions.Configuration;
@@ -6,6 +9,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
 using Tarui.Plugins.Autostart;
+using Tarui.Plugins.Tray;
+using Tarui.Plugins.Menu;
+using Tarui.Plugins.WindowState;
+using Tarui.Plugins.Log;
+using Tarui.Plugins.Notification;
+using Tarui.Plugins.DeepLink;
 using Tarui.Plugins.Dialog;
 using Tarui.Plugins.Events;
 using Tarui.Plugins.System;
@@ -38,6 +47,9 @@ internal static class Program
         await RouterBroadcastsToAllWindows();
         await RouterNotifiesHubSubscribers();
         await RouterRoutesByTargetWindowPresence();
+        await RouterAddressesWebviewsIndependentlyOfWindows();
+        await WebviewSessionCreditsBoundChannelFrames();
+        await WebviewSessionCompleteWakesBlockedChannelProducer();
         await WebViewHostRejectsFileDropWithoutCapability();
         await WebViewHostDeliversFileDropToAuthorizedWindow();
         await WebViewHostGatesDownloadByPolicyAndCapability();
@@ -53,12 +65,16 @@ internal static class Program
         ComposerExpandsPermissionSetsFromPluginRegistrations();
         ComposerGrantsApplicationCommandsThroughAppDefaultSet();
         ComposerRejectsUnknownPermissionSet();
+        WindowEffectsMapProgressStatusesAndClampValues();
+        WindowEffectBadgeLabelsCollapseAboveNine();
         CapabilitySetProviderCachesDirectorySnapshot();
         AddTaruiShellRegistersShellServices();
+        OptionalPluginsOwnTheirServices();
         await AutostartPlatformServicesRoundTripLaunchEntries();
         ShellPolicyAcceptsAllApplicationSchemes();
         AddWindowExtensionRegistersAndScopesByLabel();
         AddWindowExtensionRegistrarMergesIntoRegistry();
+        RegistrarFailsAtCompositionWhenFactoryFreeExtensionIsUnregistered();
         ExtensionRegistryScopesAndConstructsByLabel();
         CompositionExposesLayeredRegions();
         WindowExtensionContextExposesNativeWindow();
@@ -72,7 +88,6 @@ internal static class Program
         WindowCapabilityResolverAllowsCallerWithWildcard();
         await WebViewHostDeliversRenderProcessGoneToAuthorizedWindow();
         await WebViewHostSuppressesRenderProcessGoneWithoutCapability();
-        EntryCancelsPendingCloseFallback();
         BuildsEvalCallbackWrapperScript();
         RegistrarBuildsRegistryShape();
         FileAssociationConfigurationReadsSegments();
@@ -134,7 +149,7 @@ internal static class Program
         var registry = new FakeSinkRegistry();
         var main = registry.Add("main");
         var editor = registry.Add("editor");
-        var router = new EventRouter(registry, new EventHub());
+        var router = new EventRouter(registry, new WebviewRegistry(), new EventHub());
         var payload = JsonSerializer.SerializeToElement(new WindowFocusChanged(true), TaruiJsonContext.Default.WindowFocusChanged);
 
         await router.EmitToWindowAsync("editor", "window://focus-changed", payload);
@@ -153,7 +168,7 @@ internal static class Program
         var registry = new FakeSinkRegistry();
         var main = registry.Add("main");
         var editor = registry.Add("editor");
-        var router = new EventRouter(registry, new EventHub());
+        var router = new EventRouter(registry, new WebviewRegistry(), new EventHub());
         var payload = JsonSerializer.SerializeToElement(
             new WindowLabelOptions("editor"),
             TaruiJsonContext.Default.WindowLabelOptions);
@@ -170,7 +185,7 @@ internal static class Program
     private static async Task RouterNotifiesHubSubscribers()
     {
         var registry = new FakeSinkRegistry();
-        var router = new EventRouter(registry, new EventHub());
+        var router = new EventRouter(registry, new WebviewRegistry(), new EventHub());
         var received = new List<string>();
         using var subscription = router.Subscribe<JsonElement>(
             "shell://theme-changed",
@@ -192,7 +207,7 @@ internal static class Program
         var registry = new FakeSinkRegistry();
         var main = registry.Add("main");
         var editor = registry.Add("editor");
-        var router = new EventRouter(registry, new EventHub());
+        var router = new EventRouter(registry, new WebviewRegistry(), new EventHub());
         var payload = JsonSerializer.SerializeToElement(new Unit(), TaruiJsonContext.Default.Unit);
 
         await router.EmitAsync("a://event", payload, "editor");
@@ -209,6 +224,45 @@ internal static class Program
         Assert(
             editor.Events.Count == 2 && main.Events.Count == 1,
             "An unknown target must be a no-op for sinks.");
+    }
+
+    private static async Task RouterAddressesWebviewsIndependentlyOfWindows()
+    {
+        // A window may host several web views. A webview:// event must reach the addressed surface only and
+        // be authorized against that surface, not the window: resolving the sink through the window registry
+        // only worked while one window hosted exactly one surface whose label matched the window's.
+        var windows = new FakeSinkRegistry();
+        var windowSink = windows.Add("main");
+        var webviews = new FakeWebviewSinkRegistry();
+        var primary = webviews.Add("main", "main");
+        var sidebar = webviews.Add("sidebar", "main");
+        var router = new EventRouter(windows, webviews, new EventHub());
+        var payload = JsonSerializer.SerializeToElement(new Unit(), TaruiJsonContext.Default.Unit);
+
+        await router.EmitToWebviewAsync("sidebar", "webview://download-requested", payload);
+
+        Assert(
+            sidebar.Events.Count == 1,
+            "A web view-targeted emit must reach the addressed surface.");
+        Assert(
+            primary.Events.Count == 0,
+            "A web view-targeted emit must not reach a sibling surface in the same window.");
+        Assert(
+            windowSink.Events.Count == 0,
+            "A web view-targeted emit must not be delivered through the window fan-out sink.");
+
+        // Reserved events stay gated by the surface's own capability set, even when its window allows them.
+        webviews.SetCapabilities("main", new CapabilitySet([], [], []));
+        await router.EmitToWebviewAsync("main", "webview://download-requested", payload);
+        Assert(
+            primary.Events.Count == 0,
+            "A web view without event authorization must not receive a reserved native event.");
+
+        // An unknown label is a no-op rather than a window lookup, so a stale label cannot leak an event.
+        await router.EmitToWebviewAsync("ghost", "webview://download-requested", payload);
+        Assert(
+            primary.Events.Count == 0 && sidebar.Events.Count == 1,
+            "An unknown web view label must not deliver to any surface.");
     }
 
     private static async Task CapabilityLoaderMergesWindowPermissions()
@@ -421,6 +475,56 @@ internal static class Program
         return services;
     }
 
+    private static void WindowEffectsMapProgressStatusesAndClampValues()
+    {
+        Assert(
+            WindowsWindowEffects.ProgressFlagsFor(null) == WindowsWindowEffects.ProgressNoProgress &&
+            WindowsWindowEffects.ProgressFlagsFor("none") == WindowsWindowEffects.ProgressNoProgress,
+            "An absent or 'none' status must map to no progress.");
+        Assert(
+            WindowsWindowEffects.ProgressFlagsFor("normal") == WindowsWindowEffects.ProgressNormal,
+            "The normal status must map to the normal TBPFLAG.");
+        Assert(
+            WindowsWindowEffects.ProgressFlagsFor("indeterminate") == WindowsWindowEffects.ProgressIndeterminate,
+            "The indeterminate status must map to the indeterminate TBPFLAG.");
+        Assert(
+            WindowsWindowEffects.ProgressFlagsFor("paused") == WindowsWindowEffects.ProgressPaused,
+            "The paused status must map to the paused TBPFLAG.");
+        Assert(
+            WindowsWindowEffects.ProgressFlagsFor("error") == WindowsWindowEffects.ProgressError,
+            "The error status must map to the error TBPFLAG.");
+        var rejected = false;
+        try
+        {
+            WindowsWindowEffects.ProgressFlagsFor("bogus");
+        }
+        catch (NotSupportedException)
+        {
+            rejected = true;
+        }
+
+        Assert(rejected, "An unknown progress status must fail honestly.");
+
+        var (completed, total) = WindowsWindowEffects.ProgressValuesFor(42.5);
+        Assert(completed == 425 && total == 1000, "42.5 percent must map to 425/1000.");
+        Assert(
+            WindowsWindowEffects.ProgressValuesFor(null).Completed == 0,
+            "A missing percentage must report zero progress.");
+        Assert(
+            WindowsWindowEffects.ProgressValuesFor(250).Completed == 1000,
+            "Percentages above 100 must be clamped.");
+        Assert(
+            WindowsWindowEffects.ProgressValuesFor(-5).Completed == 0,
+            "Negative percentages must be clamped to zero.");
+    }
+
+    private static void WindowEffectBadgeLabelsCollapseAboveNine()
+    {
+        Assert(WindowsBadgeIcon.LabelFor(3) == "3", "Single-digit badges must render verbatim.");
+        Assert(WindowsBadgeIcon.LabelFor(9) == "9", "Nine must render verbatim.");
+        Assert(WindowsBadgeIcon.LabelFor(10) == "9+", "Counts above nine must collapse to 9+.");
+    }
+
     private static void CapabilitySetProviderCachesDirectorySnapshot()
     {
         using var directory = new TempDirectory();
@@ -474,9 +578,11 @@ internal static class Program
         Assert(
             provider.GetRequiredService<IEventSender>() is not null,
             "AddTaruiShell must register the event sender.");
+        // Optional plugins own their services now: the shell must not register a backend an
+        // application never asked for, otherwise every host silently pays for all ten of them.
         Assert(
-            provider.GetRequiredService<IDialogService>() is not null,
-            "AddTaruiShell must register the dialog service.");
+            provider.GetService<IDialogService>() is null,
+            "AddTaruiShell must not register the dialog backend; AddDialogPlugin owns it.");
         Assert(
             provider.GetRequiredService<IClipboardService>() is not null,
             "AddTaruiShell must register the clipboard service.");
@@ -491,6 +597,58 @@ internal static class Program
                 provider.GetRequiredService<IWebviewSinkRegistry>(),
                 provider.GetRequiredService<WebviewRegistry>()),
             "AddTaruiShell must register the web view registry and expose it through IWebviewSinkRegistry.");
+    }
+
+    private static void OptionalPluginsOwnTheirServices()
+    {
+        var services = new ServiceCollection();
+        services.AddTaruiShell();
+        services.AddSingleton(new TaruiAppOrigin(new Uri("http://127.0.0.1:5173/")));
+        services.AddSingleton(new WindowOptions("main"));
+
+        using var shellOnly = services.BuildServiceProvider();
+        Assert(
+            shellOnly.GetService<INotificationService>() is null &&
+            shellOnly.GetService<ILogService>() is null &&
+            shellOnly.GetService<IWindowStateService>() is null &&
+            shellOnly.GetService<IMenuService>() is null &&
+            shellOnly.GetService<ITrayService>() is null,
+            "No optional plugin backend may be resolvable before its plugin is registered.");
+        var router = shellOnly.GetRequiredService<CommandRouter>();
+        Assert(
+            !router.Commands.Contains("plugin:tray|create") &&
+            !router.Commands.Contains("plugin:updater|check"),
+            "An unregistered optional plugin must be absent from the command catalog, not half-wired.");
+
+        var withPlugins = new ServiceCollection();
+        withPlugins.AddTaruiShell();
+        withPlugins.AddSingleton(new TaruiAppOrigin(new Uri("http://127.0.0.1:5173/")));
+        withPlugins.AddSingleton(new WindowOptions("main"));
+        // A real host supplies logging through Microsoft.Extensions.Hosting; the composition test
+        // pins the smallest container that can still build every plugin backend.
+        withPlugins.AddSingleton<ILoggerFactory>(_ => NullLoggerFactory.Instance);
+        withPlugins
+            .AddDialogPlugin()
+            .AddNotificationPlugin()
+            .AddLogPlugin()
+            .AddWindowStatePlugin();
+
+        using var provider = withPlugins.BuildServiceProvider();
+        Assert(
+            provider.GetRequiredService<IDialogService>() is not null,
+            "AddDialogPlugin must register the dialog backend.");
+        Assert(
+            provider.GetRequiredService<INotificationService>() is not null &&
+            provider.GetRequiredService<INotificationEventSink>() is not null,
+            "AddNotificationPlugin must register the backend and its event bridge.");
+        Assert(
+            provider.GetRequiredService<ILogService>() is not null &&
+            provider.GetRequiredService<IRemoteLogSink>() is not null,
+            "AddLogPlugin must register the log service and the remote sink.");
+        Assert(
+            provider.GetRequiredService<IWindowStateStore>() is not null &&
+            provider.GetRequiredService<IWindowStateService>() is not null,
+            "AddWindowStatePlugin must register the store and the service.");
     }
 
     private static async Task AutostartPlatformServicesRoundTripLaunchEntries()
@@ -626,9 +784,11 @@ internal static class Program
     {
         // A plugin-style registrar contributes window extensions that are merged into the shell's
         // registry exactly like direct AddWindowExtension calls, with the same per-label scoping.
+        // Factory-free declarations resolve from the container, so the extension type is registered.
         var services = new ServiceCollection();
         services.AddTaruiShell();
         services.AddWindowExtensionRegistrar<TestWindowExtensionRegistrar>();
+        services.AddTransient<TestChromeExtension>();
         using var provider = services.BuildServiceProvider();
 
         var registry = provider.GetRequiredService<WindowExtensionRegistry>();
@@ -643,6 +803,30 @@ internal static class Program
             editor.Single(e => e is TestChromeExtension) is not null &&
             editor.Single(e => e is TestSidebarExtension) is not null,
             "A registrar's scoped extension must join for the matching window.");
+    }
+
+    private static void RegistrarFailsAtCompositionWhenFactoryFreeExtensionIsUnregistered()
+    {
+        // Resolution is explicit: a factory-free declaration without a service registration must fail
+        // once at composition with actionable guidance, instead of constructing the type implicitly.
+        var services = new ServiceCollection();
+        services.AddTaruiShell();
+        services.AddWindowExtensionRegistrar<TestWindowExtensionRegistrar>();
+        using var provider = services.BuildServiceProvider();
+
+        string? message = null;
+        try
+        {
+            _ = provider.GetRequiredService<WindowExtensionRegistry>();
+        }
+        catch (InvalidOperationException exception)
+        {
+            message = exception.Message;
+        }
+
+        Assert(
+            message is not null && message.Contains("TestChromeExtension", StringComparison.Ordinal),
+            "An unregistered factory-free extension must fail composition and name the missing type.");
     }
 
     private sealed class TestWindowExtensionRegistrar : IWindowExtensionRegistrar
@@ -813,7 +997,7 @@ internal static class Program
     {
         var registry = new FakeSinkRegistry();
         editor = registry.Add("editor");
-        return new EventRouter(registry, new EventHub());
+        return new EventRouter(registry, new WebviewRegistry(), new EventHub());
     }
 
     private sealed class DisposableExtension : IShellWindowExtension, IDisposable
@@ -1438,6 +1622,75 @@ internal static class Program
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Verifies the <c>channel-credit-v1</c> session contract: the handshake switches the surface into
+    /// bounded mode, the sixteenth frame onwards parks until the renderer acknowledges, and forged
+    /// acknowledgements for unknown channels are ignored.
+    /// </summary>
+    private static async Task WebviewSessionCreditsBoundChannelFrames()
+    {
+        var (host, _, _) = CreateWebViewHost(new CapabilitySet(["*"], ["*"], []));
+        using (host)
+        {
+            var handshake = await host.DispatchMessageAsync(
+                """{"protocol":1,"type":"channel-handshake","capabilities":["channel-credit-v1"]}""");
+            Assert(
+                handshake == string.Empty,
+                "A flow-control handshake is a control frame, not a routed command.");
+
+            var payload = JsonSerializer.SerializeToElement("frame", TaruiJsonContext.Default.String);
+            for (var i = 0; i < ChannelCreditWindow.DefaultCapacity; i++)
+            {
+                await host.SendAsync("chan-credit", payload);
+            }
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var blocked = host.SendAsync("chan-credit", payload, timeout.Token);
+            Assert(
+                !blocked.IsCompleted,
+                "A frame beyond the credit window must wait for the renderer's acknowledgement.");
+
+            await host.DispatchMessageAsync(
+                """{"protocol":1,"type":"channel-ack","channel":"chan-credit"}""");
+            await blocked;
+
+            // Forged or foreign acknowledgements must be ignored without breaking the channel.
+            await host.DispatchMessageAsync(
+                """{"protocol":1,"type":"channel-ack","channel":"chan-unknown"}""");
+            await host.SendAsync("chan-credit", payload);
+        }
+    }
+
+    /// <summary>Producer-side completion must wake a producer parked on flow control with a stop signal.</summary>
+    private static async Task WebviewSessionCompleteWakesBlockedChannelProducer()
+    {
+        var (host, _, _) = CreateWebViewHost(new CapabilitySet(["*"], ["*"], []));
+        using (host)
+        {
+            await host.DispatchMessageAsync(
+                """{"protocol":1,"type":"channel-handshake","capabilities":["channel-credit-v1"]}""");
+            var payload = JsonSerializer.SerializeToElement("frame", TaruiJsonContext.Default.String);
+            for (var i = 0; i < ChannelCreditWindow.DefaultCapacity; i++)
+            {
+                await host.SendAsync("chan-complete", payload);
+            }
+
+            var blocked = host.SendAsync("chan-complete", payload);
+            host.Complete("chan-complete");
+            var threw = false;
+            try
+            {
+                await blocked;
+            }
+            catch (ChannelClosedException)
+            {
+                threw = true;
+            }
+
+            Assert(threw, "Completing the channel must wake a blocked producer with a stop signal.");
+        }
+    }
+
     private static (WebviewSession Host, FakeSink Sink, FakeWebView WebView) CreateWebViewHost(
         CapabilitySet capabilities,
         WebViewRequestPolicy? policy = null,
@@ -1446,7 +1699,11 @@ internal static class Program
     {
         var registry = new FakeSinkRegistry();
         var sink = registry.Add("main", capabilities);
-        var router = new EventRouter(registry, new EventHub());
+        // The same sink stands in for the surface: a web view event must resolve through the web view
+        // registry, exactly as the production registry resolves the owning WebviewSession.
+        var webviews = new FakeWebviewSinkRegistry();
+        webviews.Register("main", "main", sink, capabilities);
+        var router = new EventRouter(registry, webviews, new EventHub());
         var dispatcher = new IpcDispatcher(new CommandRouterBuilder().Build());
         webView ??= new FakeWebView();
 
@@ -1529,20 +1786,6 @@ internal static class Program
         }
 
         public List<bool> DevToolsCalls { get; } = new();
-
-        public void SetZoom(double factor)
-        {
-            ZoomCalls.Add(factor);
-        }
-
-        public List<double> ZoomCalls { get; } = new();
-
-        public int PrintCallCount { get; private set; }
-
-        public void Print()
-        {
-            PrintCallCount++;
-        }
 
         public ValueTask ExecuteScriptAsync(string script, CancellationToken cancellationToken = default)
         {
@@ -1835,21 +2078,6 @@ internal static class Program
         return Task.CompletedTask;
     }
 
-    private static void EntryCancelsPendingCloseFallback()
-    {
-        var entry = CreateEntry(new FakeSink(), new CommandContext("main", "main", new CapabilitySet([])));
-        var fallback = new CancellationTokenSource();
-        var token = fallback.Token;
-        entry.CloseFallback = fallback;
-
-        entry.CancelCloseFallback();
-        Assert(token.IsCancellationRequested, "Denying a close must cancel the forced-close fallback.");
-        Assert(entry.CloseFallback is null, "The fallback must be detached after cancellation.");
-
-        entry.CancelCloseFallback();
-        Assert(entry.CloseFallback is null, "Denying close twice must stay idempotent.");
-    }
-
     private static void BuildsEvalCallbackWrapperScript()
     {
         var script = AvaloniaWebviewService.BuildEvalCallbackScript("1 + 1", "chan-3");
@@ -1941,6 +2169,60 @@ internal static class Program
             Events.Add((eventName, payload));
             return ValueTask.CompletedTask;
         }
+    }
+
+    private sealed class FakeWebviewSinkRegistry : IWebviewSinkRegistry
+    {
+        private readonly Dictionary<string, FakeSink> _sinks = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, CapabilitySet> _capabilities = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> _hosts = new(StringComparer.Ordinal);
+
+        public IReadOnlyCollection<string> WebviewLabels => _sinks.Keys.ToArray();
+
+        public FakeSink Add(string webviewLabel, string windowLabel, CapabilitySet? capabilities = null)
+        {
+            var sink = new FakeSink();
+            Register(webviewLabel, windowLabel, sink, capabilities ?? new CapabilitySet(["*"], ["*"], []));
+            return sink;
+        }
+
+        /// <summary>Registers an existing sink, used when a test asserts both window and surface delivery.</summary>
+        public void Register(string webviewLabel, string windowLabel, FakeSink sink, CapabilitySet capabilities)
+        {
+            _sinks[webviewLabel] = sink;
+            _hosts[webviewLabel] = windowLabel;
+            _capabilities[webviewLabel] = capabilities;
+        }
+
+        public void SetCapabilities(string webviewLabel, CapabilitySet capabilities) =>
+            _capabilities[webviewLabel] = capabilities;
+
+        public bool TryGetSink(string webviewLabel, out IEventSink sink)
+        {
+            if (_sinks.TryGetValue(webviewLabel, out var fake))
+            {
+                sink = fake;
+                return true;
+            }
+
+            sink = null!;
+            return false;
+        }
+
+        public bool TryGetCapabilities(string webviewLabel, out CapabilitySet capabilities)
+        {
+            if (_capabilities.TryGetValue(webviewLabel, out var set))
+            {
+                capabilities = set;
+                return true;
+            }
+
+            capabilities = null!;
+            return false;
+        }
+
+        public IReadOnlyList<string> WebviewLabelsFor(string windowLabel) =>
+            _sinks.Keys.Where(label => _hosts[label] == windowLabel).ToArray();
     }
 
     private sealed class FakeSinkRegistry : IWindowSinkRegistry

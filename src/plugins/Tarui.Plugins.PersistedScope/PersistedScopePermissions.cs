@@ -3,10 +3,9 @@ using System.Collections.Frozen;
 namespace Tarui.Plugins.PersistedScope;
 
 /// <summary>
-/// Allowlist of structured permissions whose scopes the web layer may extend at runtime. Mirrors
-/// Tauri's persisted-scope alignment: runtime entries only ever affect fs and http command scopes,
-/// so a compromised renderer cannot loosen high-risk scopes such as <c>plugin:shell|spawn</c> by
-/// calling the persisted-scope commands.
+/// Allowlist of structured permissions whose scopes the web layer may extend at runtime. Runtime
+/// entries only ever affect fs and http command scopes, so a compromised renderer cannot loosen
+/// high-risk scopes such as <c>plugin:shell|spawn</c> by calling the persisted-scope commands.
 /// </summary>
 public static class PersistedScopePermissions
 {

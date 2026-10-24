@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
 
@@ -37,6 +37,22 @@ public sealed class AutostartPlugin(IAutostartService service) : ITaruiPlugin
 
 public static class AutostartPluginServiceCollectionExtensions
 {
-    public static IServiceCollection AddAutostartPlugin(this IServiceCollection services)
-        => services.AddPlugin<AutostartPlugin>();
+    /// <summary>
+    /// Registers the autostart command surface and the platform registration backend it drives.
+    /// </summary>
+    public static IServiceCollection AddAutostartPlugin(this IServiceCollection services) => services
+        .AddPlugin<AutostartPlugin>()
+        .AddSingleton<IAutostartService>(static _ =>
+        {
+            var processPath = Environment.ProcessPath
+                ?? throw new InvalidOperationException("Autostart requires the application executable path.");
+            if (OperatingSystem.IsMacOS())
+            {
+                return new MacAutostartService(MacAutostartService.DefaultBaseDirectory(), processPath);
+            }
+
+            return OperatingSystem.IsLinux()
+                ? new LinuxAutostartService(LinuxAutostartService.DefaultBaseDirectory(), processPath)
+                : new WindowsAutostartService();
+        });
 }

@@ -1,3 +1,4 @@
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -34,7 +35,13 @@ public sealed class LogPlugin(ILogService service) : ITaruiPlugin
 
 public static class LogPluginServiceCollectionExtensions
 {
+    /// <summary>
+    /// Registers the log command surface, the in-memory ring buffer and the remote sink that streams
+    /// native log entries to authorized web views.
+    /// </summary>
     public static IServiceCollection AddLogPlugin(this IServiceCollection services) => services
         .AddSingleton<ILogService, LogService>()
+        .AddSingleton<IRemoteLogSink, RemoteLogSink>()
+        .AddSingleton<ILoggerProvider, RemoteLoggerProvider>()
         .AddPlugin<LogPlugin>();
 }

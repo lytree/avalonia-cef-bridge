@@ -13,6 +13,14 @@ public interface IChannelSink
 {
     /// <summary>Delivers one streamed payload to the channel identified by <paramref name="channelId"/>.</summary>
     ValueTask SendAsync(string channelId, JsonElement payload, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Signals that the producer finished the channel. Transports that track in-flight frames use it to
+    /// wake a blocked producer; the default is a no-op so existing sinks stay source-compatible.
+    /// </summary>
+    void Complete(string channelId)
+    {
+    }
 }
 
 /// <summary>Holds the sink current dispatch so <see cref="ChannelContext.Bind{T}"/> can bind an incoming channel token.</summary>
@@ -104,6 +112,16 @@ public sealed class TaruiChannel<T>
     public IAsyncEnumerable<T> ReadAllAsync(CancellationToken cancellationToken = default) =>
         _channel.Reader.ReadAllAsync(cancellationToken);
 
-    /// <summary>Completes the in-memory channel.</summary>
-    public void Complete() => _channel.Writer.TryComplete();
+    /// <summary>
+    /// Completes the channel. A bound channel additionally tells its sink that the producer is done, so a
+    /// transport that is holding a producer back on flow control can wake it instead of leaking a waiter.
+    /// </summary>
+    public void Complete()
+    {
+        _channel.Writer.TryComplete();
+        if (_sink is not null && _id is not null)
+        {
+            _sink.Complete(_id);
+        }
+    }
 }

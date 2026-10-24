@@ -13,8 +13,6 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
         "plugin:webview|devtools",
         "plugin:webview|eval",
         "plugin:webview|eval-with-callback",
-        "plugin:webview|set-zoom",
-        "plugin:webview|print",
         "plugin:webview|set-bounds",
         "plugin:webview|destroy",
         "plugin:webview|send-devtools-message"
@@ -62,20 +60,6 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
             TaruiJsonContext.Default.Unit,
             handlers.EvalWithCallbackAsync,
             "plugin:webview|eval-with-callback");
-
-        commands.Add(
-            "plugin:webview|set-zoom",
-            TaruiJsonContext.Default.WebviewSetZoomOptions,
-            TaruiJsonContext.Default.Unit,
-            handlers.SetZoomAsync,
-            "plugin:webview|set-zoom");
-
-        commands.Add(
-            "plugin:webview|print",
-            TaruiJsonContext.Default.WebviewLabelOptions,
-            TaruiJsonContext.Default.Unit,
-            handlers.PrintAsync,
-            "plugin:webview|print");
 
         commands.Add(
             "plugin:webview|eval-callback-complete",
@@ -187,20 +171,6 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
                 options.Script,
                 options.OnEvent,
                 cancellationToken);
-
-        [TaruiCommand("plugin:webview|set-zoom")]
-        public ValueTask<Unit> SetZoomAsync(
-            WebviewSetZoomOptions options,
-            CommandContext context,
-            CancellationToken cancellationToken) =>
-            service.SetZoomAsync(Resolve(options.Label, context, "plugin:webview|set-zoom"), options.Factor, cancellationToken);
-
-        [TaruiCommand("plugin:webview|print")]
-        public ValueTask<Unit> PrintAsync(
-            WebviewLabelOptions options,
-            CommandContext context,
-            CancellationToken cancellationToken) =>
-            service.PrintAsync(Resolve(options.Label, context, "plugin:webview|print"), cancellationToken);
 
         [TaruiCommand("plugin:webview|eval-callback-complete")]
         public static async ValueTask<Unit> EvalCallbackCompleteAsync(

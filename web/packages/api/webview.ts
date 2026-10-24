@@ -126,16 +126,6 @@ export class Webview {
     await invoke('plugin:webview|devtools', { open: false, ...this.target() })
   }
 
-  /** Sets the page zoom factor for this webview (1.0 = 100%). */
-  async setZoom(factor: number): Promise<void> {
-    await invoke('plugin:webview|set-zoom', { factor, ...this.target() })
-  }
-
-  /** Opens the browser print dialog for this webview. */
-  async print(): Promise<void> {
-    await invoke('plugin:webview|print', this.target())
-  }
-
   /** Positions and sizes this webview's surface within its host window; null fills the window. */
   async setBounds(bounds: WebviewBounds | null): Promise<void> {
     await invoke('plugin:webview|set-bounds', { bounds, ...this.target() })

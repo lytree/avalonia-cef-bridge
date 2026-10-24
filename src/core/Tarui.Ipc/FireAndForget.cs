@@ -21,6 +21,10 @@ public static class FireAndForget
     }
 
     /// <summary>Runs <paramref name="task"/> on the thread pool, logging any exception it raises.</summary>
+    public static void Run<T>(ValueTask<T> task, ILogger? logger = null) =>
+        Run(AsValueTask(task), logger);
+
+    /// <summary>Runs <paramref name="task"/> on the thread pool, logging any exception it raises.</summary>
     public static void Run(Task task, ILogger? logger = null)
     {
         if (task.IsCompletedSuccessfully)
@@ -30,6 +34,8 @@ public static class FireAndForget
 
         _ = AwaitAndLogAsync(task, logger ?? NullLogger.Instance);
     }
+
+    private static async ValueTask AsValueTask<T>(ValueTask<T> task) => await task.ConfigureAwait(false);
 
     private static async Task AwaitAndLogAsync(ValueTask task, ILogger logger)
     {

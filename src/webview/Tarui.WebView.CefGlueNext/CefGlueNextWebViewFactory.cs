@@ -240,12 +240,6 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, ITaruiDevToolsPr
     /// <summary>Sends a raw CDP JSON message to the browser; false when the browser is not ready yet.</summary>
     public bool TrySendDevToolsMessage(string message) => _component.SendDevToolsMessage(message);
 
-    /// <summary>Sets the page zoom factor (1.0 = 100%, must be finite and positive).</summary>
-    public void SetZoom(double factor) => _component.SetZoom(factor);
-
-    /// <summary>Opens the browser print dialog for this web view.</summary>
-    public void Print() => _component.Print();
-
     public async ValueTask ExecuteScriptAsync(
         string script,
         CancellationToken cancellationToken = default)

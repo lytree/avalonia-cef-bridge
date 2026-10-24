@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -19,5 +19,17 @@
     <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Shell\Tarui.Plugins.Shell.csproj" />
     <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Sql\Tarui.Plugins.Sql.csproj" />
     <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Websocket\Tarui.Plugins.Websocket.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Dialog\Tarui.Plugins.Dialog.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Menu\Tarui.Plugins.Menu.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Tray\Tarui.Plugins.Tray.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Notification\Tarui.Plugins.Notification.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Autostart\Tarui.Plugins.Autostart.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.GlobalShortcut\Tarui.Plugins.GlobalShortcut.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.WindowState\Tarui.Plugins.WindowState.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Log\Tarui.Plugins.Log.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.DeepLink\Tarui.Plugins.DeepLink.csproj" />
+    <ProjectReference Include="..\..\src\plugins\Tarui.Plugins.Updater\Tarui.Plugins.Updater.csproj" />
   </ItemGroup>
 </Project>

@@ -82,17 +82,31 @@ export class IpcCommandError extends Error {
   }
 }
 
+/** Capability token negotiated with the native side for bounded in-flight channel frames. */
+const CHANNEL_CREDIT_CAPABILITY = 'channel-credit-v1'
+
 /** Streaming channel mirrored from the native TaruiChannel contract. */
 export class Channel<TPayload> {
   /** Uniquely identifies this channel within the current webview so native stream frames can be routed back. */
   readonly id: string
 
-  onmessage: ((payload: TPayload) => void) | undefined
+  /**
+   * Receives one streamed payload. Returning a promise delays the acknowledgement that releases the
+   * native credit, so an async consumer is slowed down exactly like a sync one instead of pretending
+   * to be fast while its work piles up.
+   */
+  onmessage: ((payload: TPayload) => void | Promise<void>) | undefined
+
+  /** Serializes delivery so frames are handled in order even when a handler is asynchronous. */
+  private delivery: Promise<void> = Promise.resolve()
 
   constructor() {
     channelSequence += 1
     this.id = `chan-${channelSequence}`
     channels.set(this.id, this as Channel<unknown>)
+    // Announce support before the channel token can reach native code, so flow control is on from
+    // the very first frame rather than from the first acknowledgement.
+    negotiateChannelCredit()
   }
 
   /**
@@ -103,11 +117,27 @@ export class Channel<TPayload> {
     return this.id
   }
 
-  /** Invokes the {@link onmessage} handler with a streamed payload. */
+  /**
+   * Queues one streamed payload. The acknowledgement is sent only after the handler settled, which is
+   * what makes the native credit window a real bound rather than a buffer of promises.
+   */
   push(payload: TPayload): void {
-    this.onmessage?.(payload)
+    const run = () => this.deliver(payload)
+    // Start each delivery from a settled predecessor (fulfilled or rejected) so one failing handler
+    // cannot stall the rest of the stream while still surfacing as an unhandled rejection.
+    this.delivery = this.delivery.then(run, run)
+  }
+
+  private async deliver(payload: TPayload): Promise<void> {
+    try {
+      await this.onmessage?.(payload)
+    } finally {
+      sendChannelControl({ type: 'channel-ack', channel: this.id })
+    }
   }
 }
+
+let channelCreditNegotiated = false
 
 const pending = new Map<string, Resolver>()
 const eventListeners = new Map<string, Set<(payload: unknown) => void>>()
@@ -115,6 +145,38 @@ const channels = new Map<string, Channel<unknown>>()
 let sequence = 0
 let channelSequence = 0
 let resetInstalled = false
+
+/**
+ * Sends a bridge control frame. Control frames are not commands: they carry no id, never reach the
+ * command router and therefore need no capability entry. Delivery is best-effort because a missing
+ * bridge simply means there is no native credit accounting to talk to.
+ */
+function sendChannelControl(message: Record<string, unknown>): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const bridge = window.invokeCSharpAction ?? window.__TARUI_INTERNALS__?.invokeCSharpAction
+  if (!bridge) {
+    return
+  }
+
+  try {
+    bridge(JSON.stringify({ protocol: 1, ...message }))
+  } catch {
+    // A throttled or tearing-down renderer must not break the application stream.
+  }
+}
+
+/** Announces `channel-credit-v1` once per page so the native side can bound in-flight frames. */
+function negotiateChannelCredit(): void {
+  if (channelCreditNegotiated) {
+    return
+  }
+
+  channelCreditNegotiated = true
+  sendChannelControl({ type: 'channel-handshake', capabilities: [CHANNEL_CREDIT_CAPABILITY] })
+}
 
 /**
  * Invokes a native command registered on the shell's command router.

@@ -19,7 +19,6 @@
 | `not_authorized` 抛出 | 调用方窗口 capability 未授权;对照 `capabilities/<window>.json` 的 `permissions` 数组补全 |
 | IPC 无响应 | 命令名拼写不一致、TaruiJsonContext 未注册该 DTO、Capability `permissions` 缺对应 ID |
 | `scope_denied` | scope allow/deny 命中拒绝;检查 `base` / `path` glob 是否被 `deny` 命中 |
-| `core:window|deny-close` 不生效 | 必须收到 `window://close-requested` 事件之后才回执;同时未触发超时强制关闭 |
 | `create-window` 失败 | 目标 label 的 capability 文件不存在;shell 不回退 main,要求显式声明 |
 
 ## 3. Channel 与流式
@@ -27,7 +26,7 @@
 | 现象 | 原因 / 处置 |
 | --- | --- |
 | Channel 流式无响应 | 检查 `Channel.onmessage` 是否赋值;`onClose` 是否在 done 时触发;`invoke` 是否传 channel 字段 |
-| 流式背压丢帧 | 已有 await `WebviewSession.SendAsync` 自动背压;无需额外机制 |
+| 流式背压丢帧 | 当前没有消费侧背压:原生 `SendAsync` 只保证脚本已提交,不保证渲染进程已消费;前端处理慢时在途帧会累积(见 `docs/design/ipc.md` §2)。需要严格流控时由业务侧限速 |
 | HTTP 流式响应乱序 | 服务端实际返回乱序;客户端按 frame 顺序处理 |
 
 ## 4. CLI 与构建
@@ -58,6 +57,7 @@
 | 现象 | 处置 |
 | --- | --- |
 | `core:platform\|capabilities` 报 `notification: false` | 当前平台不支持通知;前端应禁用 UI;Windows 已实现,macOS/Linux 诚实降级 |
+| `core:platform\|capabilities` 报 `windowEffectsSupported: false` | 任务栏进度/徽标、窗口阴影与置底仅 Windows 实现;macOS/Linux 调用为诚实 no-op,前端应隐藏对应 UI |
 | macOS / Linux DeepLink 不工作 | 当前仅 Windows / Linux 已真机验证;macOS `NSAppleEventManager` 桥已落地但真机验收待执行(见 [`../adr/0001-macos-deeplink-appleevent-bridge.md`](../adr/0001-macos-deeplink-appleevent-bridge.md)) |
 | Autostart 注册失败 | Linux 需 `~/.config/autostart/` 可写;macOS LaunchAgents 需 `~/Library/LaunchAgents/` 可写 |
 | Global Shortcut 冲突 | `plugin:global-shortcut\|register` 已被其他应用占用;前端用 `is-registered` 探测 |

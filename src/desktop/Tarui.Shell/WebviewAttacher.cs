@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -30,7 +29,6 @@ public sealed partial class WebviewAttacher
     private readonly TaruiAppOrigin _appOrigin;
     private readonly IAppShutdownCoordinator _shutdownCoordinator;
     private readonly WindowExtensionRegistry _extensionRegistry;
-    private readonly WindowLifecycleOptions _lifecycleOptions;
     private readonly IRuntimeScopeOverlay? _scopeOverlay;
     private readonly ILogger<WebviewAttacher> _logger;
 
@@ -44,7 +42,6 @@ public sealed partial class WebviewAttacher
         TaruiAppOrigin appOrigin,
         IAppShutdownCoordinator shutdownCoordinator,
         WindowExtensionRegistry extensionRegistry,
-        WindowLifecycleOptions lifecycleOptions,
         IRuntimeScopeOverlay? scopeOverlay = null,
         ILogger<WebviewAttacher>? logger = null)
     {
@@ -57,7 +54,6 @@ public sealed partial class WebviewAttacher
         _appOrigin = appOrigin;
         _shutdownCoordinator = shutdownCoordinator;
         _extensionRegistry = extensionRegistry;
-        _lifecycleOptions = lifecycleOptions;
         _scopeOverlay = scopeOverlay;
         _logger = logger ?? NullLogger<WebviewAttacher>.Instance;
     }
@@ -227,77 +223,10 @@ public sealed partial class WebviewAttacher
             "window://focus-changed",
             JsonSerializer.SerializeToElement(new WindowFocusChanged(false), TaruiJsonContext.Default.WindowFocusChanged)));
 
-        // The close request flow is a cancellable hook with an explicit receipt channel: the shell
-        // cancels the OS close and emits `window://close-requested`, then the front-end answers with
-        // one of two receipts — `core:window|close` (force=true, sets ClosePending) to confirm, or
-        // `core:window|deny-close` to cancel the scheduled force-close so the window stays open for
-        // the next user gesture. If no receipt arrives, the configured fallback timeout force-closes
-        // anyway so a hung web view cannot trap the user behind an unresponsive window.
-        window.Closing += (_, eventArgs) =>
-        {
-            if (entry.ClosePending)
-            {
-                entry.CancelCloseFallback();
-                return;
-            }
-
-            eventArgs.Cancel = true;
-            var payload = JsonSerializer.SerializeToElement(
-                new WindowLabelOptions(label),
-                TaruiJsonContext.Default.WindowLabelOptions);
-            FireAndForget.Run(_eventRouter.EmitToWindowAsync(label, "window://close-requested", payload));
-            ScheduleCloseFallback(window, entry, label);
-        };
         window.Closed += (_, _) =>
         {
-            entry.CancelCloseFallback();
             FireAndForget.Run(HandleWindowClosedAsync(label));
         };
-    }
-
-    private void ScheduleCloseFallback(Window window, WindowRegistry.Entry entry, string label)
-    {
-        var timeout = _lifecycleOptions.CloseRequestTimeout;
-        if (timeout <= TimeSpan.Zero || timeout == Timeout.InfiniteTimeSpan)
-        {
-            return;
-        }
-
-        entry.CancelCloseFallback();
-        var source = new CancellationTokenSource();
-        entry.CloseFallback = source;
-        var token = source.Token;
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(timeout, token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                if (entry.ClosePending || token.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                LogCloseRequestTimeoutExceeded(label, timeout);
-                entry.ClosePending = true;
-                try
-                {
-                    window.Close();
-                }
-                catch (Exception ex)
-                {
-                    LogCloseRequestForceCloseFailed(ex, label);
-                }
-            }).GetTask().ConfigureAwait(false);
-        }, token);
     }
 
     private async ValueTask HandleWindowClosedAsync(string label)

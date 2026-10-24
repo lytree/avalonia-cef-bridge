@@ -153,22 +153,6 @@ public sealed class AvaloniaWebviewService(
         return ValueTask.FromResult(new Unit());
     }
 
-    public ValueTask<Unit> SetZoomAsync(string webviewLabel, double factor, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var webView = ResolveWebView(webviewLabel);
-        webView.SetZoom(factor);
-        return ValueTask.FromResult(new Unit());
-    }
-
-    public ValueTask<Unit> PrintAsync(string webviewLabel, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        var webView = ResolveWebView(webviewLabel);
-        webView.Print();
-        return ValueTask.FromResult(new Unit());
-    }
-
     public async ValueTask<Unit> EvalAsync(string webviewLabel, string script, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

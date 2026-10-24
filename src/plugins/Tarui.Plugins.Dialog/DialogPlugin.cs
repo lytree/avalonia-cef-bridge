@@ -1,4 +1,4 @@
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
 
@@ -115,6 +115,10 @@ public sealed class DialogPlugin(IDialogService service) : ITaruiPlugin
 
 public static class DialogPluginServiceCollectionExtensions
 {
-    public static IServiceCollection AddDialogPlugin(this IServiceCollection services)
-        => services.AddPlugin<DialogPlugin>();
+    /// <summary>
+    /// Registers the dialog command surface and the Avalonia storage-provider implementation it drives.
+    /// </summary>
+    public static IServiceCollection AddDialogPlugin(this IServiceCollection services) => services
+        .AddPlugin<DialogPlugin>()
+        .AddSingleton<IDialogService, AvaloniaDialogService>();
 }

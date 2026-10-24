@@ -1,3 +1,5 @@
+﻿using Tarui.Plugins.Events;
+using Tarui.Shell;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -101,6 +103,12 @@ public sealed class TrayPlugin(ITrayService service) : ITaruiPlugin
 
 public static class TrayPluginServiceCollectionExtensions
 {
-    public static IServiceCollection AddTrayPlugin(this IServiceCollection services)
-        => services.AddPlugin<TrayPlugin>();
+    /// <summary>
+    /// Registers the tray command surface and its Avalonia tray-icon implementation.
+    /// </summary>
+    public static IServiceCollection AddTrayPlugin(this IServiceCollection services) => services
+        .AddPlugin<TrayPlugin>()
+        .AddSingleton<ITrayService>(static sp => new AvaloniaTrayService(
+            sp.GetRequiredService<WindowRegistry>(),
+            sp.GetRequiredService<IEventSender>()));
 }

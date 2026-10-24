@@ -335,7 +335,7 @@ internal static class Program
     private static (EventRouter Router, FakeWindowSinkRegistry Registry, RecordingSink Sink, RecordingActivationSink ActivationProbe) BuildShell()
     {
         var registry = new FakeWindowSinkRegistry();
-        var router = new EventRouter(registry, new EventHub());
+        var router = new EventRouter(registry, new WebviewRegistry(), new EventHub());
         var sink = new RecordingSink();
         return (router, registry, sink, new RecordingActivationSink());
     }

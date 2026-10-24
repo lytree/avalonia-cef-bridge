@@ -1,3 +1,5 @@
+﻿using Tarui.Plugins.Events;
+using Tarui.Shell;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -115,6 +117,12 @@ public sealed class MenuPlugin(IMenuService service) : ITaruiPlugin
 
 public static class MenuPluginServiceCollectionExtensions
 {
-    public static IServiceCollection AddMenuPlugin(this IServiceCollection services)
-        => services.AddPlugin<MenuPlugin>();
+    /// <summary>
+    /// Registers the menu command surface and its Avalonia native-menu implementation.
+    /// </summary>
+    public static IServiceCollection AddMenuPlugin(this IServiceCollection services) => services
+        .AddPlugin<MenuPlugin>()
+        .AddSingleton<IMenuService>(static sp => new AvaloniaMenuService(
+            sp.GetRequiredService<WindowRegistry>(),
+            sp.GetRequiredService<IEventSender>()));
 }

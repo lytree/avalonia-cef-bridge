@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -19,6 +19,9 @@ internal static class Program
         await MapsNotSupportedExceptionToNotSupportedCode();
         await MapsRuntimeTypeMismatchToStableCode();
         await StreamsProgressFramesThroughBoundChannelAsync();
+        await ChannelCreditBoundsInFlightFramesAsync();
+        await ChannelCreditWindowIgnoresDuplicateAcknowledgementsAsync();
+        await ClosedChannelCreditWindowWakesProducerAsync();
         await ChannelDegradesToInMemoryBufferWithoutSinkAsync();
         await DeniesStreamingCommandOutsideCapabilityAsync();
         await StreamsFileThroughBoundChannelAsync();
@@ -421,6 +424,137 @@ internal static class Program
             var progress = frame.Payload.Deserialize(TaruiJsonContext.Default.StreamProgress)!;
             Assert(progress.Step == expectedStep, $"Frame {expectedStep} must report step {expectedStep}.");
             Assert(progress.Total == 3, "Every frame must report the total count.");
+        }
+    }
+
+    private static async Task ChannelCreditBoundsInFlightFramesAsync()
+    {
+        // With channel-credit-v1 negotiated, a transport hands out a bounded number of credits and the
+        // producer parks once they are gone: the backlog lives in the producer, not in the renderer.
+        const int capacity = 4;
+        const int requested = 50;
+        using var sink = new CreditChannelSink(capacity);
+        ChannelSinkContext.Current = sink;
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        Task? producer = null;
+        try
+        {
+            var channel = ChannelContext.Bind<StreamProgress>("chan-credit");
+            producer = Task.Run(async () =>
+            {
+                for (var step = 0; step < requested; step++)
+                {
+                    await channel.SendAsync(new StreamProgress(step, requested), cancellation.Token);
+                }
+            }, cancellation.Token);
+
+            await WaitUntilAsync(() => sink.Enqueued == capacity, "the credit window must fill");
+            Assert(
+                !producer.IsCompleted,
+                "A producer that exhausted the credit window must wait instead of buffering in flight.");
+
+            sink.Acknowledge();
+            await WaitUntilAsync(
+                () => sink.Enqueued == capacity + 1,
+                "one acknowledgement must release exactly one frame");
+            Assert(
+                sink.Outstanding == capacity,
+                $"In-flight frames must stay capped at {capacity}, got {sink.Outstanding}.");
+
+            // Drain: acknowledge frames as they land so the producer can finish, the way a real
+            // consumer returns a credit once its handler settles.
+            using var pump = new CancellationTokenSource();
+            var acker = Task.Run(async () =>
+            {
+                while (!pump.Token.IsCancellationRequested)
+                {
+                    if (sink.Outstanding > 0)
+                    {
+                        sink.Acknowledge();
+                    }
+                    else
+                    {
+                        await Task.Delay(1, pump.Token);
+                    }
+                }
+            }, pump.Token);
+
+            await producer;
+            pump.Cancel();
+            try
+            {
+                await acker;
+            }
+            catch (OperationCanceledException)
+            {
+                // The pump stops once the stream is complete.
+            }
+
+            Assert(
+                sink.Enqueued == requested,
+                $"Completing the stream must deliver every frame, got {sink.Enqueued} of {requested}.");
+        }
+        finally
+        {
+            ChannelSinkContext.Current = null;
+            cancellation.Cancel();
+            if (producer is not null)
+            {
+                try
+                {
+                    await producer;
+                }
+                catch (OperationCanceledException)
+                {
+                    // The test cancelled the producer to unwind after an assertion failure.
+                }
+            }
+        }
+    }
+
+    private static async Task ChannelCreditWindowIgnoresDuplicateAcknowledgementsAsync()
+    {
+        using var window = new ChannelCreditWindow(2);
+
+        Assert(await window.AcquireAsync(), "The first frame must get a credit.");
+        Assert(await window.AcquireAsync(), "The second frame must get a credit.");
+        var blocked = window.AcquireAsync();
+        Assert(!blocked.IsCompleted, "A third frame must wait while both credits are in flight.");
+
+        Assert(window.TryRelease(), "Acknowledging an in-flight frame must return its credit.");
+        Assert(await blocked, "The waiting frame must receive the returned credit.");
+        Assert(window.Outstanding == 2, "Handing a credit to a waiter must keep the window full.");
+
+        Assert(window.TryRelease() && window.TryRelease(), "Both in-flight frames must be acknowledgeable.");
+        Assert(!window.TryRelease(), "A duplicate acknowledgement must not mint phantom credit.");
+        Assert(window.Outstanding == 0, "Duplicate acknowledgements must leave the window empty.");
+    }
+
+    private static async Task ClosedChannelCreditWindowWakesProducerAsync()
+    {
+        var window = new ChannelCreditWindow(1);
+        Assert(await window.AcquireAsync(), "The first frame must get a credit.");
+        var blocked = window.AcquireAsync();
+        Assert(!blocked.IsCompleted, "The second frame must wait for the only credit.");
+
+        window.Close();
+
+        Assert(!await blocked, "Closing the channel must wake a blocked producer with a stop signal.");
+        Assert(!await window.AcquireAsync(), "A closed channel must never hand out credit again.");
+        Assert(!window.TryRelease(), "A closed channel must ignore late acknowledgements.");
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, string expectation)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new InvalidOperationException($"Timed out waiting until {expectation}.");
+            }
+
+            await Task.Delay(10);
         }
     }
 
@@ -827,6 +961,72 @@ internal static class Program
         }
 
         public sealed record CapturedFrame(string Id, JsonElement Payload);
+    }
+
+    /// <summary>
+    /// Models a transport that accepts a frame and never reports consumption back — the contract
+    /// <see cref="IChannelSink"/> currently offers, and what <c>WebviewSession.SendAsync</c> implements by
+    /// completing after the script is submitted. The queue stands in for frames the renderer has not read.
+    /// </summary>
+    /// <summary>
+    /// Stands in for a real transport with negotiated flow control: each send takes a credit and the
+    /// frame is only considered consumed when the test acknowledges it.
+    /// </summary>
+    private sealed class CreditChannelSink : IChannelSink, IDisposable
+    {
+        private readonly ChannelCreditWindow _window;
+
+        public CreditChannelSink(int capacity = ChannelCreditWindow.DefaultCapacity)
+        {
+            _window = new ChannelCreditWindow(capacity);
+        }
+
+        public int Enqueued { get; private set; }
+
+        public int Outstanding => _window.Outstanding;
+
+        public async ValueTask SendAsync(
+            string channelId,
+            JsonElement payload,
+            CancellationToken cancellationToken = default)
+        {
+            if (!await _window.AcquireAsync(cancellationToken))
+            {
+                throw new System.Threading.Channels.ChannelClosedException();
+            }
+
+            Enqueued++;
+        }
+
+        public void Acknowledge() => _window.TryRelease();
+
+        /// <summary>Acknowledges every in-flight frame so a parked producer can finish.</summary>
+        public void Release()
+        {
+            while (_window.TryRelease())
+            {
+            }
+        }
+
+        public void Complete(string channelId) => _window.Close();
+
+        public void Dispose() => _window.Dispose();
+    }
+
+    private sealed class QueueingChannelSink : IChannelSink
+    {
+        private readonly Queue<JsonElement> _pending = new();
+
+        public int Enqueued { get; private set; }
+
+        public int Pending => _pending.Count;
+
+        public ValueTask SendAsync(string channelId, JsonElement payload, CancellationToken cancellationToken = default)
+        {
+            _pending.Enqueue(payload);
+            Enqueued++;
+            return ValueTask.CompletedTask;
+        }
     }
 
     /// <summary>

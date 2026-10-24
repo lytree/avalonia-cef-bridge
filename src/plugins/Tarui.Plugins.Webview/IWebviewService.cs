@@ -16,10 +16,6 @@ public interface IWebviewService
 
     ValueTask<Unit> SetDevToolsAsync(string webviewLabel, bool open, CancellationToken cancellationToken);
 
-    ValueTask<Unit> SetZoomAsync(string webviewLabel, double factor, CancellationToken cancellationToken);
-
-    ValueTask<Unit> PrintAsync(string webviewLabel, CancellationToken cancellationToken);
-
     ValueTask<Unit> EvalAsync(string webviewLabel, string script, CancellationToken cancellationToken);
 
     ValueTask<Unit> EvalWithCallbackAsync(

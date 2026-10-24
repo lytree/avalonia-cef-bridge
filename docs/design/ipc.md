@@ -53,7 +53,7 @@ WebviewSession: ExecuteScriptAsync(`window.__taruiChannelInvoke("token", chunk)`
 Web: Channel.onmessage(chunk) → … → Channel.onclose()
 ```
 
-背压由 `WebviewSession.ExecuteScriptAsync` await 天然成立:JS 调度满时,`SendAsync` 自动 await,生产者自然减速。`WebviewAttacher` 还维护 `ChannelTokenRegistry`,确保 `SendAsync` 在 WebView 未就绪时延迟绑定。
+背压的真实边界:`WebviewSession.SendAsync` 只 await 到 `ExecuteScriptAsync` 把脚本提交给 UI 线程/浏览器队列。CEF 适配层对该调用是 fire-and-forget,它不等待渲染进程执行 `Channel.onmessage`,响应路径也没有消费回执;`TaruiChannel<T>` 的绑定路径与无 sink 的内存路径都是无界缓冲。因此生产者只受「脚本提交节奏」约束,渲染侧消费不受限——慢消费者会让在途帧持续累积。可协商的信用额度/ACK 背压(`channel-credit-v1`)在 `tauri-v2-refactor-design.md` R3-A 中设计;落地前不要把当前行为当作有界流控。`WebviewAttacher` 仍维护 `ChannelTokenRegistry`,确保 `SendAsync` 在 WebView 未就绪时延迟绑定。
 
 ## 3. 能力闸门
 
@@ -84,7 +84,7 @@ capability 不必逐条罗列命令:manifest 可以引用**权限集合**,在加
   "platforms": ["windows", "macos", "linux"],
   "events": [
     "window://moved", "window://resized", "window://focus-changed",
-    "window://close-requested", "shell://theme-changed",
+    "window://destroyed", "shell://theme-changed",
     "tray://clicked", "notification://activated",
     "deeplink://tarui", "updater://status", "demo://echo"
   ],
@@ -123,9 +123,9 @@ capability 不必逐条罗列命令:manifest 可以引用**权限集合**,在加
 
 `create-window` 时只有两个窗口的 ID / events / permissions 完全匹配时才允许;创建者上下文通过 `CommandContext.Capabilities` 做提权防护。
 
-### 3.5 协作式关闭
+### 3.5 窗口关闭
 
-title-bar 关闭请求先发出 `window://close-requested` 事件;前端必须显式调用 `core:window|close`(或 `core:window|deny-close` 取消强制回退)才真正退出。`Tarui:Window:CloseRequestTimeout` 控制超时;默认 3 秒后强制关闭。
+`core:window|close` 直接请求关闭窗口，无协作式拦截或回执通道。
 
 ## 4. 错误码语义
 
@@ -160,7 +160,7 @@ import { openExternal } from "@lytree/api/shell"      // OS 默认处理器
 import { fs, store, log } from "@lytree/api/fs"       // 命名空间风格
 ```
 
-`Window.getCurrent()` 无 label 时指向当前 Webview 所在窗口,`getByLabel('editor')` 寻址其它窗口。生命周期订阅(`onMoved` / `onResized` / `onFocusChanged` / `onCloseRequested` / `onDestroyed`)统一包装 `listen`;`Channel` 通过 `stream` 工具与原生 `plugin:fs|read-file-stream` 等命令对接。
+`Window.getCurrent()` 无 label 时指向当前 Webview 所在窗口,`getByLabel('editor')` 寻址其它窗口。生命周期订阅(`onMoved` / `onResized` / `onFocusChanged` / `onDestroyed`)统一包装 `listen`;`Channel` 通过 `stream` 工具与原生 `plugin:fs|read-file-stream` 等命令对接。
 
 ## 6. 事件命名空间
 

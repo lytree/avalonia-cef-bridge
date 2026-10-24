@@ -268,7 +268,6 @@ internal static class Program
         Add(contracts, global::Tarui.Generated.Tarui_Plugins_MenuCommandCatalog.Contracts);
         Add(contracts, global::Tarui.Generated.Tarui_Plugins_NotificationCommandCatalog.Contracts);
         Add(contracts, global::Tarui.Generated.Tarui_Plugins_PersistedScopeCommandCatalog.Contracts);
-        Add(contracts, global::Tarui.Generated.Tarui_Plugins_PositionerCommandCatalog.Contracts);
         Add(contracts, global::Tarui.Generated.Tarui_Plugins_ShellCommandCatalog.Contracts);
         Add(contracts, global::Tarui.Generated.Tarui_Plugins_SqlCommandCatalog.Contracts);
         Add(contracts, global::Tarui.Generated.Tarui_Plugins_StoreCommandCatalog.Contracts);
@@ -364,7 +363,6 @@ internal static class Program
         Add(types, global::Tarui.Generated.Tarui_Plugins_MenuCommandCatalog.Types);
         Add(types, global::Tarui.Generated.Tarui_Plugins_NotificationCommandCatalog.Types);
         Add(types, global::Tarui.Generated.Tarui_Plugins_PersistedScopeCommandCatalog.Types);
-        Add(types, global::Tarui.Generated.Tarui_Plugins_PositionerCommandCatalog.Types);
         Add(types, global::Tarui.Generated.Tarui_Plugins_ShellCommandCatalog.Types);
         Add(types, global::Tarui.Generated.Tarui_Plugins_SqlCommandCatalog.Types);
         Add(types, global::Tarui.Generated.Tarui_Plugins_StoreCommandCatalog.Types);

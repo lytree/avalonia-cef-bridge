@@ -1,4 +1,4 @@
-using Tarui.Hosting;
+﻿using Tarui.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Tarui.Ipc;
 using Tarui.Plugins.Autostart;
@@ -14,7 +14,6 @@ using Tarui.Plugins.Log;
 using Tarui.Plugins.Menu;
 using Tarui.Plugins.Notification;
 using Tarui.Plugins.PersistedScope;
-using Tarui.Plugins.Positioner;
 using Tarui.Plugins.Store;
 using Tarui.Plugins.System;
 using Tarui.Plugins.Shell;
@@ -67,11 +66,11 @@ internal static class Program
 
         builder.Services
             .AddTaruiShell()
-            // Upgrade balloon notifications to real Windows toasts (Action Center + interactive
-            // action buttons + activated/dismissed events). On hosts resolving the non-Windows
-            // flavor the toast service transparently degrades back to the balloon backend.
-            .AddWindowsToastNotifications(sp => sp.GetRequiredService<WindowsNotificationService>())
             .AddWindowExtensionRegistrar<DemoWindowExtensions>()
+            // Window extensions are resolved from the container rather than constructed implicitly,
+            // so each extension the registrar declares is registered as a transient service.
+            .AddTransient<DemoWindowChromeExtension>()
+            .AddTransient<DemoSidebarExtension>()
             .AddSingleInstance(new SingleInstanceIdentity(ApplicationId, SingleInstanceChannel))
             .AddCefGlueWebView()
             .AddCorePlugin()
@@ -96,8 +95,12 @@ internal static class Program
             .AddCookiePlugin()
             .AddWebsocketPlugin()
             .AddPersistedScopePlugin()
-            .AddPositionerPlugin()
             .AddSqlPlugin()
+            // Upgrade balloon notifications to real Windows toasts (Action Center + interactive
+            // action buttons + activated/dismissed events). It must run after AddNotificationPlugin
+            // so the balloon backend is already registered as the fallback. On hosts resolving the
+            // non-Windows flavor the toast service transparently degrades back to that fallback.
+            .AddWindowsToastNotifications(sp => sp.GetRequiredService<WindowsNotificationService>())
             .AddPlugin<DemoChannelPlugin>();
 
         builder.Window.Configure(window =>

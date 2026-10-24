@@ -2,14 +2,11 @@
 # =============================================================================
 # verify-macos.sh — macOS 真机验收脚本（本轮 Tauri 对齐缺口包）
 #
-# 覆盖验收项（对应 docs/tauri-desktop-alignment-plan.md §15「窗口/IPC 对齐缺口包」行）：
+# 覆盖验收项（对应 docs/design/alignment-plan.md §15「窗口/IPC 对齐缺口包」行）：
 #   A1  plugin:webview|eval / eval-with-callback（真实 CEF ExecuteScript 路径）
 #   A2  webview://render-process-gone 鲁棒性（渲染进程崩溃注入，应用存活）
-#   A3  core:window|deny-close 关闭拦截 + 超时兜底强制关闭
 #   B1  WindowOptions.Transparent（AcrylicBlur/透明视效）
-#   B2  WindowOptions.Parent + Modal（模态禁用父窗口 / 非模态 Owner 关联）
 #   C1  plugin:websocket|connect/send/close（真实 wss 回环 echo）
-#   C2  plugin:positioner|set-position（屏幕锚位 + Tray* 回退）
 #
 # 自动段：构建 0 警告断言、全部 tests/Tarui.*.Tests、pnpm lint/build（可跳过）。
 # 人工段：启动 demo 后按清单逐项执行，在 DevTools console 粘贴脚本内提供的片段。
@@ -30,7 +27,6 @@ DEMO_PROJ="examples/demo/Demo.Desktop/Demo.Desktop.csproj"
 CAP_FILE="examples/demo/capabilities/main.json"
 CAP_BAK="${CAP_FILE}.verify-macos.bak"
 DEMO_LOG="${TMPDIR:-/tmp}/tarui-demo-macos.log"
-CLOSE_FALLBACK_SECONDS=3   # 与 WindowLifecycleOptions.DefaultCloseRequestTimeout 一致
 
 C_OK=$'\033[32m'; C_ERR=$'\033[31m'; C_HI=$'\033[36m'; C_DIM=$'\033[2m'; C_OFF=$'\033[0m'
 say()  { printf '%s\n' "$*"; }
@@ -209,26 +205,6 @@ say "  预期：[tap] 打印一条 channel 帧，payload 为 {\"ok\":true,\"valu
 say "  （value 是 JSON 编码的完成值；脚本抛异常时应回 ok:false——可改 script: 'throw new Error(42)' 复测）。"
 ask "M2 收到 ok:true value:\"5\" 的完成帧"
 
-# ── M3：deny-close 拦截 + 兜底（在 editor 窗口上验收，主窗口留待收尾）────────
-say ""
-say "━━ M3. deny-close：关闭拦截与超时兜底（A3，P1-16）━━"
-say "  3a) 确保 editor 窗口存在（不存在则先创建）："
-console <<'JS'
-__invoke('core:window|list', {})
-JS
-say "      若列表无 editor，再粘贴："
-console <<'JS'
-__invoke('core:window|create', { label: 'editor', title: 'Editor' })
-JS
-say "  3b) 点击 editor 窗口的关闭按钮，然后立刻（${CLOSE_FALLBACK_SECONDS}s 回退窗口内）粘贴："
-console <<'JS'
-__invoke('core:window|deny-close', { label: 'editor' })
-JS
-say "      预期：窗口保持打开；[tap] 可见 window://close-requested 事件与 deny-close success。"
-say "  3c) 再次点击 editor 关闭按钮，本次不粘贴任何内容。"
-say "      预期：约 ${CLOSE_FALLBACK_SECONDS}s 后 editor 被兜底强制关闭，应用（主窗口）继续运行。"
-ask "M3 deny 拦截成功且无操作时按超时兜底关闭"
-
 # ── M4：render-process-gone 鲁棒性 ──────────────────────────────────────────
 say ""
 say "━━ M4. 渲染进程崩溃鲁棒性（A2）━━"
@@ -240,31 +216,25 @@ JS
 say "  预期（数秒内）："
 say "    · 页面白屏/冻结，活动监视器中 demo 的 Renderer 子进程退出；"
 say "    · 宿主应用本身不退出（主窗口仍在，活动监视器中主进程存活）。"
-say "  验收后重启 demo 前请先跳到 M5-M8 之前：若页面已死，本项之后的 M5/M6/M8 请改在"
+say "  验收后重启 demo 前请先跳到 M5 之前：若页面已死，本项之后的 M5/M6 请改在"
 say "  editor 窗口或重启 demo 后补验（脚本允许部分 skip）。"
 ask "M4 渲染进程死亡但宿主应用存活"
 
-# ── M5：透明 + 模态子窗口 ────────────────────────────────────────────────────
+# ── M5：透明窗口 ─────────────────────────────────────────────────────────────
 say ""
-say "━━ M5. 透明窗口 + 模态对话框（B1 + B2）━━"
+say "━━ M5. 透明窗口（B1）━━"
 say "  5a) 若 M4 已破坏主窗口页面并重启了 demo，请先在新的 DevTools console 重新粘贴 M0 观察器片段。"
-say "      创建透明模态窗口："
+say "      创建透明窗口："
 console <<'JS'
-__invoke('core:window|create', { label: 'palette', title: 'Palette', width: 420, height: 300, transparent: true, parent: 'main', modal: true })
+__invoke('core:window|create', { label: 'palette', title: 'Palette', width: 420, height: 300, transparent: true })
 JS
-say "      预期：出现 420x300 半透明（亚克力模糊视效）小窗；"
-say "            主窗口被模态禁用（点击无效/置灰）；[tap] 见 create success。"
+say "      预期：出现 420x300 半透明（亚克力模糊视效）小窗；[tap] 见 create success。"
 say "  5b) 关闭 palette："
 console <<'JS'
-__invoke('core:window|close', { label: 'palette', force: true })
+__invoke('core:window|close', { label: 'palette' })
 JS
-say "      预期：palette 关闭后主窗口恢复可交互。"
-say "  5c) 非模态 Owner 关联："
-console <<'JS'
-__invoke('core:window|create', { label: 'palette', title: 'Palette', width: 420, height: 300, transparent: true, parent: 'main', modal: false })
-JS
-say "      预期：palette 再次出现（半透明），主窗口与 palette 均可交互（非模态）。"
-ask "M5 透明视效 + 模态禁用/恢复 + 非模态共立均符合"
+say "      预期：palette 立即关闭，主窗口保持可交互。"
+ask "M5 透明视效与关闭行为均符合"
 
 # ── M6：WebSocket 回环 ───────────────────────────────────────────────────────
 say ""
@@ -286,24 +256,6 @@ JS
 say "  预期：[tap] 打印终止帧 {\"kind\":\"closed\",\"code\":1000,...}。"
 say "  附加：连接一个 scope 白名单外的地址（如 ws://example.invalid）应收到 PERMISSION/SCOPE 拒绝回执。"
 ask "M6 connect/echo 回显/关闭帧/scope 拒绝均符合"
-
-# ── M7：Positioner ───────────────────────────────────────────────────────────
-say ""
-say "━━ M7. Positioner 锚位（C2）━━"
-console <<'JS'
-__invoke('plugin:positioner|set-position', { anchor: 'TopRight' })
-JS
-say "  预期：palette 窗口跳到主屏工作区右上角。再粘贴："
-console <<'JS'
-__invoke('plugin:positioner|set-position', { anchor: 'TrayCenter' })
-JS
-say "  预期：窗口移到工作区底部居中（macOS 无任务栏矩形，Tray* 回退语义——与文档一致）。"
-say "  再试带边距："
-console <<'JS'
-__invoke('plugin:positioner|set-position', { anchor: 'TopLeft', x: 40, y: 40 })
-JS
-say "  预期：窗口贴近左上角并留出 40px 边距。"
-ask "M7 三个锚位/回退/边距位置符合"
 
 # ── 收尾 ─────────────────────────────────────────────────────────────────────
 say ""

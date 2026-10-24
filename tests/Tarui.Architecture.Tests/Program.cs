@@ -11,6 +11,9 @@ internal static class Program
     [
         new("System.Reflection", false),
         new("Activator", true),
+        // ActivatorUtilities resolves constructor dependencies implicitly, which the composition contract
+        // forbids even though its name is not the standalone type name matched by the rule above.
+        new("ActivatorUtilities", false),
         new("MethodInfo", true),
         new("dynamic", true),
         new("AssemblyLoadContext", true),
@@ -40,6 +43,15 @@ internal static class Program
     {
         try
         {
+            // The rule set is validated against known-good and known-bad snippets first: a gate that
+            // silently stops matching is worse than no gate, and a rule that matches comments or string
+            // literals trains authors to ignore it.
+            if (!RuleSelfTests.Run(ForbiddenSourceRules))
+            {
+                Console.Error.WriteLine("Tarui architecture gate self-tests failed.");
+                return 2;
+            }
+
             var repositoryRoot = RepositoryRoot.Find();
             var options = GateOptions.Parse(args);
             var result = new ArchitectureGate(repositoryRoot, options.PackagePath, options.RequirePackage).Run();
@@ -309,29 +321,14 @@ internal static class Program
                     "Tarui-side source must access CefGlue only through Tarui.WebView.CefGlueNext."));
             }
 
-            foreach (var rule in ForbiddenSourceRules)
+            foreach (var (rule, index) in SourceRuleMatcher.Match(maskedSource, ForbiddenSourceRules))
             {
-                var searchStart = 0;
-                while (searchStart < maskedSource.Length)
-                {
-                    var index = maskedSource.IndexOf(rule.Text, searchStart, StringComparison.Ordinal);
-                    if (index < 0)
-                    {
-                        break;
-                    }
-
-                    if (!rule.WholeWord || IsWholeWord(maskedSource, index, rule.Text.Length))
-                    {
-                        violations.Add(CreateViolation(
-                            file,
-                            maskedSource,
-                            index,
-                            "TN-SOURCE",
-                            $"Forbidden runtime API or dependency marker '{rule.Text}'."));
-                    }
-
-                    searchStart = index + rule.Text.Length;
-                }
+                violations.Add(CreateViolation(
+                    file,
+                    maskedSource,
+                    index,
+                    "TN-SOURCE",
+                    $"Forbidden runtime API or dependency marker '{rule.Text}'."));
             }
         }
 
@@ -471,6 +468,31 @@ internal static class Program
                         reference,
                         "TN-BOUNDARY",
                         "Tarui.Shell/Tarui.Hosting must depend on Tarui.WebView.Abstractions, not reference Tarui.WebView.CefGlueNext directly."));
+                }
+
+                // Optional plugins own their platform implementation and their DI registration. A
+                // reference from the shell would silently drag updater/tray/deep-link code into
+                // every application and re-centralize ownership in Tarui.Shell.
+                if (IsShellOrHostingProject(file) && IsOptionalPluginProject(target))
+                {
+                    violations.Add(CreateProjectViolation(
+                        file,
+                        reference,
+                        "TN-PLUGIN-OWNERSHIP",
+                        $"Tarui.Shell/Tarui.Hosting must not reference optional plugin '{Path.GetFileNameWithoutExtension(target)}'; register it from the composition root instead."));
+                }
+
+                // The dependency direction is plugin -> shell, never shell -> plugin, and only the
+                // plugins that genuinely need Avalonia widgets or the window registry may take it.
+                if (IsPluginProject(file) &&
+                    string.Equals(Path.GetFileNameWithoutExtension(target), "Tarui.Shell", StringComparison.OrdinalIgnoreCase) &&
+                    !MayPluginReferenceShell(file))
+                {
+                    violations.Add(CreateProjectViolation(
+                        file,
+                        reference,
+                        "TN-PLUGIN-BOUNDARY",
+                        $"Plugin '{Path.GetFileNameWithoutExtension(file)}' must stay UI- and shell-free; only {string.Join(", ", ShellDependentPluginAllowList)} may reference Tarui.Shell."));
                 }
             }
         }
@@ -635,6 +657,47 @@ internal static class Program
                    string.Equals(name, "Tarui.Hosting", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// Plugins whose platform implementation is optional: an application only pays for them when
+        /// it calls their <c>Add*Plugin()</c>. The shell must never pull them in, otherwise every app
+        /// inherits updater/deep-link/tray code it never registered and the plugin package cannot
+        /// express its own composition.
+        /// </summary>
+        private static readonly HashSet<string> OptionalPluginProjects = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Tarui.Plugins.Autostart",
+            "Tarui.Plugins.DeepLink",
+            "Tarui.Plugins.Dialog",
+            "Tarui.Plugins.GlobalShortcut",
+            "Tarui.Plugins.Log",
+            "Tarui.Plugins.Menu",
+            "Tarui.Plugins.Notification",
+            "Tarui.Plugins.Tray",
+            "Tarui.Plugins.Updater",
+            "Tarui.Plugins.WindowState"
+        };
+
+        /// <summary>
+        /// Plugins that need Avalonia widgets or the shell's window registry may depend on
+        /// Tarui.Shell. Every other plugin must stay UI- and shell-free so it can be consumed by a
+        /// headless host or unit test without dragging in Avalonia.
+        /// </summary>
+        private static readonly HashSet<string> ShellDependentPluginAllowList = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Tarui.Plugins.Dialog",
+            "Tarui.Plugins.Menu",
+            "Tarui.Plugins.Tray"
+        };
+
+        private static bool IsOptionalPluginProject(string path) =>
+            OptionalPluginProjects.Contains(Path.GetFileNameWithoutExtension(path));
+
+        private static bool IsPluginProject(string path) =>
+            Path.GetFileNameWithoutExtension(path).StartsWith("Tarui.Plugins.", StringComparison.OrdinalIgnoreCase);
+
+        private static bool MayPluginReferenceShell(string path) =>
+            ShellDependentPluginAllowList.Contains(Path.GetFileNameWithoutExtension(path));
+
         private bool IsCefGlueAvaloniaComponentProject(string path) =>
             IsUnder(path, _cefGlueAvaloniaComponentRoot) &&
             string.Equals(Path.GetFileNameWithoutExtension(path), "Tarui.WebView.CefGlueNext", StringComparison.OrdinalIgnoreCase);
@@ -748,8 +811,38 @@ private static bool IsAvaloniaOrCefGlueReference(string packageId) =>
                            Path.DirectorySeparatorChar;
             return fullPath.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase);
         }
+    }
 
-        private static bool IsWholeWord(string text, int index, int length)
+    /// <summary>
+    /// The rule matching shared by the gate and its self-tests, so the behaviour that is verified is the
+    /// behaviour that runs against the repository.
+    /// </summary>
+    private static class SourceRuleMatcher
+    {
+        public static IEnumerable<(SourceRule Rule, int Index)> Match(string maskedSource, SourceRule[] rules)
+        {
+            foreach (var rule in rules)
+            {
+                var searchStart = 0;
+                while (searchStart < maskedSource.Length)
+                {
+                    var index = maskedSource.IndexOf(rule.Text, searchStart, StringComparison.Ordinal);
+                    if (index < 0)
+                    {
+                        break;
+                    }
+
+                    if (!rule.WholeWord || IsWholeWord(maskedSource, index, rule.Text.Length))
+                    {
+                        yield return (rule, index);
+                    }
+
+                    searchStart = index + rule.Text.Length;
+                }
+            }
+        }
+
+        public static bool IsWholeWord(string text, int index, int length)
         {
             var hasPrefix = index > 0 && IsIdentifierCharacter(text[index - 1]);
             var end = index + length;
@@ -759,6 +852,73 @@ private static bool IsAvaloniaOrCefGlueReference(string packageId) =>
 
         private static bool IsIdentifierCharacter(char value) =>
             char.IsLetterOrDigit(value) || value == '_';
+    }
+
+    /// <summary>
+    /// Positive and negative fixtures for the forbidden-source rules. Positive fixtures prove a forbidden
+    /// API is still caught; negative fixtures prove comments, string literals and unrelated identifiers do
+    /// not produce noise.
+    /// </summary>
+    private static class RuleSelfTests
+    {
+        private static readonly (string Name, string Source, string[] Expected)[] Cases =
+        [
+            (
+                "implicit DI construction",
+                "var extension = ActivatorUtilities.GetServiceOrCreateInstance<T>(provider);",
+                ["ActivatorUtilities"]),
+            (
+                "reflection activation",
+                "var instance = Activator.CreateInstance(typeof(Widget));",
+                ["Activator"]),
+            (
+                "reflection metadata",
+                "MethodInfo method = null;",
+                ["MethodInfo"]),
+            (
+                "line comment",
+                "// ActivatorUtilities must never appear in shipped code\nvar value = 1;",
+                []),
+            (
+                "string literal",
+                "var message = \"ActivatorUtilities is forbidden\";",
+                []),
+            (
+                "unrelated identifier",
+                "var activity = ActivityManager.Start();",
+                [])
+        ];
+
+        public static bool Run(SourceRule[] rules)
+        {
+            var failures = 0;
+            foreach (var (name, source, expected) in Cases)
+            {
+                var actual = SourceRuleMatcher
+                    .Match(CSharpMasker.Mask(source), rules)
+                    .Select(static match => match.Rule.Text)
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(static text => text, StringComparer.Ordinal)
+                    .ToArray();
+                var wanted = expected.OrderBy(static text => text, StringComparer.Ordinal).ToArray();
+                if (actual.SequenceEqual(wanted, StringComparer.Ordinal))
+                {
+                    continue;
+                }
+
+                failures++;
+                Console.Error.WriteLine(
+                    $"[TN-SOURCE-SELFTEST] '{name}' expected [{string.Join(", ", wanted)}] " +
+                    $"but matched [{string.Join(", ", actual)}].");
+            }
+
+            if (failures == 0)
+            {
+                Console.WriteLine("Tarui architecture gate rule self-tests passed.");
+            }
+
+            return failures == 0;
+        }
     }
 
     private static class RepositoryRoot

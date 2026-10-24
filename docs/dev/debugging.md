@@ -49,9 +49,8 @@ $env:TARUI_LOG_LEVEL__DEFAULT = "Debug"
 | `tarui build --bundle app-bundle` 失败 | 检查 `bundle.macOS.{bundleId, schemes}` 是否合法;`bundleId` 必须 reverse-DNS |
 | macOS 真机 `plutil -lint` 失败 | `InfoPlistBuilder` 输出缺失必备键;对照 `Tarui.Cli.Tests` 覆盖 |
 | `core:platform|capabilities` 报 `notification: false` | 当前平台不支持通知;前端应禁用 UI;Windows 已实现,macOS/Linux 诚实降级 |
-| Channel 流式背压 | 已有 await `WebviewSession.SendAsync` 自动背压;无需额外机制 |
+| Channel 流式背压 | 当前**没有**消费侧背压:`SendAsync` 只等待脚本提交;若前端丢帧,先查 `onmessage` 是否被长任务阻塞,而非怀疑桥层限流 |
 | File Watch 不触发 | 检查 capability `events` 含 `fs://watch-change`;`plugin:fs|watch` scope 命中 |
-| `core:window|deny-close` 不生效 | 必须收到 `window://close-requested` 事件之后才回执;同时未触发超时强制关闭 |
 
 ## 4. 性能与诊断
 

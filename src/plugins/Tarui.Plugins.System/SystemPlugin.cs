@@ -261,7 +261,9 @@ public static class PlatformCapabilityProvider
                 GlobalShortcutReason: "macos-global-shortcut-pending",
                 AutostartSupported: true,
                 DeepLinkSupported: false,
-                DeepLinkReason: "macos-deeplink-pending");
+                DeepLinkReason: "macos-deeplink-pending",
+                WindowEffectsSupported: false,
+                WindowEffectsReason: "window-effects-windows-only");
         }
 
         if (OperatingSystem.IsLinux())
@@ -273,7 +275,9 @@ public static class PlatformCapabilityProvider
                 GlobalShortcutReason: "linux-global-shortcut-pending",
                 AutostartSupported: true,
                 DeepLinkSupported: true,
-                DeepLinkReason: null);
+                DeepLinkReason: null,
+                WindowEffectsSupported: false,
+                WindowEffectsReason: "window-effects-windows-only");
         }
 
         return new PlatformCapabilities(
@@ -283,7 +287,9 @@ public static class PlatformCapabilityProvider
             GlobalShortcutReason: null,
             AutostartSupported: true,
             DeepLinkSupported: true,
-            DeepLinkReason: null);
+            DeepLinkReason: null,
+            WindowEffectsSupported: true,
+            WindowEffectsReason: null);
     }
 }
 
