@@ -7,7 +7,7 @@
 
 ## 1. 背景与问题
 
-Tauri 桌面壳层需要支持 macOS 上自定义 URL Scheme（`tarui://...`）的 cold/warm 激活。对标框架（Tauri v2、Wails v3）的 macOS 实现均依赖 AppKit 的 `application(_:openURLs:)` 委托或更底层的 Apple Event `kAEGetURL` 通道；它们**不**走 `argv`，因为 macOS 的 `LaunchServices` 在 App 已运行时把 URL 直接发给已运行实例的 `NSApplication`，不再 fork 新进程。
+Tauri 桌面壳层需要支持 macOS 上自定义 URL Scheme（`tarui://...`）的 cold/warm 激活。对标框架 Tauri v2 的 macOS 实现依赖 AppKit 的 `application(_:openURLs:)` 委托或更底层的 Apple Event `kAEGetURL` 通道；它**不**走 `argv`，因为 macOS 的 `LaunchServices` 在 App 已运行时把 URL 直接发给已运行实例的 `NSApplication`，不再 fork 新进程。
 
 Tarui 现有接线（截至 2026-09-19）：
 
@@ -257,12 +257,11 @@ public void Deliver(string url)
 2. CI 平台矩阵扩大：在 macOS runner 跑无 UI 的策略/契约/权限类（含 `Tarui.DeepLink.Tests` 中 `MacBridge*` 用例）。
 3. 文档同步：
    - `docs/tauri-desktop-alignment-plan.md §15` Phase 6 §6.3 DeepLink 行：从"macOS delegate 桥骨架已写未真机"改为"AppleEvent 桥已落地，macOS 真机未验"。
-   - `docs/wails-tauri-gap-analysis.md §5` P1-14 与 §7 推进顺序同步 macOS DeepLink 状态。
+   - `docs/design/gap-analysis.md §4` P1-14 与 §6 推进顺序同步 macOS DeepLink 状态。
 
 ## 10. 参考
 
 - [Apple Developer — NSAppleEventManager](https://developer.apple.com/documentation/foundation/nsappleeventmanager)
 - [Apple Developer — Handling URL Schemes](https://developer.apple.com/documentation/xcode/defining-a-custom-url-scheme-for-your-app)
 - Tauri v2 DeepLink plugin（warm `application:openURLs:` + cold argv 双路径）
-- Wails v3 `application:openURLs:` 桥（macOS 单一入口）
 - 仓库内：[`docs/tauri-desktop-alignment-plan.md §10.3`](../../docs/tauri-desktop-alignment-plan.md) / [`src/desktop/Tarui.Shell/DeepLinkService.cs`](../../src/desktop/Tarui.Shell/DeepLinkService.cs) / [`DeepLinkRegistrarHostedService.cs`](../../src/desktop/Tarui.Shell/DeepLinkRegistrarHostedService.cs)

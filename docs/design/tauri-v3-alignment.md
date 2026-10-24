@@ -1,9 +1,9 @@
 # Tarui 与 Tauri v3 差异分析与改造方案
 
 > 状态：分析基线 + 改造方案；**V3-0（运行时身份）、V3-1（单窗口多 WebView）、V3-3（DX：CDP 通道 + 类型化契约）已实施完成**；V3-2（权限集合）待排期
-> 基线日期：2026-10-17
-> 对比对象：Tauri **3.0.0-alpha.0 … alpha.5**（2026-09-13 至 2026-10-14，GitHub Releases `tauri-v3.0.0-alpha.*`；稳定线为 2.12.4）、`tauri-runtime-wry` / `tauri-runtime-cef` 3.0.0-alpha、`@tauri-apps/cli` 3.0.0-alpha.4/5
-> 姊妹文档：[`alignment-plan.md`](alignment-plan.md)（v2 对齐实施，继续有效）、[`gap-analysis.md`](gap-analysis.md)（v2 / Wails v3 缺口；其 §5 P0-0 与本文 V3-1 对应）、[`webview.md`](webview.md)、[`web-resource-mode.md`](web-resource-mode.md)
+> 基线日期：2026-10-24（复核上游 Release；v3 最新仍为 alpha.5，结论无变化）
+> 对比对象：Tauri **3.0.0-alpha.0 … alpha.5**（2026-09-13 至 2026-10-14，GitHub Releases `tauri-v3.0.0-alpha.*`；稳定线为 2.12.5）、`tauri-runtime-wry` / `tauri-runtime-cef` 3.0.0-alpha（`runtime-cef` 已到 alpha.6）、`@tauri-apps/cli` 3.0.0-alpha.4/5
+> 姊妹文档：[`alignment-plan.md`](alignment-plan.md)（v2 对齐实施，继续有效）、[`gap-analysis.md`](gap-analysis.md)（v2 缺口；其 §4 P0-0 与本文 V3-1 对应）、[`webview.md`](webview.md)、[`web-resource-mode.md`](web-resource-mode.md)
 > 本文目的：盘点 Tauri v3 已公布的架构变化，逐项评估与 Tarui 现状的差异，给出分阶段改造方案。v3 仍处 alpha（约 1–2 周一个 alpha），本文结论随新版本发布复核更新。
 
 ## 1. Tauri v3 主题概览
@@ -41,7 +41,7 @@
 | D10 | T8 macOS 私有 API 退役 | 透明窗口走 Avalonia `TransparencyLevelHint`，Tarui 从未有 `macos-private-api` 类开关 | 不适用 | — |
 | D11 | T8 specta 类型化 bindings | 已实施（V3-3 v1）：`Tarui.Ipc.Generators` 从 `commands.Add("id", …)` 调用点生成每程序集 `{Assembly}CommandCatalog`（`{ Id, Input, Output }` 契约）；新增 `tests/Tarui.Bindings.Tests` 把生成契约与手写 `@lytree/api` 的 `invoke('…')` 字面量做双向漂移校验。全量 `.d.ts` 生成与权限字段仍延后 | 中（v1 已实施） | V3-3 |
 | D12 | T8 `tauri migrate` / NSIS 键名 / MSRV | Tarui 无历史版本迁移负担；产物为 zip / MSIX / `.app` / `.app.tar.gz`，无 NSIS；MSRV 是 Rust 侧概念 | 不适用 | — |
-| D13 | 单窗口多 WebView（v2 既有模型，v3 保留 Window/Webview 独立实体） | **架构级缺口**（gap-analysis §3.1 / §5 P0-0）：`WindowOptions`→`IWebViewFactory` 为窗口↔webview 一对一强绑定。`Tarui.Plugins.Webview` 的 `IWebviewService` 契约已声明"webview 与宿主窗口解耦、可按 `webviewLabel` 独立寻址"（`navigate/get-state/devtools/set-zoom/print/eval/eval-with-callback/list` 命令 + own/other-webview 权限），即**插件层寻址已就绪，缺底层多 WebView 挂载** | **高**（已实施 V3-1） | V3-1 |
+| D13 | 单窗口多 WebView（v2 既有模型，v3 保留 Window/Webview 独立实体） | **架构级缺口**（gap-analysis §3.1 / §4 P0-0）：`WindowOptions`→`IWebViewFactory` 为窗口↔webview 一对一强绑定。`Tarui.Plugins.Webview` 的 `IWebviewService` 契约已声明"webview 与宿主窗口解耦、可按 `webviewLabel` 独立寻址"（`navigate/get-state/devtools/set-zoom/print/eval/eval-with-callback/list` 命令 + own/other-webview 权限），即**插件层寻址已就绪，缺底层多 WebView 挂载** | **高**（已实施 V3-1） | V3-1 |
 | D14 | T8 tracing 观测 | `Tarui.Plugins.Log` 已实现 renderer→MEL 双向桥接，等价 | 小/已等价 | — |
 | D15 | Android 绑定宏迁移（`android_binding!` 移至 wry 运行时） | 移动端为对齐计划 §1 明确非目标 | 不适用 | — |
 
@@ -101,7 +101,7 @@
 - 现有 `AddCefGlueWebView()` 用法零破坏，全部自测试与架构测试通过；
 - `webview.md` §1 依赖图更新（倒转后 Shell/Hosting 不再直连 CefGlueNext）。
 
-### 4.2 Phase V3-1：单窗口多 WebView（承接 gap-analysis §5 P0-0）
+### 4.2 Phase V3-1：单窗口多 WebView（承接 gap-analysis §4 P0-0）
 
 **目标**：Window 与 WebView 实体分离，一窗口可挂多个 webview。分两步交付：
 
@@ -161,7 +161,7 @@
 | D10 macOS 私有 API | 不适用（Avalonia 承担） |
 | D12 `migrate` / NSIS / MSRV | 不适用；`tarui.app.json` 键名演进遵循自有 Schema 版本化 |
 | D14 tracing | MEL 已等价；OpenTelemetry 导出另立评估 |
-| v3 后续 alpha/beta 增量 | 每个新版本发布后复核本文 §2 表并登记增量；RC 后冻结 V3-0/V3-2 设计细节 |
+| v3 后续 alpha/beta 增量 | 每个新版本发布后复核本文 §2 表并登记增量；RC 后冻结 V3-0/V3-2 设计细节（2026-10-24 复核：alpha.5 仍为最新，§2 无新增项） |
 
 ## 5. 与既有计划的关系
 
@@ -173,5 +173,5 @@
 
 1. **alpha 漂移**：v3 尚未 RC，T1–T4 语义可能微调（如 `Runtime` trait 方法签名）。缓解：V3-0 只对齐"依赖方向与概念"，不逐字复刻 Rust API。
 2. **不盲跟多运行时**：v3 的可插拔运行时对 Tarui 的意义是边界清晰与未来插槽，不是当下实现第二后端；避免为抽象而抽象。
-3. **V3-1 工程量**：窗口↔webview 分离触及 Shell 生命周期与事件路由核心，须先补齐窗口生命周期回归测试再动刀（gap-analysis §5 P0-0 同结论）。
+3. **V3-1 工程量**：窗口↔webview 分离触及 Shell 生命周期与事件路由核心，须先补齐窗口生命周期回归测试再动刀（gap-analysis §4 P0-0 同结论）。
 4. **权限集合的安全回归**：集合展开错误可能造成意外放行；V3-2 必须以"集合展开结果 = 逐条罗列结果"为不可协商的测试断言。

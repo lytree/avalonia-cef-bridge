@@ -15,7 +15,7 @@
 补充参考:
 
 - [`docs/design/alignment-plan.md`](docs/design/alignment-plan.md) —— 与 Tauri v2 桌面能力的逐项对齐进度表
-- [`docs/design/gap-analysis.md`](docs/design/gap-analysis.md) —— 与 Tauri v2 / Wails v3 的功能差距分析
+- [`docs/design/gap-analysis.md`](docs/design/gap-analysis.md) —— 与 Tauri v2 的功能差距分析
 - [`docs/design/cli-workflow.md`](docs/design/cli-workflow.md) —— CLI / SDK / 插件分发设计稿
 - [`docs/adr/`](docs/adr/) —— 架构决策记录(macOS DeepLink 桥、macOS 真机构建管道 等)
 

@@ -5,7 +5,7 @@
 > 对齐目标：Tauri v2 桌面能力与开发体验
 > 本文记录实施步骤、架构边界和验收门禁，并随实现推进登记证据（详见 §15）。
 >
-> 配套文档：[`./architecture.md`](architecture.md)（架构总览）、[`./ipc.md`](ipc.md)（IPC 与 Capability 模型）、[`./plugin-system.md`](plugin-system.md)（插件契约）、[`./gap-analysis.md`](gap-analysis.md)（与 Tauri/Wails 的缺口分析）、[`./cli-workflow.md`](cli-workflow.md)（CLI / SDK / 插件分发设计稿）。
+> 配套文档：[`./architecture.md`](architecture.md)（架构总览）、[`./ipc.md`](ipc.md)（IPC 与 Capability 模型）、[`./plugin-system.md`](plugin-system.md)（插件契约）、[`./gap-analysis.md`](gap-analysis.md)（与 Tauri 的缺口分析）、[`./cli-workflow.md`](cli-workflow.md)（CLI / SDK / 插件分发设计稿）。
 
 ## 1. 目标与非目标
 
