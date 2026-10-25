@@ -1,4 +1,4 @@
-# 故障排查速查
+﻿# 故障排查速查
 
 > 常见问题速查。更多诊断工具见 [`../dev/debugging.md`](../dev/debugging.md)。
 
@@ -26,7 +26,7 @@
 | 现象 | 原因 / 处置 |
 | --- | --- |
 | Channel 流式无响应 | 检查 `Channel.onmessage` 是否赋值;`onClose` 是否在 done 时触发;`invoke` 是否传 channel 字段 |
-| 流式背压丢帧 | 当前没有消费侧背压:原生 `SendAsync` 只保证脚本已提交,不保证渲染进程已消费;前端处理慢时在途帧会累积(见 `docs/design/ipc.md` §2)。需要严格流控时由业务侧限速 |
+| 流式背压丢帧 | 已实现 `channel-credit-v1`:前端握手后原生侧在途帧上限 16,`onmessage` 处理完成后才发 ACK 归还信用;若前端丢帧,先查 `onmessage` 是否抛异常或返回未完成的 Promise(会扣住信用,见 `docs/design/ipc.md` §2) |
 | HTTP 流式响应乱序 | 服务端实际返回乱序;客户端按 frame 顺序处理 |
 
 ## 4. CLI 与构建

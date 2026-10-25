@@ -53,4 +53,43 @@ public sealed class CapabilitySet
     public IReadOnlyCollection<string> Events => _events;
 
     public bool HasScopes => _scopes.Count > 0;
+
+    /// <summary>
+    /// Unions two capability sets into one: a surface holds a permission or event when either side
+    /// grants it, and a scope union keeps every allow and every deny rule from both sides (denies
+    /// never disappear through a merge, so unioning cannot widen a scoped restriction away).
+    /// </summary>
+    public CapabilitySet Merge(CapabilitySet other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        if (_permissions.Contains("*") && _events.Contains("*") && _scopes.Count == 0)
+        {
+            return this;
+        }
+
+        if (other._permissions.Contains("*") && other._events.Contains("*") && other._scopes.Count == 0)
+        {
+            return other;
+        }
+
+        var scopes = new Dictionary<string, PermissionScope>(StringComparer.Ordinal);
+        foreach (var pair in _scopes)
+        {
+            scopes[pair.Key] = pair.Value;
+        }
+
+        foreach (var pair in other._scopes)
+        {
+            scopes[pair.Key] = scopes.TryGetValue(pair.Key, out var existing)
+                ? new PermissionScope(
+                    existing.Allow.Concat(pair.Value.Allow).Distinct().ToArray(),
+                    existing.Deny.Concat(pair.Value.Deny).Distinct().ToArray())
+                : pair.Value;
+        }
+
+        return new CapabilitySet(
+            _permissions.Concat(other._permissions),
+            _events.Concat(other._events),
+            scopes);
+    }
 }

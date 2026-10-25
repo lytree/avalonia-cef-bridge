@@ -5,6 +5,16 @@ namespace Tarui.Shell;
 public interface ICapabilityProvider
 {
     IReadOnlyDictionary<string, CapabilitySet> Capabilities { get; }
+
+    /// <summary>
+    /// Grants declared through the <c>webviews</c> selector, keyed by web view label (exact match).
+    /// Providers that only know window profiles report an empty map; a web view surface then simply
+    /// inherits its host window's capability set.
+    /// </summary>
+    IReadOnlyDictionary<string, CapabilitySet> WebviewCapabilities => EmptyWebviewCapabilities;
+
+    public static readonly IReadOnlyDictionary<string, CapabilitySet> EmptyWebviewCapabilities =
+        new Dictionary<string, CapabilitySet>();
 }
 
 /// <summary>
@@ -17,7 +27,7 @@ public sealed class CapabilitySetProvider : ICapabilityProvider
 {
     private readonly IPermissionSetCatalog _permissionSets;
     private readonly string? _directory;
-    private readonly Lazy<IReadOnlyDictionary<string, CapabilitySet>> _capabilities;
+    private readonly Lazy<CapabilityManifests> _manifests;
 
     public CapabilitySetProvider(string? directory = null)
         : this(PermissionSetCatalog.Empty, directory)
@@ -29,11 +39,13 @@ public sealed class CapabilitySetProvider : ICapabilityProvider
         ArgumentNullException.ThrowIfNull(permissionSets);
         _permissionSets = permissionSets;
         _directory = directory;
-        _capabilities = new Lazy<IReadOnlyDictionary<string, CapabilitySet>>(
-            () => CapabilityLoader.Load(
+        _manifests = new Lazy<CapabilityManifests>(
+            () => CapabilityLoader.LoadManifests(
                 _directory ?? Path.Combine(AppContext.BaseDirectory, "capabilities"),
                 _permissionSets));
     }
 
-    public IReadOnlyDictionary<string, CapabilitySet> Capabilities => _capabilities.Value;
+    public IReadOnlyDictionary<string, CapabilitySet> Capabilities => _manifests.Value.Windows;
+
+    public IReadOnlyDictionary<string, CapabilitySet> WebviewCapabilities => _manifests.Value.Webviews;
 }

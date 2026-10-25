@@ -34,6 +34,7 @@ internal static class Program
         WebviewRegistryRemoveWindowDetachesEveryHostedWebview();
         WebviewRegistryCapabilitiesFollowSessionContext();
         await WindowFanoutDeliversWindowEventsToEveryHostedWebview();
+        await WindowFanoutSkipsSurfacesWithoutTheEvent();
         await WindowFanoutWithoutWebviewsIsNoOp();
         WebviewSessionExposesSeparateWindowAndWebviewLabels();
         await ClosingWindowDisposesEveryHostedWebview();
@@ -48,8 +49,8 @@ internal static class Program
         await RouterNotifiesHubSubscribers();
         await RouterRoutesByTargetWindowPresence();
         await RouterAddressesWebviewsIndependentlyOfWindows();
-        await WebviewSessionCreditsBoundChannelFrames();
-        await WebviewSessionCompleteWakesBlockedChannelProducer();
+        WebviewSessionCreditsBoundChannelFrames();
+        WebviewSessionCompleteWakesBlockedChannelProducer();
         await WebViewHostRejectsFileDropWithoutCapability();
         await WebViewHostDeliversFileDropToAuthorizedWindow();
         await WebViewHostGatesDownloadByPolicyAndCapability();
@@ -1166,8 +1167,10 @@ internal static class Program
     private static async Task WindowFanoutDeliversWindowEventsToEveryHostedWebview()
     {
         var registry = new WebviewRegistry();
-        var (mainEntry, mainView) = CreateWebviewEntry("main", "main");
-        var (sideEntry, sideView) = CreateWebviewEntry("side", "main");
+        // A production surface's set is the union of its window profile and webviews-selected grants,
+        // so it always carries the window's events. The entries mirror that here.
+        var (mainEntry, mainView) = CreateWebviewEntry("main", "main", new CapabilitySet([], ["window://moved"], []));
+        var (sideEntry, sideView) = CreateWebviewEntry("side", "main", new CapabilitySet([], ["window://moved"], []));
         registry.Add(mainEntry);
         registry.Add(sideEntry);
 
@@ -1179,6 +1182,26 @@ internal static class Program
         Assert(
             mainView.ExecutedScripts.Count == 1 && sideView.ExecutedScripts.Count == 1,
             "A window event must reach every web view the window hosts.");
+    }
+
+    private static async Task WindowFanoutSkipsSurfacesWithoutTheEvent()
+    {
+        var registry = new WebviewRegistry();
+        var (authorizedEntry, authorizedView) =
+            CreateWebviewEntry("allowed", "main", new CapabilitySet([], ["window://moved"], []));
+        var (unauthorizedEntry, unauthorizedView) =
+            CreateWebviewEntry("denied", "main", new CapabilitySet([], [], []));
+        registry.Add(authorizedEntry);
+        registry.Add(unauthorizedEntry);
+
+        var fanout = new WindowEventFanout("main", registry);
+        await fanout.SendEventAsync(
+            "window://moved",
+            JsonSerializer.SerializeToElement(new WindowGeometry(1, 2, 3, 4), TaruiJsonContext.Default.WindowGeometry));
+
+        Assert(
+            authorizedView.ExecutedScripts.Count == 1 && unauthorizedView.ExecutedScripts.Count == 0,
+            "A surface whose profile does not carry the event must be skipped by the window fan-out.");
     }
 
     private static Task WindowFanoutWithoutWebviewsIsNoOp()
@@ -1627,68 +1650,86 @@ internal static class Program
     /// bounded mode, the sixteenth frame onwards parks until the renderer acknowledges, and forged
     /// acknowledgements for unknown channels are ignored.
     /// </summary>
-    private static async Task WebviewSessionCreditsBoundChannelFrames()
+    private static void WebviewSessionCreditsBoundChannelFrames()
     {
-        var (host, _, _) = CreateWebViewHost(new CapabilitySet(["*"], ["*"], []));
-        using (host)
+        // EnsureAvaloniaInitialized leaves Main's synchronization context as Avalonia's dispatcher,
+        // which this suite never pumps. Any await on Main that does not complete synchronously would
+        // park forever inside that queue, so the scenario runs on a context-free worker instead.
+        Task.Run(async () =>
         {
-            var handshake = await host.DispatchMessageAsync(
-                """{"protocol":1,"type":"channel-handshake","capabilities":["channel-credit-v1"]}""");
-            Assert(
-                handshake == string.Empty,
-                "A flow-control handshake is a control frame, not a routed command.");
-
-            var payload = JsonSerializer.SerializeToElement("frame", TaruiJsonContext.Default.String);
-            for (var i = 0; i < ChannelCreditWindow.DefaultCapacity; i++)
+            var (host, _, _) = CreateWebViewHost(new CapabilitySet(["*"], ["*"], []));
+            using (host)
             {
-                await host.SendAsync("chan-credit", payload);
+                var handshake = await host.DispatchMessageAsync(
+                    """{"protocol":1,"type":"channel-handshake","capabilities":["channel-credit-v1"]}""");
+                Assert(
+                    handshake == string.Empty,
+                    "A flow-control handshake is a control frame, not a routed command.");
+
+                var payload = JsonSerializer.SerializeToElement("frame", TaruiJsonContext.Default.String);
+                for (var i = 0; i < ChannelCreditWindow.DefaultCapacity; i++)
+                {
+                    await host.SendAsync("chan-credit", payload);
+                }
+
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                var blocked = host.SendAsync("chan-credit", payload, timeout.Token);
+                Assert(
+                    !blocked.IsCompleted,
+                    "A frame beyond the credit window must wait for the renderer's acknowledgement.");
+
+                await host.DispatchMessageAsync(
+                    """{"protocol":1,"type":"channel-ack","channel":"chan-credit"}""");
+                await blocked;
+
+                // A forged acknowledgement for an unknown channel must not mint credit: the window is
+                // still full, so the next frame parks until a real acknowledgement arrives.
+                await host.DispatchMessageAsync(
+                    """{"protocol":1,"type":"channel-ack","channel":"chan-unknown"}""");
+                var afterForged = host.SendAsync("chan-credit", payload);
+                Assert(
+                    !afterForged.IsCompleted,
+                    "A forged acknowledgement must not hand out a credit.");
+
+                await host.DispatchMessageAsync(
+                    """{"protocol":1,"type":"channel-ack","channel":"chan-credit"}""");
+                await afterForged;
             }
-
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            var blocked = host.SendAsync("chan-credit", payload, timeout.Token);
-            Assert(
-                !blocked.IsCompleted,
-                "A frame beyond the credit window must wait for the renderer's acknowledgement.");
-
-            await host.DispatchMessageAsync(
-                """{"protocol":1,"type":"channel-ack","channel":"chan-credit"}""");
-            await blocked;
-
-            // Forged or foreign acknowledgements must be ignored without breaking the channel.
-            await host.DispatchMessageAsync(
-                """{"protocol":1,"type":"channel-ack","channel":"chan-unknown"}""");
-            await host.SendAsync("chan-credit", payload);
-        }
+        }).GetAwaiter().GetResult();
     }
 
     /// <summary>Producer-side completion must wake a producer parked on flow control with a stop signal.</summary>
-    private static async Task WebviewSessionCompleteWakesBlockedChannelProducer()
+    private static void WebviewSessionCompleteWakesBlockedChannelProducer()
     {
-        var (host, _, _) = CreateWebViewHost(new CapabilitySet(["*"], ["*"], []));
-        using (host)
+        // See WebviewSessionCreditsBoundChannelFrames for why this runs on a worker thread.
+        Task.Run(async () =>
         {
-            await host.DispatchMessageAsync(
-                """{"protocol":1,"type":"channel-handshake","capabilities":["channel-credit-v1"]}""");
-            var payload = JsonSerializer.SerializeToElement("frame", TaruiJsonContext.Default.String);
-            for (var i = 0; i < ChannelCreditWindow.DefaultCapacity; i++)
+            var (host, _, _) = CreateWebViewHost(new CapabilitySet(["*"], ["*"], []));
+            using (host)
             {
-                await host.SendAsync("chan-complete", payload);
-            }
+                await host.DispatchMessageAsync(
+                    """{"protocol":1,"type":"channel-handshake","capabilities":["channel-credit-v1"]}""");
+                var payload = JsonSerializer.SerializeToElement("frame", TaruiJsonContext.Default.String);
+                for (var i = 0; i < ChannelCreditWindow.DefaultCapacity; i++)
+                {
+                    await host.SendAsync("chan-complete", payload);
+                }
 
-            var blocked = host.SendAsync("chan-complete", payload);
-            host.Complete("chan-complete");
-            var threw = false;
-            try
-            {
-                await blocked;
-            }
-            catch (ChannelClosedException)
-            {
-                threw = true;
-            }
+                var blocked = host.SendAsync("chan-complete", payload);
+                host.Complete("chan-complete");
+                var threw = false;
+                try
+                {
+                    await blocked;
+                }
+                catch (ChannelClosedException)
+                {
+                    threw = true;
+                }
 
-            Assert(threw, "Completing the channel must wake a blocked producer with a stop signal.");
-        }
+                Assert(threw, "Completing the channel must wake a blocked producer with a stop signal.");
+            }
+        }).GetAwaiter().GetResult();
     }
 
     private static (WebviewSession Host, FakeSink Sink, FakeWebView WebView) CreateWebViewHost(

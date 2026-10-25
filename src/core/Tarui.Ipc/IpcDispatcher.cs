@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Tarui.Contracts;
 
 namespace Tarui.Ipc;
@@ -24,11 +24,11 @@ public sealed class IpcDispatcher(CommandRouter router)
             }
             catch (JsonException)
             {
-                response = InvokeResponse.Fail("unknown", "INVALID_MESSAGE", "The IPC message is invalid.");
+                response = InvokeResponse.Fail("unknown", TaruiErrorCodes.InvalidMessage, "The IPC message is invalid.");
             }
             catch (InvalidPayloadException)
             {
-                response = InvokeResponse.Fail("unknown", "INVALID_MESSAGE", "The IPC message is invalid.");
+                response = InvokeResponse.Fail("unknown", TaruiErrorCodes.InvalidMessage, "The IPC message is invalid.");
             }
 
             return JsonSerializer.Serialize(response, TaruiJsonContext.Default.InvokeResponse);

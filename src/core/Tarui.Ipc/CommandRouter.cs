@@ -1,4 +1,4 @@
-using System.Collections.Frozen;
+﻿using System.Collections.Frozen;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Tarui.Contracts;
@@ -161,12 +161,12 @@ public sealed class CommandRouter(
     {
         if (!commands.TryGetValue(request.Command, out var invoker))
         {
-            return InvokeResponse.Fail(request.Id, "COMMAND_NOT_FOUND", $"Command '{request.Command}' is not registered.");
+            return InvokeResponse.Fail(request.Id, TaruiErrorCodes.CommandNotFound, $"Command '{request.Command}' is not registered.");
         }
 
         if (!permissions.TryGetValue(request.Command, out var permission) || !context.Capabilities.Allows(permission))
         {
-            return InvokeResponse.Fail(request.Id, "PERMISSION_DENIED", $"Command '{request.Command}' is not allowed.");
+            return InvokeResponse.Fail(request.Id, TaruiErrorCodes.PermissionDenied, $"Command '{request.Command}' is not allowed.");
         }
 
         try
@@ -183,7 +183,7 @@ public sealed class CommandRouter(
         }
         catch (PermissionDeniedException)
         {
-            return InvokeResponse.Fail(request.Id, "PERMISSION_DENIED", $"Command '{request.Command}' is not allowed.");
+            return InvokeResponse.Fail(request.Id, TaruiErrorCodes.PermissionDenied, $"Command '{request.Command}' is not allowed.");
         }
         catch (CapabilityNotFoundException)
         {

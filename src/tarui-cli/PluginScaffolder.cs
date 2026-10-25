@@ -1,4 +1,4 @@
-namespace Tarui.Cli;
+﻿namespace Tarui.Cli;
 
 using System.Text;
 
@@ -57,7 +57,7 @@ internal static class PluginScaffolder
         Directory.CreateDirectory(rootName);
 
         Write(Path.Combine(rootName, sourceDirectory), packageName + ".csproj", BuildCsproj(packageName, namespaceName, normalized));
-        Write(Path.Combine(rootName, sourceDirectory), "Plugin.cs", BuildPluginCs(namespaceName, csharpSuffix));
+        Write(Path.Combine(rootName, sourceDirectory), "Plugin.cs", BuildPluginCs(namespaceName, csharpSuffix, normalized));
         Write(Path.Combine(rootName, sourceDirectory), "Contracts.cs", BuildContractsCs(namespaceName, csharpSuffix));
 
         Write(Path.Combine(rootName, "permissions"), "schema.json", BuildSchemaJson(normalized));
@@ -74,7 +74,7 @@ internal static class PluginScaffolder
         Write(
             Path.Combine(rootName, "tests", packageName + ".Tests"),
             "Program.cs",
-            BuildTestProgramCs(packageName));
+            BuildTestProgramCs(packageName, namespaceName, csharpSuffix, normalized));
 
         Write(Path.Combine(rootName, "examples", "demo"), "README.md", BuildExampleReadme(namespaceName, normalized, csharpSuffix));
         Write(Path.Combine(rootName), "README.md", BuildPluginReadme(normalized));
@@ -107,10 +107,10 @@ internal static class PluginScaffolder
                 <Description>Tarui plugin: {2}.</Description>
               </PropertyGroup>
               <ItemGroup>
-                <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+                <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
                 <PackageReference Include="Tarui.Ipc" Version="0.4.1" />
                 <PackageReference Include="Tarui.Contracts" Version="0.4.1" />
-                <PackageReference Include="Tarui.Ipc.Generators" Version="0.4.1" />
+                <PackageReference Include="Tarui.Ipc.Generators" Version="0.4.1"
                                   OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
               </ItemGroup>
               <ItemGroup>
@@ -127,10 +127,12 @@ internal static class PluginScaffolder
                 .Replace("{{normalized}}", normalized);
     }
 
-    private static string BuildPluginCs(string namespaceName, string suffix)
+    private static string BuildPluginCs(string namespaceName, string suffix, string normalized)
     {
         return
             $$"""
+            using System.Text.Json.Serialization;
+            using System.Threading.Tasks;
             using Microsoft.Extensions.DependencyInjection;
             using Tarui.Contracts;
             using Tarui.Ipc;
@@ -140,18 +142,20 @@ internal static class PluginScaffolder
             /// <summary>
             /// Registers this plugin's commands. Every command must be explicitly
             /// permission-checked; add the corresponding permission identifiers to the
-            /// capabilities file of the calling window to grant them.
+            /// capabilities file of the calling window to grant them. The scaffolded
+            /// <c>ping</c> round-trips end to end, so the skeleton is verifiable before
+            /// the first real command is written.
             /// </summary>
             public sealed class {{suffix}}Plugin : ITaruiPlugin
             {
                 public void ConfigureCommands(CommandRouterBuilder commands)
                 {
-                    // commands.Add(
-                    //     "plugin:foo|ping",
-                    //     FooJsonContext.Default.EmptyArgs,
-                    //     FooJsonContext.Default.FooPingResult,
-                    //     (_, _, ct) => ValueTask.FromResult(new {{suffix}}PingResult(Pong: true)),
-                    //     "plugin:foo|ping");
+                    commands.Add(
+                        "plugin:{{normalized}}|ping",
+                        {{suffix}}JsonContext.Default.{{suffix}}EmptyArgs,
+                        {{suffix}}JsonContext.Default.{{suffix}}PingResult,
+                        static (_, _, _) => ValueTask.FromResult(new {{suffix}}PingResult(Pong: true)),
+                        "plugin:{{normalized}}|ping");
                 }
             }
 
@@ -167,11 +171,21 @@ internal static class PluginScaffolder
     {
         return
             $$"""
+            using System.Text.Json.Serialization;
+
             namespace {{namespaceName}};
 
             // Plugin-owned DTOs plus their source-generated JSON metadata. Because the
-            // context lives here, this plugin needs no changes to core Tarui.Contracts.
+            // context lives here, this plugin needs no changes to core Tarui.Contracts:
+            // its channel payloads pass {{suffix}}JsonContext metadata explicitly, and its
+            // command surface registers against the same context.
             public sealed record {{suffix}}PingResult(bool Pong);
+
+            public sealed record {{suffix}}EmptyArgs;
+
+            [JsonSerializable(typeof({{suffix}}EmptyArgs))]
+            [JsonSerializable(typeof({{suffix}}PingResult))]
+            public sealed partial class {{suffix}}JsonContext : JsonSerializerContext;
             """;
     }
 
@@ -231,6 +245,9 @@ internal static class PluginScaffolder
                 "build": "tsc -b",
                 "prepack": "tsc -b"
               },
+              "dependencies": {
+                "@lytree/api": "^0.4.1"
+              },
               "devDependencies": {
                 "typescript": "^5.0.0"
               },
@@ -268,10 +285,17 @@ internal static class PluginScaffolder
             $$"""
             /**
              * @lytree/plugin-{{normalized}} — typed frontend bridge for the backend plugin.
-             * Replace the placeholder with invoke/listen wrappers over @lytree/api.
+             * The scaffolded <c>ping</c> round-trips through the real command router, so wiring
+             * works end to end before the first custom command is added.
              */
-            export function ping(): Promise<boolean> {
-              return Promise.resolve(true);
+            import { invoke } from '@lytree/api'
+
+            export interface PingResult {
+              pong: boolean
+            }
+
+            export function ping(): Promise<PingResult> {
+              return invoke<PingResult>('plugin:{{normalized}}|ping')
             }
             """;
     }
@@ -293,19 +317,64 @@ internal static class PluginScaffolder
             """;
     }
 
-    private static string BuildTestProgramCs(string namespaceName)
+    private static string BuildTestProgramCs(string packageName, string namespaceName, string suffix, string normalized)
     {
         return
             $$"""
+            using System;
+            using System.Linq;
+            using System.Text.Json;
+            using System.Threading.Tasks;
+            using Tarui.Contracts;
+            using Tarui.Ipc;
             using {{namespaceName}};
 
-            // Console self-test skeleton (repository test discipline). Extend with the
-            // four skeleton families: happy path, permission denied, invalid arguments,
-            // platform unsupported.
+            // Console self-test skeleton (repository test discipline). The scaffold ships the
+            // first two families out of the box: happy-path dispatch and permission denied.
+            // Extend with invalid arguments and platform-unsupported as real commands arrive.
             internal static class Program
             {
-                public static int Main()
+                public static async Task<int> Main()
                 {
+                    var builder = new CommandRouterBuilder();
+                    new {{suffix}}Plugin().ConfigureCommands(builder);
+                    var router = builder.Build();
+
+                    if (!router.Commands.Contains("plugin:{{normalized}}|ping"))
+                    {
+                        Console.Error.WriteLine("The scaffolded ping command must be registered.");
+                        return 1;
+                    }
+
+                    var dispatcher = new IpcDispatcher(router);
+                    var request = JsonSerializer.Serialize(
+                        new InvokeRequest(
+                            1,
+                            "t-1",
+                            "plugin:{{normalized}}|ping",
+                            JsonSerializer.SerializeToElement(new {{suffix}}EmptyArgs(), {{suffix}}JsonContext.Default.{{suffix}}EmptyArgs)),
+                        TaruiJsonContext.Default.InvokeRequest);
+
+                    var granted = new CommandContext(
+                        "main",
+                        "main",
+                        new CapabilitySet(["plugin:{{normalized}}|ping"]));
+                    var ok = await dispatcher.DispatchJsonAsync(request, granted);
+                    if (!ok.Contains("\"Pong\":true", StringComparison.Ordinal))
+                    {
+                        Console.Error.WriteLine($"The ping round-trip failed: {ok}");
+                        return 1;
+                    }
+
+                    var denied = new CommandContext("main", "main", new CapabilitySet([]));
+                    var refused = await dispatcher.DispatchJsonAsync(request, denied);
+                    if (!refused.Contains("PERMISSION_DENIED", StringComparison.Ordinal))
+                    {
+                        Console.Error.WriteLine("A capability without the permission must be denied.");
+                        return 1;
+                    }
+
+                    Console.WriteLine("{{packageName}} self-tests passed.");
                     return 0;
                 }
             }

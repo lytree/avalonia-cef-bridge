@@ -7,7 +7,7 @@ namespace Tarui.Shell;
 public static class CapabilityLoader
 {
     private static readonly HashSet<string> KnownRootFields = new(
-        ["$schema", "identifier", "description", "windows", "platforms", "permissions", "events"],
+        ["$schema", "identifier", "description", "windows", "webviews", "platforms", "permissions", "events"],
         StringComparer.Ordinal);
 
     private static readonly HashSet<string> KnownScopeFields = new(
@@ -27,12 +27,21 @@ public static class CapabilityLoader
     /// the concrete permission ids the router registered, so a manifest never has to enumerate the
     /// commands of a namespace by hand.
     /// </summary>
-    public static IReadOnlyDictionary<string, CapabilitySet> Load(string directory, IPermissionSetCatalog catalog)
+    public static IReadOnlyDictionary<string, CapabilitySet> Load(string directory, IPermissionSetCatalog catalog) =>
+        LoadManifests(directory, catalog).Windows;
+
+    /// <summary>
+    /// Loads every capability manifest and keeps the two grant surfaces apart: grants declared through
+    /// <c>windows</c> are keyed by window label, grants declared through <c>webviews</c> are keyed by
+    /// web view label. A manifest may declare both; at least one is mandatory.
+    /// </summary>
+    public static CapabilityManifests LoadManifests(string directory, IPermissionSetCatalog catalog)
     {
-        var buckets = new Dictionary<string, WindowBucket>(StringComparer.Ordinal);
+        var windowBuckets = new Dictionary<string, WindowBucket>(StringComparer.Ordinal);
+        var webviewBuckets = new Dictionary<string, WebviewBucket>(StringComparer.Ordinal);
         if (!Directory.Exists(directory))
         {
-            return ToCapabilityMap(buckets);
+            return ToManifests(windowBuckets, webviewBuckets);
         }
 
         foreach (var file in Directory.EnumerateFiles(directory, "*.json"))
@@ -40,16 +49,17 @@ public static class CapabilityLoader
             using var document = JsonDocument.Parse(
                 File.ReadAllText(file),
                 new JsonDocumentOptions { AllowTrailingCommas = true });
-            ApplyManifest(file, document.RootElement, buckets, catalog);
+            ApplyManifest(file, document.RootElement, windowBuckets, webviewBuckets, catalog);
         }
 
-        return ToCapabilityMap(buckets);
+        return ToManifests(windowBuckets, webviewBuckets);
     }
 
     private static void ApplyManifest(
         string file,
         JsonElement root,
-        Dictionary<string, WindowBucket> buckets,
+        Dictionary<string, WindowBucket> windowBuckets,
+        Dictionary<string, WebviewBucket> webviewBuckets,
         IPermissionSetCatalog catalog)
     {
         if (root.ValueKind is not JsonValueKind.Object)
@@ -66,9 +76,16 @@ public static class CapabilityLoader
         }
 
         var identifier = requiredString(root, "identifier", file);
-        var windows = ReadStringArray(root, "windows", file, required: true);
+        var windows = ReadStringArray(root, "windows", file, required: false);
+        var webviews = ReadStringArray(root, "webviews", file, required: false);
         var events = ReadStringArray(root, "events", file, required: false);
         ValidatePlatforms(root, file);
+
+        if (windows.Length == 0 && webviews.Length == 0)
+        {
+            throw new InvalidDataException(
+                $"[{file}] Capability '{identifier}' must declare at least one 'windows' or 'webviews' target.");
+        }
 
         var seenPermissions = new HashSet<string>(StringComparer.Ordinal);
         foreach (var permission in ReadPermissions(root, file))
@@ -82,22 +99,33 @@ public static class CapabilityLoader
             var (members, scope) = ResolveGrant(permission, catalog, file);
             foreach (var label in windows)
             {
-                var bucket = buckets.GetOrAddValue(label, static () => new WindowBucket());
-                foreach (var member in members)
-                {
-                    bucket.Permissions.Add(member);
-                }
-
-                if (scope is not null)
-                {
-                    bucket.Scopes[permission.Identifier] = scope;
-                }
-
-                foreach (var eventName in events)
-                {
-                    bucket.Events.Add(eventName);
-                }
+                var bucket = windowBuckets.GetOrAddValue(label, static () => new WindowBucket());
+                ApplyGrant(bucket, members, scope, events);
             }
+
+            foreach (var label in webviews)
+            {
+                var bucket = webviewBuckets.GetOrAddValue(label, static () => new WebviewBucket());
+                ApplyGrant(bucket, members, scope, events);
+            }
+        }
+    }
+
+    private static void ApplyGrant(SurfaceBucket bucket, string[] members, PermissionScope? scope, string[] events)
+    {
+        foreach (var member in members)
+        {
+            bucket.Permissions.Add(member);
+        }
+
+        if (scope is not null)
+        {
+            bucket.Scopes[members[0]] = scope;
+        }
+
+        foreach (var eventName in events)
+        {
+            bucket.Events.Add(eventName);
         }
     }
 
@@ -296,19 +324,45 @@ public static class CapabilityLoader
         return element.GetString()!;
     }
 
-    private static Dictionary<string, CapabilitySet> ToCapabilityMap(Dictionary<string, WindowBucket> buckets) =>
-        buckets.ToDictionary(
-            static pair => pair.Key,
-            static pair => new CapabilitySet(pair.Value.Permissions, pair.Value.Events, pair.Value.Scopes),
-            StringComparer.Ordinal);
+    private static CapabilityManifests ToManifests(
+        Dictionary<string, WindowBucket> windowBuckets,
+        Dictionary<string, WebviewBucket> webviewBuckets) =>
+        new(
+            windowBuckets.ToDictionary(
+                static pair => pair.Key,
+                static pair => pair.Value.ToCapabilitySet(),
+                StringComparer.Ordinal),
+            webviewBuckets.ToDictionary(
+                static pair => pair.Key,
+                static pair => pair.Value.ToCapabilitySet(),
+                StringComparer.Ordinal));
 
-    private sealed class WindowBucket
+    private abstract class SurfaceBucket
     {
         public HashSet<string> Permissions { get; } = new(StringComparer.Ordinal);
         public HashSet<string> Events { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, PermissionScope> Scopes { get; } = new(StringComparer.Ordinal);
+
+        public CapabilitySet ToCapabilitySet() => new(Permissions, Events, Scopes);
+    }
+
+    private sealed class WindowBucket : SurfaceBucket
+    {
+    }
+
+    private sealed class WebviewBucket : SurfaceBucket
+    {
     }
 }
+
+/// <summary>
+/// The two grant surfaces loaded from a capability directory: grants keyed by window label and
+/// grants keyed by web view label. A web view surface resolves to the union of its host window's
+/// set and every <c>webviews</c>-selected grant whose label matches exactly.
+/// </summary>
+public sealed record CapabilityManifests(
+    IReadOnlyDictionary<string, CapabilitySet> Windows,
+    IReadOnlyDictionary<string, CapabilitySet> Webviews);
 
 internal static class DictionaryExtensions
 {

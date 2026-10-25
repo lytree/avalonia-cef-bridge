@@ -1,4 +1,4 @@
-# 前端桥接:`@lytree/api`
+﻿# 前端桥接:`@lytree/api`
 
 > `@lytree/api` 为每个插件契约提供强类型模块;主入口和子路径导出均支持。
 >
@@ -116,7 +116,7 @@ await invoke('plugin:http|fetch', {
 });
 ```
 
-Channel 没有消费侧背压:`SendAsync` 在脚本提交后即返回,不等 `onmessage` 执行完;前端处理慢时在途帧会在桥内累积。需要严格限速时由业务侧自行控制(见 `docs/design/tauri-v2-refactor-design.md` R3-A)。
+Channel 具备消费侧背压(`channel-credit-v1`):原生侧在途帧上限 16,前端 `onmessage`(可为异步)落定后回发 ACK 归还信用;未握手的老前端保持 fire-and-forget。协议细节见 `docs/design/ipc.md` §2。
 
 ## 6. 模块一览(30 个)
 

@@ -17,10 +17,21 @@ internal sealed class WindowEventFanout(string windowLabel, IWebviewSinkRegistry
     {
         foreach (var label in webviews.WebviewLabelsFor(windowLabel))
         {
-            if (webviews.TryGetSink(label, out var sink))
+            if (!webviews.TryGetSink(label, out var sink))
             {
-                await sink.SendEventAsync(eventName, payload, cancellationToken);
+                continue;
             }
+
+            // Defense in depth: a surface whose own profile does not carry the event is skipped even
+            // though its window receives it. In the current model every surface's set is the union of
+            // its window profile and webviews-selected grants, so this never narrows a window grant —
+            // it keeps the per-webview authorization boundary explicit if surface sets ever diverge.
+            if (webviews.TryGetCapabilities(label, out var capabilities) && !capabilities.AllowsEvent(eventName))
+            {
+                continue;
+            }
+
+            await sink.SendEventAsync(eventName, payload, cancellationToken);
         }
     }
 }

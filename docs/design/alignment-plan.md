@@ -1,4 +1,4 @@
-# Tarui 桌面功能对齐 Tauri 实施步骤
+﻿# Tarui 桌面功能对齐 Tauri 实施步骤
 
 > 状态：实施跟踪（混合基线）
 > 基线日期：2026-09-19
@@ -58,7 +58,7 @@ Tarui 的目标不是逐行复刻 Tauri 的 Rust 内部实现，而是在 .NET�
 | Process | 已实现 | 退出、重新启动 |
 | Opener / Shell | 已实现 | 使用系统默认程序打开 URL 或绝对路径 |
 | Capability | 已实现 | allow/deny scope、glob、事件接收授权、`-other-window` 守卫 |
-| Channel | 已实现 | 端到端流式 IPC：Web `Channel.toJSON()` 令牌 → 原生 `TaruiChannel<T>` → ChannelEnvelope 帧 → 前端 `onmessage`；`SendAsync` 只 await 到脚本提交，渲染侧消费无回执、无信用额度，属**无界在途**（背压设计见 `tauri-v2-refactor-design.md` R3-A）；解锁 fs/HTTP 流式与 Shell stdio |
+| Channel | 已实现 | 端到端流式 IPC：Web `Channel.toJSON()` 令牌 → 原生 `TaruiChannel<T>` → ChannelEnvelope 帧 → 前端 `onmessage`；`channel-credit-v1` 提供真实背压（在途帧上限 16，`onmessage` 落定后 ACK 归还信用，见 `docs/design/ipc.md` §2）；解锁 fs/HTTP 流式与 Shell stdio |
 | File System | 已实现(Windows) | 16 条命令（9 条基础 + `read-file-stream` + `write-begin|chunk|commit|cancel` + `watch|unwatch`）；流式读突破 8 MiB 单次上限，分片写保持原子替换语义；目录 watch 以 `fs://watch-change` 定向投递 |
 | Menu / Tray | 已实现(Windows) | Menu 三命令 + Tray 六命令 + 上下文菜单 popup（`plugin:menu|show-context-menu`）；owner 窗口生命周期挂钩，Host 退出时显式释放 |
 | Single Instance | 已实现(Windows) | Mutex + 命名管道/Unix socket 转发，主窗口未就绪入队、`Flush()` 补投 `app://second-instance`；macOS/Linux 路径已写但未运行验证 |

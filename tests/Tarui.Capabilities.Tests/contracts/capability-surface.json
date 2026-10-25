@@ -14,6 +14,12 @@
     "webview://",
     "window://"
   ],
+  "errorCodes": [
+    "COMMAND_NOT_FOUND",
+    "PERMISSION_DENIED",
+    "INVALID_MESSAGE",
+    "BRIDGE_ERROR"
+  ],
   "registeredPermissions": [
     "core:app|get-info",
     "core:channel|stream-echo",

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Channels;
 
@@ -23,7 +23,7 @@ public interface IChannelSink
     }
 }
 
-/// <summary>Holds the sink current dispatch so <see cref="ChannelContext.Bind{T}"/> can bind an incoming channel token.</summary>
+/// <summary>Holds the sink current dispatch so <see cref="ChannelContext"/> can bind an incoming channel token.</summary>
 public sealed class ChannelSinkContext
 {
     private static readonly AsyncLocal<IChannelSink?> _current = new();
@@ -47,22 +47,30 @@ public static class ChannelContext
     /// Returns a <see cref="TaruiChannel{T}"/> bound to the invoking surface. When no sink is in scope or the
     /// token is empty, an unbound in-memory channel is returned so library/test paths keep working.
     /// </summary>
-    public static TaruiChannel<T> Bind<T>(string? channelId)
+    public static TaruiChannel<T> Bind<T>(string? channelId) =>
+        Bind(channelId, (JsonTypeInfo<T>)TaruiJsonContext.Default.GetTypeInfo(typeof(T))!);
+
+    /// <summary>
+    /// Same as <see cref="Bind{T}(string?)"/>, but the payload metadata comes from the caller — a plugin
+    /// that owns its DTOs passes its own <c>JsonSerializerContext</c> instead of registering its types
+    /// in the central <c>TaruiJsonContext</c>. This keeps plugin contracts self-contained.
+    /// </summary>
+    public static TaruiChannel<T> Bind<T>(string? channelId, JsonTypeInfo<T> payloadType)
     {
+        ArgumentNullException.ThrowIfNull(payloadType);
         var sink = ChannelSinkContext.Current;
         if (sink is null || string.IsNullOrEmpty(channelId))
         {
             return new TaruiChannel<T>();
         }
 
-        var payloadType = (JsonTypeInfo<T>)TaruiJsonContext.Default.GetTypeInfo(typeof(T))!;
         return TaruiChannel<T>.Bind(sink, channelId, payloadType);
     }
 }
 
 /// <summary>
 /// A streaming argument that a native command receives and writes incrementally. When bound to the invoking
-/// surface's <see cref="IChannelSink"/> (via <see cref="ChannelContext.Bind{T}"/>) <see cref="SendAsync(T, CancellationToken)"/>
+/// surface's <see cref="IChannelSink"/> (via <see cref="ChannelContext"/>) <see cref="SendAsync(T, CancellationToken)"/>
 /// pushes each payload back to the front-end. Without a sink it degrades to an in-memory buffered channel
 /// (readable via <see cref="ReadAllAsync"/>) so it remains testable outside a running host.
 /// </summary>

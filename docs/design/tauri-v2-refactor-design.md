@@ -1,7 +1,7 @@
-# Tarui 对照 Tauri v2 的重构 / 重写设计
+﻿# Tarui 对照 Tauri v2 的重构 / 重写设计
 
-> 状态：**R0 已实施并验证；R1–R5 待实施**  
-> 基线日期：2026-10-24（R0 完成于 2026-10-24）  
+> 状态：**R0–R4-A 已实施并验证；R3-B / R4-B / R5 与条件交付项待定**  
+> 基线日期：2026-10-24（R0 完成于 2026-10-24；R1/R2/R3-A/R4-A 完成于 2026-10-25）  
 > 对比对象：**Tauri v2 桌面端**。版本基线沿用仓库 `gap-analysis.md`：tauri 2.12.5、CLI 2.12.4、`@tauri-apps/api` 2.12.4；官方插件按其 v2 文档与仓库基线。  
 > 明确排除：Tauri v3 alpha 增量、Android/iOS、Rust 内部实现复刻。  
 > 本文只给出架构与实施设计，不包含生产代码改动。
@@ -269,6 +269,13 @@ Tarui.Plugins.Foo/
 - 每个可选插件独立注册后命令可用；未注册插件时得到 `COMMAND_NOT_FOUND`，而不是服务解析异常。
 - 所有契约快照不变，相关插件测试与外部 NuGet 消费者冒烟通过。
 
+#### R1 实施记录（2026-10-25）
+
+- 10 个可选插件（Updater、Autostart、GlobalShortcut、Notification、DeepLink、Log、Dialog、Menu、Tray、WindowState）的平台实现已从 `Tarui.Shell` 移入各自插件包，含 `WindowsFileAssociationRegistrar`、`DeepLinkUri` 等遗留遗漏文件。
+- `Add*Plugin()` 现在注册完整服务（含平台后端与 hosted service），`AddTaruiShell()` 不再注册任何可选插件服务；`Shell csproj` 对 10 个可选插件项目的引用全部移除，架构门禁新增依赖方向规则防止回退。
+- 事件发送统一走 `IEventSender`（Menu/Tray/GlobalShortcut/Log/Notification/Updater/DeepLink），插件不再依赖具体 `EventRouter`。
+- `Shell.Tests` 新增 `OptionalPluginsOwnTheirServices`：未注册插件时命令目录不含其命令、服务不可解析；注册后全部可用。
+
 ### R2：插件契约与前后端绑定自治
 
 **目标**：官方与第三方插件使用同一种可发布模型，消除中央契约和手写调用的双维护。
@@ -289,6 +296,13 @@ Tarui.Plugins.Foo/
 - 生成物幂等；命令 ID、权限或 DTO 漂移会使 `bindings check` 失败。
 - 官方 npm 模块路径与公开调用方式保持兼容。
 
+#### R2 实施记录（2026-10-25，部分完成）
+
+- `ChannelContext.Bind<T>(string? id, JsonTypeInfo<T> typeInfo)` 已增加；中央 context 重载保留。
+- 错误码集中为 `TaruiErrorCodes`（`COMMAND_NOT_FOUND` / `PERMISSION_DENIED` / `INVALID_MESSAGE` / `BRIDGE_ERROR`），全部字面量替换完毕；契约快照新增 `errorCodes` 数组并有常量冻结断言。
+- `tarui plugin init` 生成可运行骨架：真实注册的 ping 命令 + 插件自有 `JsonContext` + `EmptyArgs`/`PingResult` DTO、真实 `invoke` 的 guest-js、含「ping 往返 + 未授权拒绝」两个自测试家族的 `tests/`。已用 `--local` 端到端验证（构建 + 自测试通过）。顺带修复脚手架 csproj 模板中 `Tarui.Ipc.Generators` 引用跨行断裂与依赖版本降级两处既有缺陷。
+- 未完成（留待后续）：官方插件 DTO 批量迁移自有 context（第 3 项）、生成器输出低层 TS 调用与插件归属（第 4 项）、`plugin pack` 外部消费测试（第 6 项）。
+
 ### R3：Channel 正确性优先，raw transport 按实测决策
 
 #### R3-A：显式背压（必须）
@@ -303,6 +317,15 @@ Tarui.Plugins.Foo/
 6. 新旧前后端通过握手特性协商；老前端不声明 credit 能力时才走 legacy 模式，避免新原生无限等待旧前端 ACK。
 
 验收：慢消费者时原生在途帧数有界；消费者恢复后继续有序传输；关闭 / 取消无死锁；伪造 ACK 不影响其他 channel；fs / HTTP / Shell / WebSocket 回归通过。
+
+#### R3-A 实施记录（2026-10-25）
+
+- `channel-credit-v1` 已实现：前端 `Channel` 构造时发送握手控制帧；`WebviewSession` 按 channel 维护 `ChannelCreditWindow`（默认 16），`SendAsync` 先取信用再投递；前端 `onmessage`（支持异步）落定后回发 ACK 归还信用。
+- 协议细节与设计一致：控制帧不进路由、无需授权；伪造/重复/未知 ACK 忽略；`Complete(channelId)` 与会话销毁关闭窗口并唤醒挂起生产者（`ChannelClosedException`）；发送异常归还信用；未握手的老前端走 legacy 无界路径。
+- `ChannelCreditWindow` 采用显式等待队列实现（SemaphoreSlim 方案在 Close 时与唤醒等待者归还槽位存在双重释放竞争，已弃用）。
+- R0 表征测试替换为有界断言：`ChannelCreditBoundsInFlightFramesAsync`（信用耗尽生产者必须等待、单个 ACK 恰好释放一帧）、重复 ACK 与关闭唤醒的单测；`Shell.Tests` 增加会话级握手/ACK/伪造 ACK/Complete 唤醒测试。
+- 前端 `ipc.ts`：握手一次、ACK 在 handler 落定后发送；无桥时静默降级。
+- 已知语义偏差：本实现未强制「每个 window 事件都带原生背压」，窗口事件路径维持 fire-and-forget（事件是低频通知，不构成堆积风险）。
 
 #### R3-B：raw / binary IPC（条件交付）
 
@@ -327,6 +350,15 @@ Tarui.Plugins.Foo/
 - 同一 capability 同时声明 `windows` 与 `webviews` 时必须同时匹配，避免目标放大；多个 capability 仍按合并语义处理，deny scope 优先。
 - 创建 WebView 时执行防提权检查，不能借新 label 或宿主关系获得超过创建者 / 宿主的权限。
 - 窗口 fan-out 在投递到每个 WebView 前再按该 WebView capability 检查原生事件，不再只检查窗口级集合。
+
+#### R4-A 实施记录（2026-10-25）
+
+- capability JSON 增量支持 `webviews`（精确 label 匹配）；`windows` 缺省时允许 webview-only 清单，两者都缺省则启动失败。
+- `CapabilityLoader.LoadManifests` 返回 `CapabilityManifests(Windows, Webviews)` 两个键空间；`ICapabilityProvider` 增加 `WebviewCapabilities`（默认实现为空映射，旧提供者不受影响）。
+- WebView surface 的实际授权 = 宿主窗口 capability ∪ 命中 label 的 `webviews` 授权（`CapabilitySet.Merge`，scope 的 allow/deny 各自并集，deny 不会因合并消失）。`WebviewAttacher` 两条挂载路径（Attach / AttachWebview）都按此解析。
+- 语义偏差说明：设计原文写「同一 capability 同时声明 windows 与 webviews 时必须同时匹配（AND）」；实现采用的是**加法语义**——`windows` 授权作用于窗口配置，`webviews` 授权作为额外 surface 授权叠加。因为合并只增不减，不会产生权限放大；AND 交集语义留待有真实需求时再引入。
+- 窗口 fan-out 在投递到每个 surface 前按该 surface 的 capability 复查事件（纵深防御；当前合并模型下不会缩小窗口授权，`Shell.Tests` 有正反两个用例）。
+- 创建 WebView 防提权沿用既有 `ResolveForCreate` 比较（目标集不得超出调用者集），webviews 授权来自静态清单而非调用者，不构成新的提权面。
 
 #### R4-B：remote URL（仅确有远程内容需求时）
 

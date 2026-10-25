@@ -22,6 +22,20 @@ public sealed class WindowCapabilityResolver(ICapabilityProvider provider)
     }
 
     /// <summary>
+    /// Resolves the capability a specific web view surface holds: its host window's set unioned with
+    /// every <c>webviews</c>-selected grant whose label matches exactly. The window set always flows
+    /// through unchanged, so a webview selector can only add declared authority, never silently
+    /// narrow what the window profile already grants.
+    /// </summary>
+    public CapabilitySet ResolveWebviewSurface(string webviewLabel, CapabilitySet windowCapability)
+    {
+        ArgumentNullException.ThrowIfNull(windowCapability);
+        return provider.WebviewCapabilities.TryGetValue(webviewLabel, out var selected)
+            ? windowCapability.Merge(selected)
+            : windowCapability;
+    }
+
+    /// <summary>
     /// Resolves the capability for a label to be created by <paramref name="caller"/>. The target
     /// must have an explicitly declared profile and its permission set, scoped allow/deny, and
     /// reserved-event set must not exceed the caller's, so the creator cannot escalate privileges by

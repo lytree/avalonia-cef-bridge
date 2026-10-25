@@ -1,4 +1,4 @@
-# IPC 模型
+﻿# IPC 模型
 
 > Command / Event / Channel 三类 IPC、能力闸门、错误码、DTO 元数据。
 
@@ -53,7 +53,14 @@ WebviewSession: ExecuteScriptAsync(`window.__taruiChannelInvoke("token", chunk)`
 Web: Channel.onmessage(chunk) → … → Channel.onclose()
 ```
 
-背压的真实边界:`WebviewSession.SendAsync` 只 await 到 `ExecuteScriptAsync` 把脚本提交给 UI 线程/浏览器队列。CEF 适配层对该调用是 fire-and-forget,它不等待渲染进程执行 `Channel.onmessage`,响应路径也没有消费回执;`TaruiChannel<T>` 的绑定路径与无 sink 的内存路径都是无界缓冲。因此生产者只受「脚本提交节奏」约束,渲染侧消费不受限——慢消费者会让在途帧持续累积。可协商的信用额度/ACK 背压(`channel-credit-v1`)在 `tauri-v2-refactor-design.md` R3-A 中设计;落地前不要把当前行为当作有界流控。`WebviewAttacher` 仍维护 `ChannelTokenRegistry`,确保 `SendAsync` 在 WebView 未就绪时延迟绑定。
+背压由 `channel-credit-v1` 协商协议显式成立(见 `tauri-v2-refactor-design.md` R3-A,已实现):
+
+1. **握手**:前端 `@lytree/api` 首次创建 `Channel` 时,通过桥发送 `{"protocol":1,"type":"channel-handshake","capabilities":["channel-credit-v1"]}` 控制帧;控制帧不进命令路由,无需 capability 条目。
+2. **有界在途**:握手后,`WebviewSession.SendAsync` 在发送前从 `ChannelCreditWindow`(每 channel 一个,默认容量 16)取信用;信用耗尽时生产者挂起等待,不再向渲染进程堆积帧。未握手的旧前端保持原有 fire-and-forget 行为,不会死锁。
+3. **ACK 释放**:前端把帧按序派发给 `onmessage`(支持异步处理函数,Promise 落定后才算消费完成),然后回发 `{"protocol":1,"type":"channel-ack","channel":"<id>"}` 归还信用。伪造、重复或未知 channel 的 ACK 被忽略——窗口只归还真实取走的信用,不会凭空铸造额度。
+4. **终止与取消**:`WebviewSession.Complete(channelId)` 或会话销毁会关闭窗口并唤醒所有挂起的生产者(以 `ChannelClosedException` 停止);发送异常时信用立即归还,避免生产者永久卡死。
+
+`WebviewAttacher` 仍维护 `ChannelTokenRegistry`,确保 `SendAsync` 在 WebView 未就绪时延迟绑定。插件如持有自有 DTO,可通过 `ChannelContext.Bind<T>(channelId, pluginJsonContext.Default.T)` 显式提供 JSON 元数据,不必把类型登记进中心 `TaruiJsonContext`。
 
 ## 3. 能力闸门
 

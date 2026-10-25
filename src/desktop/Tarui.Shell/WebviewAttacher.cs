@@ -63,7 +63,9 @@ public sealed partial class WebviewAttacher
         var capability = callerContext is null
             ? _capabilityResolver.Resolve(options.Label)
             : _capabilityResolver.ResolveForCreate(options.Label, callerContext);
-        var context = new CommandContext(options.Label, options.Label, capability, _scopeOverlay);
+        // The surface may hold extra webviews-selected grants; the window profile stays the base.
+        var surface = _capabilityResolver.ResolveWebviewSurface(options.Label, capability);
+        var context = new CommandContext(options.Label, options.Label, surface, _scopeOverlay);
 
         var (session, presenter) = CreateSession(context, ResolveSource(options.Url, _appOrigin));
 
@@ -82,9 +84,10 @@ public sealed partial class WebviewAttacher
     }
 
     /// <summary>
-    /// Mounts an additional web view inside an existing window. The new surface inherits the host
-    /// window's capability profile, so attaching can never grant more authority than the window
-    /// already holds. Must run on the UI thread (it touches the window's visual tree).
+    /// Mounts an additional web view inside an existing window. The new surface holds the host
+    /// window's capability profile unioned with any <c>webviews</c>-selected grants that name its
+    /// label exactly, so attaching can never grant more authority than the manifests declare. Must
+    /// run on the UI thread (it touches the window's visual tree).
     /// </summary>
     public WebviewEntry AttachWebview(
         ShellWindow window,
@@ -94,7 +97,8 @@ public sealed partial class WebviewAttacher
         WebviewBounds? bounds)
     {
         var host = _registry.Get(windowLabel);
-        var context = new CommandContext(windowLabel, webviewLabel, host.Context.Capabilities, _scopeOverlay);
+        var surface = _capabilityResolver.ResolveWebviewSurface(webviewLabel, host.Context.Capabilities);
+        var context = new CommandContext(windowLabel, webviewLabel, surface, _scopeOverlay);
         var (session, presenter) = CreateSession(context, source);
 
         window.AddWebview(presenter);

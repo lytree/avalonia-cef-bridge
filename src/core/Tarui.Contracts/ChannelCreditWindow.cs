@@ -1,4 +1,4 @@
-namespace Tarui.Contracts;
+﻿namespace Tarui.Contracts;
 
 /// <summary>
 /// Bounded in-flight accounting for one streaming channel (<c>channel-credit-v1</c>).

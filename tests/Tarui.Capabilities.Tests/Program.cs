@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using Tarui.Contracts;
 using Tarui.Ipc;
@@ -20,6 +20,12 @@ internal static class Program
         LoaderRejectsDuplicatePermissionIdentifiers();
         LoaderRejectsInvalidPlatform();
         LoaderRejectsMissingWindows();
+        LoaderRejectsManifestWithoutAnyTarget();
+        LoaderParsesWebviewSelectorGrants();
+        LoaderAcceptsWebviewOnlyManifest();
+        CapabilitySetMergeUnionsGrantsWithoutDroppingDenies();
+        ErrorCodesMatchFrozenWireContract();
+        WebviewSurfaceResolverMergesWindowAndSelectedGrants();
         LoaderRejectsInvalidScope();
         CatalogMaterializesDefaultAndGuardSets();
         CatalogHonorsCuratedAndExcludedSets();
@@ -430,6 +436,138 @@ internal static class Program
             "A manifest without 'windows' must fail startup.");
     }
 
+    /// <summary>
+    /// The error codes the bridge returns on the wire are frozen contract, not implementation detail:
+    /// the guest <c>invoke</c> branches on them. This pins the constants to their literal values so a
+    /// rename cannot slip through as a refactor.
+    /// </summary>
+    private static void ErrorCodesMatchFrozenWireContract()
+    {
+        Assert(
+            TaruiErrorCodes.CommandNotFound == "COMMAND_NOT_FOUND" &&
+            TaruiErrorCodes.PermissionDenied == "PERMISSION_DENIED" &&
+            TaruiErrorCodes.InvalidMessage == "INVALID_MESSAGE" &&
+            TaruiErrorCodes.BridgeError == "BRIDGE_ERROR",
+            "Wire error codes are frozen contract; changing one is a reviewed contract change.");
+    }
+
+    private static void LoaderRejectsManifestWithoutAnyTarget()
+    {
+        AssertThrows<InvalidDataException>(
+            () => WriteAndLoadManifests("""
+                { "identifier": "nowhere", "permissions": [] }
+                """),
+            "A manifest declaring neither 'windows' nor 'webviews' must fail startup.");
+    }
+
+    private static void LoaderParsesWebviewSelectorGrants()
+    {
+        var manifests = WriteAndLoadManifests("""
+            {
+              "identifier": "side-tools",
+              "windows": ["main"],
+              "webviews": ["side"],
+              "permissions": ["plugin:fs|read-text-file"]
+            }
+            """);
+
+        Assert(
+            manifests.Windows["main"].Allows("plugin:fs|read-text-file"),
+            "A windows target keeps granting to the window profile.");
+        Assert(
+            manifests.Webviews["side"].Allows("plugin:fs|read-text-file"),
+            "A webviews target grants to the matching web view label.");
+        Assert(
+            !manifests.Webviews.ContainsKey("main"),
+            "A webviews grant must not leak to unrelated surface labels.");
+    }
+
+    private static void LoaderAcceptsWebviewOnlyManifest()
+    {
+        var manifests = WriteAndLoadManifests("""
+            {
+              "identifier": "surface-only",
+              "webviews": ["side"],
+              "permissions": ["plugin:fs|read-text-file"],
+              "events": ["fs://watch"]
+            }
+            """);
+
+        Assert(
+            manifests.Windows.Count == 0,
+            "A webview-only manifest must not fabricate a window profile.");
+        var side = manifests.Webviews["side"];
+        Assert(
+            side.Allows("plugin:fs|read-text-file") && side.AllowsEvent("fs://watch"),
+            "A webview-only manifest grants its permissions and events to the named surface.");
+    }
+
+    private static void CapabilitySetMergeUnionsGrantsWithoutDroppingDenies()
+    {
+        var window = new CapabilitySet(
+            ["plugin:fs|read-text-file"],
+            ["window://focus-changed"],
+            [new KeyValuePair<string, PermissionScope>(
+                "plugin:fs|read-text-file",
+                new PermissionScope([new PathScope("/data", "*.txt")], [new PathScope("/data", "secret*")]))]);
+        var selected = new CapabilitySet(
+            ["plugin:http|fetch", "plugin:fs|read-text-file"],
+            ["fs://watch"],
+            [new KeyValuePair<string, PermissionScope>(
+                "plugin:fs|read-text-file",
+                new PermissionScope([new PathScope("/data", "*.log")], [new PathScope("/data", "logs/secret*")]))]);
+
+        var merged = window.Merge(selected);
+
+        Assert(
+            merged.Allows("plugin:fs|read-text-file") &&
+            merged.Allows("plugin:http|fetch") &&
+            merged.AllowsEvent("window://focus-changed") &&
+            merged.AllowsEvent("fs://watch"),
+            "A merge unions permissions and events from both sides.");
+        Assert(
+            merged.TryGetScope("plugin:fs|read-text-file", out var scope) &&
+            scope.Allow.Contains(new PathScope("/data", "*.txt")) &&
+            scope.Allow.Contains(new PathScope("/data", "*.log")) &&
+            scope.Deny.Contains(new PathScope("/data", "secret*")) &&
+            scope.Deny.Contains(new PathScope("/data", "logs/secret*")),
+            "A merge keeps every allow and deny rule, so denies cannot be merged away.");
+    }
+
+    private static void WebviewSurfaceResolverMergesWindowAndSelectedGrants()
+    {
+        var windowProfile = new CapabilitySet(["plugin:fs|read-text-file"]);
+        var selected = new CapabilitySet(["plugin:http|fetch"]);
+        var provider = new StaticProvider(
+            new Dictionary<string, CapabilitySet> { ["main"] = windowProfile },
+            new Dictionary<string, CapabilitySet> { ["side"] = selected });
+        var resolver = new WindowCapabilityResolver(provider);
+
+        var side = resolver.ResolveWebviewSurface("side", windowProfile);
+        Assert(
+            side.Allows("plugin:fs|read-text-file") && side.Allows("plugin:http|fetch"),
+            "A selected surface holds its window profile plus the webviews grant.");
+
+        var main = resolver.ResolveWebviewSurface("main", windowProfile);
+        Assert(
+            main.Allows("plugin:fs|read-text-file") && !main.Allows("plugin:http|fetch"),
+            "An unselected surface keeps exactly the window profile.");
+
+        var unknown = resolver.ResolveWebviewSurface("other", windowProfile);
+        Assert(
+            unknown.Allows("plugin:fs|read-text-file") && !unknown.Allows("plugin:http|fetch"),
+            "A surface with no webviews grant keeps exactly the window profile.");
+    }
+
+    private sealed class StaticProvider(
+        IReadOnlyDictionary<string, CapabilitySet> windows,
+        IReadOnlyDictionary<string, CapabilitySet> webviews) : ICapabilityProvider
+    {
+        public IReadOnlyDictionary<string, CapabilitySet> Capabilities => windows;
+
+        public IReadOnlyDictionary<string, CapabilitySet> WebviewCapabilities => webviews;
+    }
+
     private static void LoaderRejectsInvalidScope()
     {
         AssertThrows<InvalidDataException>(
@@ -791,6 +929,14 @@ internal static class Program
         builder.Append("{\n");
         AppendJsonArray(builder, "reservedEventPrefixes", "  ", EventNames.ReservedPrefixes.Order(StringComparer.Ordinal));
         builder.Append(",\n");
+        AppendJsonArray(builder, "errorCodes", "  ",
+        [
+            TaruiErrorCodes.CommandNotFound,
+            TaruiErrorCodes.PermissionDenied,
+            TaruiErrorCodes.InvalidMessage,
+            TaruiErrorCodes.BridgeError,
+        ]);
+        builder.Append(",\n");
         AppendJsonArray(builder, "registeredPermissions", "  ", registeredPermissions.Order(StringComparer.Ordinal));
         builder.Append(",\n");
         builder.Append("  \"demoCapabilities\": {\n");
@@ -900,6 +1046,13 @@ internal static class Program
         using var directory = new TempDirectory();
         directory.Write("cap.json", manifestJson);
         return CapabilityLoader.Load(directory.Path);
+    }
+
+    private static CapabilityManifests WriteAndLoadManifests(string manifestJson)
+    {
+        using var directory = new TempDirectory();
+        directory.Write("cap.json", manifestJson);
+        return CapabilityLoader.LoadManifests(directory.Path, PermissionSetCatalog.Empty);
     }
 
     private static void AssertThrows<TException>(Action action, string message)

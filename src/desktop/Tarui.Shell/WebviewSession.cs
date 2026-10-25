@@ -28,7 +28,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
     private const string NavigationRequestedEvent = "webview://navigation-requested";
     private const string RenderProcessGoneEvent = "webview://render-process-gone";
     private const string DevToolsProtocolEvent = "webview://devtools-protocol";
-    private const string BridgeErrorCode = "BRIDGE_ERROR";
+    
     private const string ChannelHandshakeType = "channel-handshake";
     private const string ChannelAckType = "channel-ack";
     private const string CreditCapability = "channel-credit-v1";
@@ -420,7 +420,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         try
         {
             var id = ExtractRequestId(json) ?? "unknown";
-            var response = InvokeResponse.Fail(id, BridgeErrorCode, exception.Message);
+            var response = InvokeResponse.Fail(id, TaruiErrorCodes.BridgeError, exception.Message);
             var payload = JsonSerializer.Serialize(response, TaruiJsonContext.Default.InvokeResponse);
             var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(payload));
             await _webView
