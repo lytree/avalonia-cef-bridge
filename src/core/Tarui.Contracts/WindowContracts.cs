@@ -73,6 +73,13 @@ public sealed record SetExtentOptions(double? Width, double? Height, string? Lab
 
 public sealed record SetFlagOptions(bool Value, string? Label = null);
 
+/// <summary>
+/// Fullscreens the window on the monitor that contains the physical point
+/// (<see cref="X"/>, <see cref="Y"/>). Mirrors Tauri's <c>setFullscreenOnMonitor</c>: a point that
+/// falls outside every connected monitor leaves the window untouched instead of failing.
+/// </summary>
+public sealed record SetFullscreenOnMonitorOptions(double X, double Y, string? Label = null);
+
 /// <summary>Sets the window icon from PNG bytes, or clears it when <see cref="Png"/> is null.</summary>
 public sealed record SetIconOptions(byte[]? Png = null, string? Label = null);
 

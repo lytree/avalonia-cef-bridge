@@ -20,6 +20,8 @@ internal static class Program
             await FileDatabasePersistsAcrossServicesAsync();
             await PathTraversalIsRejectedAsync();
             await InMemoryNeedsNoDiskFileAsync();
+            await AutoCreateFalseRejectsMissingDatabaseAsync();
+            await AutoCreateFalseOpensExistingDatabaseAsync();
             ScopeAuthorizerRespectsAllowDenyAndWildcards();
             PluginRegistersAllFourCommands();
             ConnectionStringHelpersClassifySchemes();
@@ -195,6 +197,39 @@ internal static class Program
         await service.ExecuteAsync(new SqlExecuteOptions(db, "CREATE TABLE t (v TEXT)"), default);
 
         Assert(Directory.GetFiles(root.Dir).Length == 0, "An in-memory database must not touch the file system.");
+    }
+
+    private static async Task AutoCreateFalseRejectsMissingDatabaseAsync()
+    {
+        using var root = CreateTempRoot();
+        await using var service = CreateService(root);
+
+        await AssertThrowsAsync(
+            () => service.LoadAsync(new SqlLoadOptions("sqlite://missing.db", AutoCreate: false), default).AsTask(),
+            "autoCreate: false must fail when the database file does not exist.");
+
+        Assert(
+            !File.Exists(Path.Combine(root.Dir, "missing.db")),
+            "autoCreate: false must not create the database file.");
+    }
+
+    private static async Task AutoCreateFalseOpensExistingDatabaseAsync()
+    {
+        using var root = CreateTempRoot();
+
+        await using (var writer = CreateService(root))
+        {
+            var created = await writer.LoadAsync(new SqlLoadOptions("sqlite://app.db"), default);
+            await writer.ExecuteAsync(new SqlExecuteOptions(created, "CREATE TABLE t (v TEXT)"), default);
+        }
+
+        await using var service = CreateService(root);
+        var reopened = await service.LoadAsync(new SqlLoadOptions("sqlite://app.db", AutoCreate: false), default);
+        var selected = await service.SelectAsync(new SqlExecuteOptions(reopened, "SELECT COUNT(*) FROM t"), default);
+
+        Assert(
+            selected.Rows.Length == 1,
+            "autoCreate: false must still open a database that already exists.");
     }
 
     private static void ScopeAuthorizerRespectsAllowDenyAndWildcards()

@@ -105,6 +105,9 @@ internal sealed class FakeWindowService : IWindowService
     public ValueTask<Unit> SetFullscreenAsync(string label, bool value, CancellationToken cancellationToken) =>
         RecordUnit($"set-fullscreen|{label}|{value}");
 
+    public ValueTask<Unit> SetFullscreenOnMonitorAsync(string label, double x, double y, CancellationToken cancellationToken) =>
+        RecordUnit($"set-fullscreen-on-monitor|{label}|{x},{y}");
+
     public ValueTask<WindowStateInfo> GetStateAsync(string label, CancellationToken cancellationToken)
     {
         Calls.Add($"get-state|{label}");

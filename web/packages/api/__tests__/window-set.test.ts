@@ -101,3 +101,26 @@ describe('window effects', () => {
     await pending
   })
 })
+
+describe('window.setFullscreenOnMonitor', () => {
+  it('sends the physical point together with the target label', async () => {
+    installIpcMock()
+    const pending = Window.getByLabel('editor').setFullscreenOnMonitor(2500, 300)
+    const call = lastInvoke()!
+    expect(call.command).toBe('core:window|set-fullscreen-on-monitor')
+    expect(call.payload.x).toBe(2500)
+    expect(call.payload.y).toBe(300)
+    expect(call.payload.label).toBe('editor')
+    send({ protocol: 1, id: call.id, success: true, payload: {} })
+    await pending
+  })
+
+  it('omits the label for the current window', async () => {
+    installIpcMock()
+    const pending = Window.getCurrent().setFullscreenOnMonitor(0, 0)
+    const call = lastInvoke()!
+    expect(call.payload.label).toBeUndefined()
+    send({ protocol: 1, id: call.id, success: true, payload: {} })
+    await pending
+  })
+})

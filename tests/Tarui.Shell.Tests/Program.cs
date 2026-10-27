@@ -67,6 +67,7 @@ internal static class Program
         ComposerGrantsApplicationCommandsThroughAppDefaultSet();
         ComposerRejectsUnknownPermissionSet();
         WindowEffectsMapProgressStatusesAndClampValues();
+        FullscreenTargetResolvesContainingMonitor();
         WindowEffectBadgeLabelsCollapseAboveNine();
         CapabilitySetProviderCachesDirectorySnapshot();
         AddTaruiShellRegistersShellServices();
@@ -518,6 +519,32 @@ internal static class Program
             WindowsWindowEffects.ProgressValuesFor(-5).Completed == 0,
             "Negative percentages must be clamped to zero.");
     }
+
+    private static void FullscreenTargetResolvesContainingMonitor()
+    {
+        var monitors = new[]
+        {
+            new PixelRect(0, 0, 1920, 1080),
+            new PixelRect(1920, 0, 2560, 1440),
+        };
+
+        Assert(
+            FullscreenTarget.Resolve(monitors, new PixelPoint(120, 240)) == 0,
+            "A point inside the first monitor must resolve to that monitor.");
+        Assert(
+            FullscreenTarget.Resolve(monitors, new PixelPoint(2500, 300)) == 1,
+            "A point inside the secondary monitor must resolve to the secondary monitor.");
+        Assert(
+            FullscreenTarget.Resolve(monitors, new PixelPoint(-40, 100)) == -1,
+            "A point left of every monitor must not resolve; Tauri treats that as a no-op.");
+        Assert(
+            FullscreenTarget.Resolve(monitors, new PixelPoint(5000, 5000)) == -1,
+            "A point beyond every monitor must not resolve.");
+        Assert(
+            FullscreenTarget.Resolve([], new PixelPoint(0, 0)) == -1,
+            "Without connected monitors there is no target.");
+    }
+
 
     private static void WindowEffectBadgeLabelsCollapseAboveNine()
     {

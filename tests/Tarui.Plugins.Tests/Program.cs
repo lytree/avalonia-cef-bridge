@@ -22,6 +22,7 @@ internal static class Program
         await FallsBackToContextWindowLabel();
         await SetsWindowIconAndTheme();
         await SetsWindowEffectsThroughCommands();
+        await FullscreensOnMonitorContainingPoint();
         await ReturnsWindowStateAndLabels();
         await EmitsEventsThroughEventPlugin();
         await ResolvesPathsThroughSystemPlugin();
@@ -95,6 +96,7 @@ internal static class Program
             "core:window|set-resizable",
             "core:window|set-decorations",
             "core:window|set-fullscreen",
+            "core:window|set-fullscreen-on-monitor",
             "core:window|get-state",
             "core:window|current-monitor",
             "core:window|primary-monitor",
@@ -259,6 +261,33 @@ internal static class Program
                 TaruiJsonContext.Default.SetBadgeCountOptions),
             new CommandContext("main", "main", new CapabilitySet(["core:window|set-badge-count"])));
         Assert(!denied.Success, "Cross-window badge updates must require the -other-window permission.");
+    }
+
+    private static async Task FullscreensOnMonitorContainingPoint()
+    {
+        var service = new FakeWindowService();
+        var router = BuildRouter(service);
+
+        var response = await router.InvokeAsync(
+            Request(
+                "core:window|set-fullscreen-on-monitor",
+                new SetFullscreenOnMonitorOptions(2500, 300),
+                TaruiJsonContext.Default.SetFullscreenOnMonitorOptions),
+            AllowAll());
+        Assert(response.Success, "Fullscreening on the monitor containing a point must succeed.");
+        Assert(
+            service.Calls.Contains("set-fullscreen-on-monitor|main|2500,300"),
+            "The physical point must reach the service with the caller window label.");
+
+        var denied = await router.InvokeAsync(
+            Request(
+                "core:window|set-fullscreen-on-monitor",
+                new SetFullscreenOnMonitorOptions(0, 0, "editor"),
+                TaruiJsonContext.Default.SetFullscreenOnMonitorOptions),
+            new CommandContext("main", "main", new CapabilitySet(["core:window|set-fullscreen-on-monitor"])));
+        Assert(
+            !denied.Success,
+            "Cross-window fullscreen-on-monitor must require the -other-window permission.");
     }
 
     private static async Task ReturnsWindowStateAndLabels()

@@ -59,6 +59,16 @@ describe('plugin:sql commands', () => {
     expect(await pending).toBe('db1')
   })
 
+  it('forwards autoCreate so a missing database is not created', async () => {
+    installIpcMock()
+    const pending = load({ connection: 'sqlite://app.db', autoCreate: false })
+    const call = lastInvoke()!
+    expect(call.command).toBe('plugin:sql|load')
+    expect(call.payload.autoCreate).toBe(false)
+    send({ protocol: 1, id: call.id, success: true, payload: 'db1' })
+    expect(await pending).toBe('db1')
+  })
+
   it('select forwards the handle, query and bound values', async () => {
     installIpcMock()
     const pending = select({ db: 'db1', query: 'SELECT * FROM t WHERE id = ?', values: [integer(1)] })

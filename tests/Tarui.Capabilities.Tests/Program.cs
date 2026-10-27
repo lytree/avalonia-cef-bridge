@@ -980,7 +980,7 @@ internal static class Program
     {
         ITaruiPlugin[] plugins =
         [
-            new global::Tarui.Plugins.Core.CorePlugin(),
+            new global::Tarui.Plugins.Core.CorePlugin(null!),
             new global::Tarui.Plugins.System.SystemPlugin(null!, null!, null!, null!, null!),
             new global::Tarui.Plugins.Window.WindowPlugin(null!),
             new global::Tarui.Plugins.Webview.WebviewPlugin(null!),

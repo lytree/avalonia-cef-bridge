@@ -47,7 +47,7 @@ export type {
   TaruiCommandResult,
 } from './generated/commands'
 
-export { getAppInfo } from './app'
+export { getAppInfo, exit as exitApp } from './app'
 export type { AppInfo } from './app'
 
 export {

@@ -122,7 +122,7 @@ dotnet run --project tests/Tarui.Bindings.Tests -- --update # 原生命令或 DT
 
 | 模块 | 命令前缀 | TS 模块命名 | 命名风格 |
 | --- | --- | --- | --- |
-| `core:app` | `core:app|get-info` | `@lytree/api/app` | 函数式 |
+| `core:app` | `core:app|get-info` / `core:app|exit` | `@lytree/api/app` | 函数式 |
 | `core:window` | `core:window|*` | `@lytree/api/window` | 类(Window) |
 | `core:event` | `core:event|emit` | `@lytree/api/event` | 函数式 |
 | `core:os` / `path` / `process` / `shell` / `clipboard` | 各自前缀 | `@lytree/api/{os,path,process,shell,clipboard}` | 函数式 |

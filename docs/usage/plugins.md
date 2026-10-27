@@ -116,6 +116,14 @@ await store.set('settings', { theme: 'dark' });
 
 其余三条权限按读写分离授权:`plugin:sql|allow-select`(查询)、`plugin:sql|allow-execute`(写入)、`plugin:sql|allow-close`(关句柄)。
 
+**autoCreate(对齐 Tauri sql 2.6.0)**:`load` 默认在文件不存在时创建数据库;传 `autoCreate: false` 则要求文件已存在,缺失时直接报错且不落盘——适合"只打开用户已有库"的场景:
+
+```ts
+import { load } from '@lytree/api/sql';
+
+const handle = await load({ connection: 'sqlite://notes.db', autoCreate: false });
+```
+
 前端用 `openDatabase` 拿句柄,值一律走 `?` 占位符绑定(**永不拼接**):
 
 ```ts

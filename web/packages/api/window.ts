@@ -252,6 +252,14 @@ export class Window {
     await invoke('core:window|set-fullscreen', { value, ...this.target() })
   }
 
+  /**
+   * Fullscreens the window on the monitor that contains the given physical point. Mirrors Tauri's
+   * `setFullscreenOnMonitor`; a point outside every monitor leaves the window untouched.
+   */
+  async setFullscreenOnMonitor(x: number, y: number): Promise<void> {
+    await invoke('core:window|set-fullscreen-on-monitor', { x, y, ...this.target() })
+  }
+
   async getState(): Promise<WindowState> {
     return invoke<WindowState>('core:window|get-state', this.target())
   }

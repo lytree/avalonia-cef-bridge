@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Window,
+  exitApp,
   getCurrentWindow,
   emit,
   getAppInfo,
@@ -294,6 +295,34 @@ function App() {
           </button>
           <button type="button" className="quiet" onClick={windowAction('window.fullscreen', () => currentWindow.setFullscreen(!(state?.isFullscreen ?? false)), 'fullscreen toggled')}>
             Toggle fullscreen
+          </button>
+          <button
+            type="button"
+            className="quiet"
+            onClick={windowAction(
+              'window.fullscreen-on-monitor',
+              async () => {
+                const monitor = await currentWindow.primaryMonitor()
+                if (!monitor) return
+                // Monitor geometry is logical; setFullscreenOnMonitor takes a physical point.
+                const x = Math.round((monitor.position.x + monitor.size.width / 2) * monitor.scaleFactor)
+                const y = Math.round((monitor.position.y + monitor.size.height / 2) * monitor.scaleFactor)
+                await currentWindow.setFullscreenOnMonitor(x, y)
+              },
+              'fullscreen on primary monitor',
+            )}
+          >
+            Fullscreen on primary
+          </button>
+          <button
+            type="button"
+            className="quiet"
+            onClick={() => void run('app.exit', async () => {
+              await exitApp(0)
+              return 'exit requested'
+            })}
+          >
+            Exit app
           </button>
           <button type="button" className="quiet" onClick={windowAction('window.always-on-top', () => currentWindow.setAlwaysOnTop(!(state?.isAlwaysOnTop ?? false)), 'always-on-top toggled')}>
             Toggle always-on-top

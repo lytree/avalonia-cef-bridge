@@ -1,7 +1,7 @@
 # Tarui 与 Tauri v2 功能差距分析
 
-> 状态：分析基线（2026-10-24 上游版本复核）
-> 基线日期：2026-10-24（上游版本复核，见 §1.2；能力快照沿用 2026-10-16 代码实测，见 §1.1）
+> 状态：分析基线（2026-10-26 上游版本复核 + 核心 2.12 能力面盘点）
+> 基线日期：2026-10-26（§1.3 核心 2.12 API 面复核；§1.2 为 2026-10-24 插件版本复核；能力快照沿用 2026-10-16 代码实测，见 §1.1）
 > 对比对象：Tauri v2 官方插件与核心 API（**tauri 2.12.5** / cli 2.12.4 / `@tauri-apps/api` 2.12.4，2026-10-21；updater 2.14.0、sql 2.6.0 等插件 2.x 为 2026-10-14）
 > 姊妹文档：[tauri-desktop-alignment-plan.md](./alignment-plan.md)（实施步骤与状态跟踪的权威入口，本文不重复其阶段门禁）、[`./architecture.md`](architecture.md)（架构总览）
 > 本文目的：静态盘点当前仓库实际能力，对照 Tauri v2 输出缺口清单与可优化项，供排期决策。
@@ -12,6 +12,7 @@
 - Tauri v2 桌面相关 25 个官方能力中：已对齐约 **23 个**（多为 Windows 验证）、部分对齐 1 个（deep-link 待真机验收）；**SQL 已于 2026-10-16 落地**，剩余缺失仅 **stronghold**（加密存储）。
 - **最高优先缺口（P0）**：桌面框架核心能力已全部落地。原唯一的**架构级缺口**（单窗口多 WebView）已于 2026-10-17 完成（V3-1：窗口/WebView 实体分离 + 多 surface 挂载，见 [`tauri-v3-alignment.md`](tauri-v3-alignment.md) §4.2）；其余为平台真机验收与 P2 按需增强。
 - 平台现实：所有原生能力当前仅 Windows 完成验证；autostart 已有 macOS/Linux 实现，notification/global-shortcut 在非 Windows 为诚实降级并通过 `core:platform|capabilities` 如实暴露。CLI 新增 `app-bundle` target 产出 `.app` / `.app.tar.gz`，`InfoPlistBuilder` 注入 `CFBundleURLTypes`，为 macOS 真机验收打通链路；签名/公证留待 macOS runner 接入（[ADR-0002](../adr/0002-macos-real-build-pipeline.md)）。
+- **2026-10-26 基准刷新**：此前基线只登记了上游**插件**版本增量（§1.2），漏登 Tauri **核心 2.12** 新增的公共 API 面。本轮补齐该表（§1.3），并把其中三项落到等价实现：`core:window|set-fullscreen-on-monitor`、`core:app|exit`、`plugin:sql|load` 的 `autoCreate`。剩余核心增量（app directories override、no-redirection-bitmap、app-bound navigation domains、permission handler、`convertFileSrc`、内嵌图标资源、macOS activate 策略）按 §1.3 处置登记。
 
 ### 1.1 本次复核方法与修正记录（2026-10-16）
 
@@ -43,10 +44,45 @@
 | 上游增量 | 影响 | 处置 |
 | --- | --- | --- |
 | updater 2.14.0：`Updater::restore_update`（从缓存的 release 元数据恢复更新）+ `Update::verify`（按签名密钥与 signed-version 策略校验包字节） | Tarui 无对应命令（check/download 后不保留可恢复的元数据快照） | 记为 P2 按需增强（§3.2 Updater） |
-| sql 2.6.0：`Database.load` 新增 `autoCreate` 选项 | Tarui `plugin:sql|load` 无创建开关（文件库要求显式 allow，创建行为固定） | 记为 P2 按需增强（§3.2 SQL） |
+| sql 2.6.0：`Database.load` 新增 `autoCreate` 选项 | 当时 Tarui `plugin:sql|load` 无创建开关 | 已于 2026-10-26 跟进（见 §1.3 第 3 项） |
 | 其余 2.12.4 / 2.12.5 与插件补丁 | 移动端 IPC、NSIS 降级保护、Linux AppImage 更新、通知 D-Bus 连接等修复 | 对 Tarui 桌面契约无影响，无需跟进 |
 
-## 2. Tarui 当前能力基线（2026-10-24 复核；能力面为 2026-10-16 实测快照）
+### 1.3 核心 2.12 API 面复核（2026-10-26）
+
+§1.2 只刷新了插件版本，把"上游没有新增官方插件"当成了"上游能力面无变化"。实际 tauri 2.12.0 新增了 9 项公共 API 面，另有 sql / updater 两个插件增量。逐项状态如下（Tarui 状态以本轮代码为准，"已实现"= 契约 + 命令 + 权限 + TS + 自测试齐全，未做真机验收的会单独注明）。
+
+| # | 上游增量（2.12 / 插件） | 形态 | Tarui 状态 | 处置 |
+| --- | --- | --- | --- | --- |
+| 1 | `Window::set_fullscreen_on_monitor` / JS `setFullscreenOnMonitor` / `core:window:allow-set-fullscreen-on-monitor` | 命令 + 权限 | **已实现** | `core:window|set-fullscreen-on-monitor` + `SetFullscreenOnMonitorOptions(X, Y)` + `Window.setFullscreenOnMonitor(x, y)`；坐标落在所有显示器之外时按上游语义 no-op（不伪造成功） |
+| 2 | `app.exit` / `plugin:app|exit` / `core:app:allow-exit` | 命令 + 权限 | **已实现** | `core:app|exit`（`ProcessExitOptions`）+ `app.exit(code)`；走 `IAppShutdown` 合作式退出，不新增 `Environment.Exit` 路径，也不要求注册 System 插件 |
+| 3 | sql 2.6.0 `LoadOptions.autoCreate`（默认 `true`） | 插件参数 | **已实现** | `SqlLoadOptions.AutoCreate`；`false` 时以 `Mode=ReadWrite` 打开并在文件缺失时返回明确错误，缺省保持"不存在则创建" |
+| 4 | `app > appDirectoriesOverride`（覆盖 `app_*_dir` 返回目录，便携应用场景） | 配置项 + 路径 API | 未实现（P2） | Tarui 的 `core:path|resolve` 按 base 目录解析，无覆盖层。需要新增配置键并统一注入 `IFileAccessPolicy`/path 服务的根目录，涉及 fs/store/sql 三处 scope 基准，应作为独立工作项而非顺手改 |
+| 5 | `WindowBuilder::no_redirection_bitmap` / `app.windows[].noRedirectionBitmap`（Windows） | 构建期选项 | 未实现（P2） | Avalonia 未公开 `WS_EX_NOREDIRECTIONBITMAP` 对应能力；如确有透明窗口撕裂需求，需在 Shell 层做 HWND 后置处理，属于平台补丁而非契约层能力 |
+| 6 | `limit_navigations_to_app_bound_domains` / `limitNavigationsToAppBoundDomains` | 策略开关 | 部分等价 | `WebViewRequestPolicy` 的 host allow 默认拒绝 + 导航事件决策已能表达同等约束，但没有"应用绑定域"这一概念。若引入，应挂在既有策略上而非新增第二套判定 |
+| 7 | wry 权限处理器 API（DisplayCapture / Midi / Sensors / MediaKeySystemAccess / LocalFonts / WindowManagement / PointerLock / AutomaticDownloads / FileSystemAccess / Autoplay，`PermissionResponse::{Allow,Deny,Default}`） | 运行时授权回调 | 未实现（P1 评估） | Tarui 目前把 CEF 权限请求整体交给默认策略，没有按类型分级决策。落地需要 `ITaruiWebView` 增加权限请求回调 + capability 映射，是 WebView 层的新契约 |
+| 8 | `Webview::convert_file_src`（JS `convertFileSrc` 的 Rust 等价） | 工具函数 | 未实现（P1 评估） | Tarui 只有 `tarui://localhost` 自定义协议，没有 `asset://` 之类的本地文件 URL 通道；直接暴露文件路径还会绕开 `IFileAccessPolicy`。若跟进，必须先定义受限的 asset 协议与 scope 授权 |
+| 9 | `Image::from_app_icon_resource`（Windows，从 exe 内嵌图标资源加载） | 运行时工具 | 未实现（P2） | `core:window|set-icon` 只接受 PNG 字节；从 PE 资源取图标需 Win32 `LoadImage`/`ExtractIconEx`，可在需要"免打包图标"时补 |
+| 10 | `Builder::activate_ignoring_other_apps`（macOS） | 启动策略 | 未实现（P2） | 仅 macOS 冷启动激活行为，当前平台未验证，不优先 |
+| 11 | CLI 2.12.0 `bundle.windows.bundleVCRuntime` | 打包选项 | 不跟进 | Tarui 为 framework-dependent + MSIX 分发，VC++ 运行时由目标机/安装包策略承担，语义不等价，记为已知差异 |
+| 12 | updater 2.14.0 `Updater::restore_update` + `Update::verify` | 插件 API | 未跟进（P2） | `check`/`download` 已做 ECDSA + 逐文件 SHA-256，但没有"从缓存清单恢复更新"与"对任意字节做 verify"两个独立入口。归入 updater 的 apply 解锁前置一起评估 |
+
+复核口径说明：
+
+- 官方 release 索引页在本次检索时仍把 `tauri` 最新列为 2.12.3（2026-10-10），而仓库 §1.2 登记的 2.12.5 来自 GitHub Releases；两者差异是页面同步滞后，不影响本轮能力面结论。若后续出现 2.13，应先刷新版本号再重跑本节。
+- 第 1–3 项已按仓库模板落地（Contracts → 命令/权限 → Shell/插件实现 → capability → TS → 自测试 → 文档），门禁结果见 §1.4。
+- 第 4–12 项一律标注"未实现/部分等价"，不因为"能用现有能力拼出来"就记作已对齐。
+
+### 1.4 本轮实现的验证证据（2026-10-26）
+
+| 项 | 落点 | 验证 |
+| --- | --- | --- |
+| `set-fullscreen-on-monitor` | `WindowContracts.SetFullscreenOnMonitorOptions`、`IWindowService`/`AvaloniaWindowService.FullscreenOnMonitor`、`FullscreenTarget`（纯函数选屏）、`WindowPlugin` 命令与 `-other-window` 权限、`window.setFullscreenOnMonitor` | `Tarui.Plugins.Tests`：命令派发携带物理坐标、跨窗口无权限被拒；`Tarui.Shell.Tests`：点落在主屏/副屏/屏外/无显示器四种解析结果 |
+| `core:app|exit` | `CorePlugin`（构造注入 `IAppShutdown`，`AddCorePlugin` 以 `TryAdd` 提供 no-op 兜底）、`app.exit(code)` | `Tarui.Plugins.Tests`：命令在路由中注册、权限已注册；`Tarui.Capabilities.Tests` 组合根夹具同步 |
+| sql `autoCreate` | `SqlLoadOptions.AutoCreate`、`ISqlCreateModeDriver`、`SqliteConnectionString.Normalize(createIfMissing)`、`SqliteService` 预检 | `Tarui.Sql.Tests`：`autoCreate:false` 缺文件报错且不落盘、已存在文件仍可打开；`sql.ts` 参数类型同步 |
+
+门禁：`dotnet build tarui.net.slnx` 0 警告 0 错误；`Tarui.Plugins.Tests` / `Tarui.Shell.Tests` / `Tarui.Sql.Tests` / `Tarui.Capabilities.Tests` / `Tarui.Bindings.Tests` 全部退出码 0；`pnpm lint` / `pnpm build` 通过。真机未验收项：多显示器全屏切换（需要双屏且 CEF windowed 宿主）、退出码传递到操作系统。
+
+## 2. Tarui 当前能力基线（2026-10-26 复核；能力面为 2026-10-16 实测快照）
 
 | 能力域 | 状态 | 关键落点 |
 | --- | --- | --- |
@@ -90,6 +126,7 @@
 | 多窗口 | ✅ | create/getAll/by label，能力对齐 |
 | 单窗口多 webview | ✅ | 已实现（2026-10-17，V3-1）。`WebviewRegistry`（webview label → 会话）独立于 `WindowRegistry`，窗口经 `WindowEventFanout` 向托管的全部 webview 投递 `window://` 事件、`webview://*` 按 label 定向；`plugin:webview|create` / `set-bounds` / `destroy` 在既有窗口内按 bounds 挂载/定位/卸载多个 surface；`plugin:webview|*` 按 webview label 独立寻址（own/other-webview + 跨窗口 `-other-window`）。详见 [`tauri-v3-alignment.md`](tauri-v3-alignment.md) §4.2 |
 | 窗口 API 全集 | 🟡 | ✅ 已补齐 setIcon/setTheme、Transparent（acrylic/transparent）、close、setAlwaysOnBottom/setShadow/setBadgeCount/setProgressBar（Windows 原生：`SetWindowPos` 置底、DWM 非客户区渲染、任务栏叠加图标、`ITaskbarList3` 进度；非 Windows 诚实降级）；父子/模态窗口、可取消关闭、unminimize/setSkipTaskbar/destroy、setZoom/print 已于 2026-10-24 移除，不再计为缺口 |
+| 2.12 新增：`setFullscreenOnMonitor` / `app.exit` | ✅ | 2026-10-26 落地：`core:window|set-fullscreen-on-monitor`（按物理点选屏，屏外 no-op，含 `-other-window`）与 `core:app|exit`（合作式退出，不依赖 System 插件）。其余 2.12 增量见 §1.3 |
 | 自定义协议 + CSP | ✅ | `tarui://localhost`、CSP、SPA fallback |
 | 导航/下载策略 | ✅ | 策略引擎 + capability 双重授权，语义等价 |
 | 事件 emit/listen（含 once、定向） | ✅ | 等价且多一层接收权限 |
@@ -122,7 +159,7 @@
 | Process | ✅ | exit/restart 走 Host 协调退出，等价 |
 | Shell（子进程/sidecar） | ✅ | spawn + Channel 流式 stdio（stdout/stderr/`terminated`）+ 退出码 + 程序白名单作用域（默认拒绝） + stdin/kill + 进程树终止 |
 | Single Instance | ✅ | Mutex + 管道/Unix socket + 参数转发事件 |
-| SQL | ✅ | `plugin:sql|load/select/execute/close`（2026-10-16 落地）。SQLite 驱动内置（`Microsoft.Data.Sqlite` 10.0.13），连接串 scheme 决定驱动，`ISqlDriverResolver` 可显式注册 PostgreSQL/MySQL；`?` 位置参数经 `RewritePositionalPlaceholders` 改写为命名参数绑定（跳过字符串字面量与注释），值永不拼接进 SQL；cell 以「值 + 存储类 + IsNull」承载，区分 NULL/空串/整数/实数/blob（base64）；句柄按 `SemaphoreSlim` 串行化以规避 `SQLITE_BUSY`，`:memory:` 因随连接销毁而共享连接；**`load` 的 scope 语义比 fs/store 更严——空 allow 列表拒绝一切文件库**（load 会创建文件），须显式 allow 该数据库文件；路径经 `IFileAccessPolicy.Authorize` 拒绝根路径/逃逸。`tests/Tarui.Sql.Tests` 14 例 + 前端 9 例；上游 2.6.0 新增 `autoCreate` 开关，Tarui 未跟进（§1.2） |
+| SQL | ✅ | `plugin:sql|load/select/execute/close`（2026-10-16 落地）。SQLite 驱动内置（`Microsoft.Data.Sqlite` 10.0.13），连接串 scheme 决定驱动，`ISqlDriverResolver` 可显式注册 PostgreSQL/MySQL；`?` 位置参数经 `RewritePositionalPlaceholders` 改写为命名参数绑定（跳过字符串字面量与注释），值永不拼接进 SQL；cell 以「值 + 存储类 + IsNull」承载，区分 NULL/空串/整数/实数/blob（base64）；句柄按 `SemaphoreSlim` 串行化以规避 `SQLITE_BUSY`，`:memory:` 因随连接销毁而共享连接；**`load` 的 scope 语义比 fs/store 更严——空 allow 列表拒绝一切文件库**（load 会创建文件），须显式 allow 该数据库文件；路径经 `IFileAccessPolicy.Authorize` 拒绝根路径/逃逸。`tests/Tarui.Sql.Tests` 16 例 + 前端 10 例；上游 2.6.0 的 `autoCreate` 已于 2026-10-26 跟进（§1.3 第 3 项：`SqlLoadOptions.AutoCreate`，`false` 时 `Mode=ReadWrite` + 缺文件明确报错） |
 | Store | ✅ | 等价（JSON KV + scope + 原子写） |
 | Stronghold | ❌ | 未实现（加密存储，延后） |
 | Updater | ✅ | check/download + ECDSA(P-384/SHA-384) 签名 + 逐文件 SHA-256 + 受控 staging + `updater://status` 事件；apply（Windows MSIX `Add-AppxPackage` + staging 根域校验 + apply 状态事件）已落地；macOS/Linux 走 `NoOpUpdateApplier` 显式声明 `update-apply-unsupported`，默认 capability 不授权 apply；上游 2.14.0 新增 `restore_update` / `Update::verify`，Tarui 未跟进（§1.2） |

@@ -30,6 +30,7 @@
   ],
   "permissions": [
     "core:app|get-info",
+    "core:app|exit",
     "core:event|emit",
     "core:os|info",
     "core:platform|capabilities",
@@ -72,6 +73,7 @@
     "core:window|set-resizable",
     "core:window|set-decorations",
     "core:window|set-fullscreen",
+    "core:window|set-fullscreen-on-monitor",
     "core:window|get-state",
     "core:window|current-monitor",
     "core:window|primary-monitor",
@@ -99,6 +101,7 @@
     "core:window|set-resizable-other-window",
     "core:window|set-decorations-other-window",
     "core:window|set-fullscreen-other-window",
+    "core:window|set-fullscreen-on-monitor-other-window",
     "core:window|get-state-other-window",
     "core:window|current-monitor-other-window",
     "core:window|monitors-other-window",

@@ -21,6 +21,7 @@
     "BRIDGE_ERROR"
   ],
   "registeredPermissions": [
+    "core:app|exit",
     "core:app|get-info",
     "core:channel|stream-echo",
     "core:clipboard|read-html",
@@ -67,6 +68,8 @@
     "core:window|set-decorations",
     "core:window|set-decorations-other-window",
     "core:window|set-fullscreen",
+    "core:window|set-fullscreen-on-monitor",
+    "core:window|set-fullscreen-on-monitor-other-window",
     "core:window|set-fullscreen-other-window",
     "core:window|set-icon",
     "core:window|set-max-size",
@@ -276,6 +279,7 @@
         "window://resized"
       ],
       "permissions": [
+        "core:app|exit",
         "core:app|get-info",
         "core:channel|stream-echo",
         "core:clipboard|read-html",
@@ -322,6 +326,8 @@
         "core:window|set-decorations",
         "core:window|set-decorations-other-window",
         "core:window|set-fullscreen",
+        "core:window|set-fullscreen-on-monitor",
+        "core:window|set-fullscreen-on-monitor-other-window",
         "core:window|set-fullscreen-other-window",
         "core:window|set-icon",
         "core:window|set-max-size",

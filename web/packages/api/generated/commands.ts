@@ -523,6 +523,12 @@ export interface SetFlagOptions {
   readonly label?: string;
 }
 
+export interface SetFullscreenOnMonitorOptions {
+  readonly x: number;
+  readonly y: number;
+  readonly label?: string;
+}
+
 export interface SetIconOptions {
   readonly png?: string;
   readonly label?: string;
@@ -609,6 +615,7 @@ export interface SqlExecuteResult {
 
 export interface SqlLoadOptions {
   readonly connection: string;
+  readonly autoCreate?: boolean;
 }
 
 export interface SqlRow {
@@ -885,6 +892,11 @@ export interface WsSendOptions {
  * argument and result. The JSON shape is owned by those DTOs (TaruiJsonContext).
  */
 export interface TaruiCommandContracts {
+  readonly "core:app|exit": {
+    readonly permission: "core:app|exit";
+    readonly input: "ProcessExitOptions";
+    readonly output: "Unit";
+  };
   readonly "core:app|get-info": {
     readonly permission: "core:app|get-info";
     readonly input: "EmptyArgs";
@@ -1043,6 +1055,11 @@ export interface TaruiCommandContracts {
   readonly "core:window|set-fullscreen": {
     readonly permission: "core:window|set-fullscreen";
     readonly input: "SetFlagOptions";
+    readonly output: "Unit";
+  };
+  readonly "core:window|set-fullscreen-on-monitor": {
+    readonly permission: "core:window|set-fullscreen-on-monitor";
+    readonly input: "SetFullscreenOnMonitorOptions";
     readonly output: "Unit";
   };
   readonly "core:window|set-icon": {
@@ -1569,6 +1586,10 @@ export interface TaruiCommandContracts {
 
 /** The argument and result type of every command, keyed by command id. */
 export interface TaruiCommandTypes {
+  readonly "core:app|exit": {
+    readonly input: ProcessExitOptions;
+    readonly output: Unit;
+  };
   readonly "core:app|get-info": {
     readonly input: EmptyArgs;
     readonly output: AppHandshake;
@@ -1695,6 +1716,10 @@ export interface TaruiCommandTypes {
   };
   readonly "core:window|set-fullscreen": {
     readonly input: SetFlagOptions;
+    readonly output: Unit;
+  };
+  readonly "core:window|set-fullscreen-on-monitor": {
+    readonly input: SetFullscreenOnMonitorOptions;
     readonly output: Unit;
   };
   readonly "core:window|set-icon": {

@@ -12,8 +12,15 @@ namespace Tarui.Contracts;
 /// constrained by the <c>sql:allow-load</c> scope authorizer, so a capability must name the
 /// database file in its scope list before any handle is opened.
 /// </para>
+///
+/// <para>
+/// <see cref="AutoCreate"/> mirrors Tauri's <c>LoadOptions.autoCreate</c> (sql 2.6.0): when it is
+/// <see langword="false"/> a missing database file is an error instead of being created. The
+/// default (<see langword="null"/>) behaves like <see langword="true"/>, which is what Tauri
+/// documents as the default.
+/// </para>
 /// </summary>
-public sealed record SqlLoadOptions(string Connection);
+public sealed record SqlLoadOptions(string Connection, bool? AutoCreate = null);
 
 /// <summary>
 /// A single statement execution. <see cref="Db"/> is the handle returned by

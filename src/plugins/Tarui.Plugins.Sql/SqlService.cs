@@ -64,17 +64,33 @@ public enum SqlOpenKind
     Shared
 }
 
+/// <summary>
+/// Optional driver capability for drivers that can create their database on first open. Tauri's
+/// sql 2.6.0 added <c>LoadOptions.autoCreate</c> (default <c>true</c>); SQLite is the only driver
+/// where "create the database" is a file operation, so only it implements this. Other drivers keep
+/// their existing <see cref="ISqlDriverResolver.Open"/> behavior and ignore the flag.
+/// </summary>
+public interface ISqlCreateModeDriver
+{
+    /// <summary>Opens a connection, creating the database only when <paramref name="createIfMissing"/> is set.</summary>
+    (DbConnection Connection, SqlOpenKind Kind) Open(string connectionString, bool createIfMissing);
+}
+
 /// <summary>SQLite-flavoured driver built on <c>Microsoft.Data.Sqlite</c>.</summary>
-public sealed class SqliteDriver : ISqlDriverResolver
+public sealed class SqliteDriver : ISqlDriverResolver, ISqlCreateModeDriver
 {
     public const string Scheme = "sqlite:";
 
     public bool CanHandle(string connectionString) =>
         connectionString.StartsWith(Scheme, StringComparison.OrdinalIgnoreCase);
 
-    public (DbConnection Connection, SqlOpenKind Kind) Open(string connectionString)
+    public (DbConnection Connection, SqlOpenKind Kind) Open(string connectionString) =>
+        Open(connectionString, createIfMissing: true);
+
+    public (DbConnection Connection, SqlOpenKind Kind) Open(string connectionString, bool createIfMissing)
     {
-        var connection = new Microsoft.Data.Sqlite.SqliteConnection(SqliteConnectionString.Normalize(connectionString));
+        var connection = new Microsoft.Data.Sqlite.SqliteConnection(
+            SqliteConnectionString.Normalize(connectionString, createIfMissing));
         connection.Open();
 
         // An in-memory database lives and dies with its connection, so it must be shared or the
@@ -115,16 +131,19 @@ public static class SqliteConnectionString
 
     /// <summary>
     /// Rewrites a user connection string into a <c>Data Source</c> the ADO.NET provider accepts.
-    /// <c>sqlite://app.db</c> yields <c>Data Source=app.db</c>; an in-memory form yields
-    /// <c>Data Source=:memory:</c>.
+    /// <c>sqlite://app.db</c> yields <c>Data Source=app.db;Mode=ReadWriteCreate</c>; an in-memory form
+    /// yields <c>Data Source=:memory:</c>. When <paramref name="createIfMissing"/> is
+    /// <see langword="false"/> the file mode becomes <c>ReadWrite</c>, so opening a missing database
+    /// fails instead of silently creating an empty one (Tauri's <c>autoCreate: false</c>).
     /// </summary>
-    public static string Normalize(string connectionString)
+    public static string Normalize(string connectionString, bool createIfMissing = true)
     {
         if (IsInMemory(connectionString))
         {
             return "Data Source=:memory:";
         }
 
-        return $"Data Source={ExtractRelativePath(connectionString)}";
+        var mode = createIfMissing ? "ReadWriteCreate" : "ReadWrite";
+        return $"Data Source={ExtractRelativePath(connectionString)};Mode={mode}";
     }
 }

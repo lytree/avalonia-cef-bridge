@@ -60,8 +60,21 @@ public sealed class SqlService : ISqlService, IAsyncDisposable
         }
 
         var driver = ResolveDriver(options.Connection);
-        var connectionString = ResolveConnectionString(options.Connection);
-        var (connection, kind) = driver.Open(connectionString);
+        var createIfMissing = options.AutoCreate ?? true;
+        var connectionString = ResolveConnectionString(options.Connection, out var absolutePath);
+        if (!createIfMissing &&
+            absolutePath is not null &&
+            !File.Exists(absolutePath))
+        {
+            // Tauri's autoCreate: false turns "database missing" into an error. Rejecting here keeps
+            // the message actionable instead of surfacing the provider's "unable to open database".
+            throw new InvalidOperationException(
+                $"Database file '{absolutePath}' does not exist and autoCreate is false.");
+        }
+
+        var (connection, kind) = driver is ISqlCreateModeDriver createModeDriver
+            ? createModeDriver.Open(connectionString, createIfMissing)
+            : driver.Open(connectionString);
 
         var handle = new SqlHandle(connection, kind);
         string id;
@@ -131,8 +144,9 @@ public sealed class SqlService : ISqlService, IAsyncDisposable
     /// name the file before the database is created. A database is a writable application artifact
     /// and belongs under <c>appData</c>; rooted paths and escapes are rejected by the policy.
     /// </summary>
-    private string ResolveConnectionString(string connectionString)
+    private string ResolveConnectionString(string connectionString, out string? absolutePath)
     {
+        absolutePath = null;
         if (SqliteConnectionString.IsInMemory(connectionString))
         {
             // In-memory databases hold no path and therefore no scope concern.
@@ -156,6 +170,7 @@ public sealed class SqlService : ISqlService, IAsyncDisposable
         // Authorize rejects a rooted path, a path escaping the base via .., and symlink escapes,
         // so a capability cannot reach a database file outside appData.
         var absolute = _filePolicy.Authorize(FileAccessKind.Write, baseDirectory, relative);
+        absolutePath = absolute;
         return $"sqlite://{absolute}";
     }
 

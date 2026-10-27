@@ -30,6 +30,7 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
         "core:window|set-resizable",
         "core:window|set-decorations",
         "core:window|set-fullscreen",
+        "core:window|set-fullscreen-on-monitor",
         "core:window|get-state",
         "core:window|current-monitor",
         "core:window|monitors"
@@ -214,6 +215,13 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             TaruiJsonContext.Default.Unit,
             handlers.SetFullscreenAsync,
             "core:window|set-fullscreen");
+
+        commands.Add(
+            "core:window|set-fullscreen-on-monitor",
+            TaruiJsonContext.Default.SetFullscreenOnMonitorOptions,
+            TaruiJsonContext.Default.Unit,
+            handlers.SetFullscreenOnMonitorAsync,
+            "core:window|set-fullscreen-on-monitor");
 
         commands.Add(
             "core:window|get-state",
@@ -464,6 +472,17 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             CommandContext context,
             CancellationToken cancellationToken) =>
             service.SetFullscreenAsync(Resolve(options.Label, context, "core:window|set-fullscreen"), options.Value, cancellationToken);
+
+        [TaruiCommand("core:window|set-fullscreen-on-monitor")]
+        public ValueTask<Unit> SetFullscreenOnMonitorAsync(
+            SetFullscreenOnMonitorOptions options,
+            CommandContext context,
+            CancellationToken cancellationToken) =>
+            service.SetFullscreenOnMonitorAsync(
+                Resolve(options.Label, context, "core:window|set-fullscreen-on-monitor"),
+                options.X,
+                options.Y,
+                cancellationToken);
 
         [TaruiCommand("core:window|get-state")]
         public ValueTask<WindowStateInfo> GetStateAsync(

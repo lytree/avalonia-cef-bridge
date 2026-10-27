@@ -34,6 +34,7 @@
   ],
   "permissions": [
     "core:app|get-info",
+    "core:app|exit",
     "core:window|set-title",
     "core:window|set-size",
     {

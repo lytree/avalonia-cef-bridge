@@ -167,6 +167,54 @@ public sealed class AvaloniaWindowService(
             window => window.WindowState = value ? WindowState.FullScreen : WindowState.Normal,
             cancellationToken);
 
+    public ValueTask<Unit> SetFullscreenOnMonitorAsync(string label, double x, double y, CancellationToken cancellationToken) =>
+        RunWindowActionAsync(
+            label,
+            window => FullscreenOnMonitor(window, x, y),
+            cancellationToken);
+
+    /// <summary>
+    /// Moves the window onto the monitor containing the physical point and fullscreens it there.
+    /// A point outside every monitor is a no-op, mirroring Tauri's <c>set_fullscreen_on_monitor</c>.
+    /// Leaving fullscreen first is required: a fullscreen window ignores a position change on some
+    /// platforms, which would strand it on the original monitor.
+    /// </summary>
+    private static void FullscreenOnMonitor(Window window, double x, double y)
+    {
+        var screens = window.Screens;
+        if (screens is null || screens.ScreenCount == 0)
+        {
+            return;
+        }
+
+        var all = screens.All;
+        var bounds = new PixelRect[all.Count];
+        for (var index = 0; index < all.Count; index++)
+        {
+            bounds[index] = all[index].Bounds;
+        }
+
+        var point = new PixelPoint((int)Math.Round(x), (int)Math.Round(y));
+        var targetIndex = FullscreenTarget.Resolve(bounds, point);
+        if (targetIndex < 0)
+        {
+            return;
+        }
+
+        var target = all[targetIndex];
+        if (window.WindowState == WindowState.FullScreen)
+        {
+            window.WindowState = WindowState.Normal;
+        }
+
+        if (!ReferenceEquals(screens.ScreenFromWindow(window), target))
+        {
+            window.Position = target.Bounds.Position;
+        }
+
+        window.WindowState = WindowState.FullScreen;
+    }
+
     public async ValueTask<WindowStateInfo> GetStateAsync(string label, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

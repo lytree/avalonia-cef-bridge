@@ -35,6 +35,11 @@ export interface SqlCloseResult {
 export interface SqlLoadOptions {
   /** Connection string whose scheme selects the driver, e.g. `sqlite://app.db`. */
   connection: string
+  /**
+   * Whether a missing database file is created. Defaults to true, matching Tauri sql 2.6.0.
+   * Set to false to fail instead of silently creating an empty database.
+   */
+  autoCreate?: boolean | undefined
 }
 
 export interface SqlExecuteOptions {

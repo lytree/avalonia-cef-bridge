@@ -55,6 +55,12 @@ public interface IWindowService
 
     ValueTask<Unit> SetFullscreenAsync(string label, bool value, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Fullscreens the window on the monitor containing the physical point (<paramref name="x"/>,
+    /// <paramref name="y"/>). A point outside every connected monitor is a no-op, matching Tauri.
+    /// </summary>
+    ValueTask<Unit> SetFullscreenOnMonitorAsync(string label, double x, double y, CancellationToken cancellationToken);
+
     ValueTask<WindowStateInfo> GetStateAsync(string label, CancellationToken cancellationToken);
 
     ValueTask<MonitorInfo?> GetCurrentMonitorAsync(string label, CancellationToken cancellationToken);
