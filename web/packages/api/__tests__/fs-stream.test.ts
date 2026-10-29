@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileStream, writeFileChunked } from '../fs'
-import { cleanupIpcMock, installIpcMock, lastInvoke, send } from './ipcMock'
+import { cleanupIpcMock, flushChannelDelivery, installIpcMock, lastInvoke, send } from './ipcMock'
 
 afterEach(() => cleanupIpcMock())
 
@@ -25,6 +25,7 @@ describe('readFileStream', () => {
     send({ protocol: 1, id: call!.id, success: true, payload: { size: 8 } })
 
     const result = await pending
+    await flushChannelDelivery()
     expect(result.size).toBe(8)
     expect(kinds).toEqual(['meta', 'chunk', 'chunk'])
     expect(onEvent).toHaveBeenCalledTimes(3)

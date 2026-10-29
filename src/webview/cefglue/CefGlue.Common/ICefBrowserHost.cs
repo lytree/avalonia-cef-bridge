@@ -36,6 +36,7 @@ namespace Xilium.CefGlue.Common
         FindHandler FindHandler { get; set; }
         FocusHandler FocusHandler { get; set; }
         KeyboardHandler KeyboardHandler { get; set; }
+        CefPermissionHandler PermissionHandler { get; set; }
         RequestHandler RequestHandler { get; set; }
         LifeSpanHandler LifeSpanHandler { get; set; }
         DisplayHandler DisplayHandler { get; set; }

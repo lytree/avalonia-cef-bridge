@@ -60,6 +60,33 @@ public sealed record UpdateApplyOptions(string StagingPath, bool Restart = true)
 public sealed record UpdateApplyResult(bool Succeeded, string? Error, bool Restart);
 
 /// <summary>
+/// Request for <c>plugin:updater|restore</c>. <see cref="ManifestJson"/> is a previously fetched signed
+/// manifest (the raw JSON persisted by the web layer after a successful check), mirroring Tauri's
+/// <c>Updater::restore_update</c>: the manifest is re-verified against the configured public key and version
+/// policy so a cached copy cannot be swapped for an untrusted one.
+/// </summary>
+public sealed record UpdateRestoreOptions(string ManifestJson);
+
+/// <summary>
+/// Outcome of <c>plugin:updater|restore</c>. <see cref="Version"/> is the restored (already verified) target
+/// version; any parse, signature or version-policy failure surfaces as <see cref="Error"/> instead.
+/// </summary>
+public sealed record UpdateRestoreResult(bool Succeeded, string? Version, string? Error);
+
+/// <summary>
+/// Request for <c>plugin:updater|verify</c>. The signed <see cref="ManifestJson"/> supplies the expected
+/// SHA-256 table; every file under <see cref="StagingPath"/> is re-hashed and compared. Mirrors Tauri's
+/// <c>Update::verify</c>: the running installation is never touched and no network access is performed.
+/// </summary>
+public sealed record UpdateVerifyOptions(string ManifestJson, string StagingPath);
+
+/// <summary>
+/// Outcome of <c>plugin:updater|verify</c>. <see cref="Succeeded"/> is true only when the manifest
+/// signature verifies and every advertised staged file matches its signed SHA-256.
+/// </summary>
+public sealed record UpdateVerifyResult(bool Succeeded, string? Error);
+
+/// <summary>
 /// Payload of the reserved <c>updater://status</c> event. <see cref="Phase"/> is a machine-readable
 /// stage (<c>check-success</c>, <c>download-start</c>, <c>download-progress</c>, <c>download-success</c>,
 /// <c>verification-failed</c>, <c>check-failed</c>, <c>download-failed</c>, <c>apply-start</c>,

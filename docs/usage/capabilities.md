@@ -153,6 +153,22 @@ capability 不必逐条罗列命令,可以直接引用**权限集合**。集合�
 2. **集合不能带 `allow` / `deny`**。scope 属于单条权限;需要细化路径或 URL 时,把该权限单独写一条带 scope 的条目(集合与显式条目可以并存,scope 以显式条目为准)。
 3. **敏感权限可能被插件排除在 `|default` 之外**。例:`plugin:webview|send-devtools-message`(CDP 通道)必须显式授予,`plugin:webview|default` 不含它。
 
+WebView 的浏览器权限请求按 9 个独立权限分级(均在 `plugin:webview` 命名空间下,除 `send-devtools-message` 外都会随 `plugin:webview|default` 一并授权):
+
+| 权限 | 覆盖的浏览器能力 |
+| --- | --- |
+| `plugin:webview\|permission-media` | 摄像头 / 麦克风(`getUserMedia`) |
+| `plugin:webview\|permission-geolocation` | 地理位置 |
+| `plugin:webview\|permission-notifications` | Web 通知 |
+| `plugin:webview\|permission-midi` | MIDI |
+| `plugin:webview\|permission-clipboard-read` | 读取剪贴板 |
+| `plugin:webview\|permission-local-fonts` | 本地字体枚举 |
+| `plugin:webview\|permission-pointer-lock` | 指针锁定 |
+| `plugin:webview\|permission-window-management` | 多屏窗口管理 |
+| `plugin:webview\|permission-other` | 其余族(显示捕获、传感器、文件系统访问、自动下载等) |
+
+组合请求(例如同时要摄像头与地理位置)必须**每一族都被授权**才会答复 Allow,缺一族即整体 Deny。若应用只想放开其中一两族,不要引用 `plugin:webview|default`,改为逐条列出命令权限与所需 `permission-*`。
+
 启动期校验:未知集合标识、展开循环、集合成员未注册都会让 `CommandRouterComposer.Compose(...)` 抛 `InvalidOperationException`,并在消息里列出当前可用的集合标识。
 
 ## 6. `events` 形式

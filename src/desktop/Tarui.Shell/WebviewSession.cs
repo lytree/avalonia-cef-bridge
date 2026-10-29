@@ -38,6 +38,7 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
     private readonly WebViewRequestPolicy _policy;
     private readonly ITaruiAvaloniaWebView _webView;
     private readonly ITaruiDevToolsProtocol? _devToolsProtocol;
+    private readonly ITaruiWebViewPermissions? _permissions;
     // One bounded credit window per channel. Windows only exist once the renderer negotiated
     // channel-credit-v1, so a legacy renderer keeps the previous "submit and continue" behavior
     // instead of deadlocking on acknowledgements it will never send.
@@ -83,6 +84,15 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         {
             _devToolsProtocol = devToolsProtocol;
             devToolsProtocol.DevToolsMessageReceived += OnDevToolsMessage;
+        }
+
+        // Permission interception is an optional capability too: a backend that cannot observe
+        // permission prompts leaves them to the browser default instead of the session claiming a
+        // decision it never made.
+        if (_webView is ITaruiWebViewPermissions permissions)
+        {
+            _permissions = permissions;
+            permissions.PermissionRequested += OnPermissionRequested;
         }
     }
 
@@ -358,6 +368,41 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
                 TaruiJsonContext.Default.WebViewRenderProcessGoneEvent)));
     }
 
+    // Each intercepted permission family maps to its own capability id, so a window can grant media
+    // capture without also granting geolocation. A request that combines families is denied unless
+    // every requested family is granted, which mirrors wry's all-or-nothing prompt response.
+    private static readonly (TaruiWebViewPermissionKind Kind, string Permission)[] PermissionPolicies =
+    [
+        (TaruiWebViewPermissionKind.Media, "plugin:webview|permission-media"),
+        (TaruiWebViewPermissionKind.Geolocation, "plugin:webview|permission-geolocation"),
+        (TaruiWebViewPermissionKind.Notifications, "plugin:webview|permission-notifications"),
+        (TaruiWebViewPermissionKind.Midi, "plugin:webview|permission-midi"),
+        (TaruiWebViewPermissionKind.ClipboardRead, "plugin:webview|permission-clipboard-read"),
+        (TaruiWebViewPermissionKind.LocalFonts, "plugin:webview|permission-local-fonts"),
+        (TaruiWebViewPermissionKind.PointerLock, "plugin:webview|permission-pointer-lock"),
+        (TaruiWebViewPermissionKind.WindowManagement, "plugin:webview|permission-window-management"),
+        (TaruiWebViewPermissionKind.Other, "plugin:webview|permission-other"),
+    ];
+
+    private void OnPermissionRequested(object? sender, TaruiWebViewPermissionRequestedEventArgs args)
+    {
+        // Deny by default: a family is granted only when a matching capability is present. An
+        // unrecognized request still surfaces as PermissionKind.Other so an app can opt in globally.
+        var allowed = true;
+        foreach (var (kind, permission) in PermissionPolicies)
+        {
+            if ((args.Requested & kind) != 0 && !Context.Capabilities.Allows(permission))
+            {
+                allowed = false;
+                break;
+            }
+        }
+
+        args.Response = allowed
+            ? TaruiWebViewPermissionResponse.Allow
+            : TaruiWebViewPermissionResponse.Deny;
+    }
+
     private WebViewRequestDecision DecideNavigation(Uri url)
     {
         try
@@ -505,6 +550,10 @@ public sealed class WebviewSession : IEventSink, IChannelSink, IDisposable, IAsy
         if (_devToolsProtocol is not null)
         {
             _devToolsProtocol.DevToolsMessageReceived -= OnDevToolsMessage;
+        }
+        if (_permissions is not null)
+        {
+            _permissions.PermissionRequested -= OnPermissionRequested;
         }
     }
 }

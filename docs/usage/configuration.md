@@ -63,6 +63,7 @@
 | `MaxWidth` / `MaxHeight` | 最大尺寸 | 不限 |
 | `X` / `Y` / `Center` | 启动位置 / 居中 | 居中 |
 | `Resizable` / `Decorations` / `AlwaysOnTop` / `Visible` | 窗口外观 | `true` / `true` / `false` / `true` |
+| `NoRedirectionBitmap` | Windows 专用:去掉原生窗口重定向表面(对标 Tauri `noRedirectionBitmap`),供 DirectComposition 透明窗口使用;HWND 创建后 best-effort 应用,非 Windows 忽略 | `false` |
 
 `builder.Window.Configure(...)` 代码配置在合并链最末,数值/布尔字段直接覆盖 `appsettings.json`。
 
@@ -78,10 +79,14 @@
 | `SpaFallback` | `true`/`false` | 仅当扩展名缺失的主帧导航 404 时回退到 `index.html` |
 | `Csp` | CSP 字符串 | Scheme 模式强制应用 |
 | `MaxAssetBytes` | 整数 | 静态资源大小上限,默认 64 MiB |
+| `Asset.Roots` | 逗号分隔的绝对目录 | 启用 `asset://localhost/<编码路径>` 受限文件通道(配合 `convertFileSrc`);留空即禁用 |
+| `Asset.MaxAssetBytes` | 整数 | 单个 `asset://` 文件大小上限,默认 64 MiB;非法值启动即失败 |
 | `UserAgent` | UA 字符串 | CEF `CefSettings.UserAgent`(仅初始化期) |
 | `ProxyServer` | `host:port` | CEF `--proxy-server`(仅初始化期) |
 | `CachePath` | 路径 | `CefSettings.CachePath`,缺省走 `TaruiApplicationIdentity` 派生的本地缓存目录 |
 | `Policy.NavExternal` | `https:*` / 自定义 glob | 主帧之外允许导航的 origin(走 `WebViewRequestPolicy`) |
+| `Policy.LimitToAppBoundDomains` | `true`/`false` | 对标 Tauri `limitNavigationsToAppBoundDomains`:开启后先做 app-bound 闸门,未命中 `AppBoundDomains` 的导航一律拒绝(连 `NavExternal` 也不放行) |
+| `Policy.AppBoundDomains` | 逗号分隔的 host glob | app-bound 域列表(`app.example` / `*.app.example`);缺省为应用 origin host + `localhost` / `127.0.0.1`。开启限制但列表为空时拒绝所有导航 |
 
 环境变量兜底(`TARUI_WEB_MODE` / `TARUI_WEB_URL` / `TARUI_WEB_ROOT` / `TARUI_WEB_CSP` / `TARUI_WEB_USER_AGENT` / `TARUI_WEB_PROXY_SERVER`)等。
 
@@ -118,6 +123,51 @@
 | 键 | 作用 |
 | --- | --- |
 | `DeepLinkSchemes` | 注册的 deep-link schemes(`Tarui:Application:DeepLinkSchemes: ["tarui"]`) |
+| `Directories.AppData` / `AppLocalData` / `AppConfig` / `AppCache` / `AppLog` | 覆盖对应的 `app_*_dir` 基目录(便携应用)。值必须是绝对路径;空值、相对路径或控制字符在启动时快速失败。覆盖同时作用于 fs/store/sql/persisted-scope 与 `core:path\|resolve`;`temp` / `resources` 不受影响 |
+
+```jsonc
+{
+  "Tarui": {
+    "Application": {
+      "Directories": {
+        "AppData": "D:\\Portable\\data",
+        "AppLocalData": "D:\\Portable\\local",
+        "AppConfig": "D:\\Portable\\config",
+        "AppCache": "D:\\Portable\\cache",
+        "AppLog": "D:\\Portable\\logs"
+      }
+    }
+  }
+}
+```
+
+### `Tarui:Application:Updater:*` 键(更新插件)
+
+`AddUpdaterPlugin()` 从该 section 读取设置;缺失 `ManifestUrl` / `PublicKey` 时视为未配置,`check` / `download` 返回 `updater-not-configured`,不会启动失败。
+
+| 键 | 作用 | 默认 |
+| --- | --- | --- |
+| `ManifestUrl` | 签名清单地址(仅 `http` / `https`) | 必填 |
+| `PublicKey` | base64 DER SubjectPublicKeyInfo(ECDSA P-384 / SHA-384) | 必填 |
+| `CurrentVersion` | 版本比较基线 | `0.1.0` |
+| `StagingDir` | 已验证文件的隔离暂存目录(不写运行中的安装目录) | `%LocalAppData%/tarui.net/updater/staging` |
+| `MaxManifestBytes` / `MaxFileBytes` / `MaxTotalBytes` | 清单与文件/总量的资源上限 | 1 MiB / 200 MiB / 1 GiB |
+| `AllowInsecureHttp` | 允许 `http` 清单地址 | `false` |
+| `AllowDowngrades` | 对齐 Tauri 2.12 应用级 `allowDowngrades`:开启后版本**不同**即算更新(默认只接受更高版本) | `false` |
+
+```jsonc
+{
+  "Tarui": {
+    "Application": {
+      "Updater": {
+        "ManifestUrl": "https://updates.example.com/latest.json",
+        "PublicKey": "<base64 DER SubjectPublicKeyInfo>",
+        "AllowDowngrades": false
+      }
+    }
+  }
+}
+```
 
 ## 7. `Tarui:Notification:*` 键(Windows)
 

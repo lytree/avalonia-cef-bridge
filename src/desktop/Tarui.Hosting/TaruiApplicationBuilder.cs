@@ -58,10 +58,23 @@ public sealed class TaruiApplicationBuilder(string[]? args)
             sp.GetRequiredService<IAppShutdown>(),
             shutdownMode));
         _inner.Services.AddSingleton(_ => ApplicationIdentity);
+        // Reads app.appDirectoriesOverride before the container is built; the file access policy and
+        // the system plugin's path service both resolve this instance lazily, so portable layouts
+        // relocate every app-owned base (fs/store/sql/persisted-scope scopes included).
+        _inner.Services.AddSingleton(MaterializeAppDirectoryOptions());
         var mainWindowOptions = MaterializeMainWindowOptions();
         _inner.Services.AddSingleton(mainWindowOptions);
         return new TaruiApplication(_inner.Build(), _args);
     }
+
+    private AppDirectoryOptions MaterializeAppDirectoryOptions() => new AppDirectoryOptions
+    {
+        AppData = ReadString("Tarui:Application:Directories:AppData"),
+        AppLocalData = ReadString("Tarui:Application:Directories:AppLocalData"),
+        AppConfig = ReadString("Tarui:Application:Directories:AppConfig"),
+        AppCache = ReadString("Tarui:Application:Directories:AppCache"),
+        AppLog = ReadString("Tarui:Application:Directories:AppLog"),
+    }.Normalize();
 
     private WindowOptions MaterializeMainWindowOptions()
     {
@@ -76,6 +89,7 @@ public sealed class TaruiApplicationBuilder(string[]? args)
         var decorations = ReadBool("Tarui:Window:Decorations") ?? true;
         var alwaysOnTop = ReadBool("Tarui:Window:AlwaysOnTop") ?? false;
         var visible = ReadBool("Tarui:Window:Visible") ?? true;
+        var noRedirectionBitmap = ReadBool("Tarui:Window:NoRedirectionBitmap") ?? false;
 
         return new WindowOptions("main")
         {
@@ -94,6 +108,7 @@ public sealed class TaruiApplicationBuilder(string[]? args)
             Decorations = Window.Decorations ?? decorations,
             AlwaysOnTop = Window.AlwaysOnTop ?? alwaysOnTop,
             Visible = Window.Visible ?? visible,
+            NoRedirectionBitmap = Window.NoRedirectionBitmap ?? noRedirectionBitmap,
         };
     }
 

@@ -55,6 +55,15 @@ internal static class Program
         await WebViewHostDeliversFileDropToAuthorizedWindow();
         await WebViewHostGatesDownloadByPolicyAndCapability();
         await WebViewHostGatesNavigationByPolicyAndCapability();
+        await WebViewHostAllowsPermissionWhenEveryFamilyIsGranted();
+        await WebViewHostDeniesPermissionWithoutCapability();
+        await WebViewHostDeniesCombinedPermissionWhenAnyFamilyIsMissing();
+        await WebViewHostSupportsBackendWithoutPermissionInterception();
+        await FileAssetResolverServesFilesUnderConfiguredRoot();
+        await FileAssetResolverRejectsPathsOutsideConfiguredRoots();
+        await FileAssetResolverRejectsNonLocalOrMalformedUrls();
+        await FileAssetResolverRejectsOversizedFilesAndUnsupportedMethods();
+        await FileAssetResolverIsDisabledWithoutRoots();
         await WebViewHostDeniesUnsafeSchemeWithoutThrowing();
         await WebViewHostDeniesMalformedDownloadUrlWithoutThrowing();
         await WebViewHostDisposeIsIdempotent();
@@ -74,6 +83,7 @@ internal static class Program
         OptionalPluginsOwnTheirServices();
         await AutostartPlatformServicesRoundTripLaunchEntries();
         ShellPolicyAcceptsAllApplicationSchemes();
+        ShellPolicyRestrictsNavigationToAppBoundDomains();
         AddWindowExtensionRegistersAndScopesByLabel();
         AddWindowExtensionRegistrarMergesIntoRegistry();
         RegistrarFailsAtCompositionWhenFactoryFreeExtensionIsUnregistered();
@@ -81,6 +91,7 @@ internal static class Program
         CompositionExposesLayeredRegions();
         WindowExtensionContextExposesNativeWindow();
         ShellWindowMapsTransparencyOption();
+        WindowsWindowStyleAddsNoRedirectionBitmapFlag();
         await WindowExtensionContextEmitsToItsWindow();
         await ExtensionClosesNotifyAndDispose();
         WindowCapabilityResolverRejectsTargetThatExpandsAllow();
@@ -779,6 +790,46 @@ internal static class Program
             "Unlisted http targets must be denied.");
     }
 
+    private static void ShellPolicyRestrictsNavigationToAppBoundDomains()
+    {
+        // LimitToAppBoundDomains must pin navigation to the configured hosts, even when the navigation
+        // allow list or the external rules would otherwise accept the target. Downloads are unaffected.
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Tarui:Web:Policy:NavAllow"] = "http://127.0.0.1:5173/**, https://app.example/**, https://*.example.org/**",
+                ["Tarui:Web:Policy:NavExternal"] = "https://auth.example/**",
+                ["Tarui:Web:Policy:LimitToAppBoundDomains"] = "true",
+                ["Tarui:Web:Policy:AppBoundDomains"] = "app.example, *.example.org",
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddTaruiShell();
+        services.AddSingleton(new TaruiAppOrigin(
+            new Uri("http://127.0.0.1:5173/"),
+            ["http", "https", "tarui"],
+            new Uri("tarui://localhost/")));
+        services.AddSingleton(new WindowOptions("main"));
+
+        using var provider = services.BuildServiceProvider();
+        var policy = provider.GetRequiredService<WebViewRequestPolicy>();
+
+        Assert(
+            policy.DecideNavigation(new Uri("http://127.0.0.1:5173/app")) == WebViewRequestDecision.Deny,
+            "The HTTP start origin is not in AppBoundDomains, so the limit must deny it.");
+        Assert(
+            policy.DecideNavigation(new Uri("https://app.example/index.html")) == WebViewRequestDecision.Allow,
+            "An explicitly app-bound host must be allowed.");
+        Assert(
+            policy.DecideNavigation(new Uri("https://docs.example.org/guide")) == WebViewRequestDecision.Allow,
+            "A wildcard app-bound domain must cover matching subdomains.");
+        Assert(
+            policy.DecideNavigation(new Uri("https://example.com/docs")) == WebViewRequestDecision.Deny,
+            "An https target outside the app-bound domains must not be handed to the OS handler.");
+    }
+
     private static void AddWindowExtensionRegistersAndScopesByLabel()
     {
         // Registering extensions through AddTaruiShell must feed the WindowExtensionRegistry, with
@@ -972,6 +1023,23 @@ internal static class Program
         Assert(
             !opaque.TransparencyLevelHint.Contains(WindowTransparencyLevel.Transparent),
             "A window without the transparent option must keep the default transparency hint.");
+    }
+
+    private static void WindowsWindowStyleAddsNoRedirectionBitmapFlag()
+    {
+        const int layered = 0x00080000; // WS_EX_LAYERED, used here as an unrelated pre-existing bit.
+
+        Assert(
+            WindowsWindowStyle.WithNoRedirectionBitmap(0) == WindowsWindowStyle.WsExNoRedirectionBitmap,
+            "An empty style must gain exactly the no-redirection-bitmap flag.");
+        Assert(
+            WindowsWindowStyle.WithNoRedirectionBitmap(layered) ==
+                (layered | WindowsWindowStyle.WsExNoRedirectionBitmap),
+            "Existing extended style bits must survive the no-redirection-bitmap patch.");
+        Assert(
+            WindowsWindowStyle.WithNoRedirectionBitmap(WindowsWindowStyle.WsExNoRedirectionBitmap) ==
+                WindowsWindowStyle.WsExNoRedirectionBitmap,
+            "Applying the flag twice must be idempotent.");
     }
 
     private static async Task WindowExtensionContextEmitsToItsWindow()
@@ -1640,6 +1708,188 @@ internal static class Program
         return Task.CompletedTask;
     }
 
+    private static Task WebViewHostAllowsPermissionWhenEveryFamilyIsGranted()
+    {
+        var capabilities = new CapabilitySet(
+            ["plugin:webview|permission-media", "plugin:webview|permission-geolocation"],
+            [],
+            []);
+        var webView = new FakePermissionWebView();
+        var (host, _, _) = CreateWebViewHost(capabilities, webView: webView);
+
+        using (host)
+        {
+            var args = webView.RaisePermissionRequested(
+                TaruiWebViewPermissionKind.Media | TaruiWebViewPermissionKind.Geolocation);
+
+            Assert(
+                args.Response == TaruiWebViewPermissionResponse.Allow,
+                "A request must be allowed when every requested family has a matching capability.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static Task WebViewHostDeniesPermissionWithoutCapability()
+    {
+        // Permissions are denied by default: a window with no browser-permission capability must not
+        // silently grant camera or microphone access to the page it hosts.
+        var webView = new FakePermissionWebView();
+        var (host, _, _) = CreateWebViewHost(new CapabilitySet([], [], []), webView: webView);
+
+        using (host)
+        {
+            var args = webView.RaisePermissionRequested(TaruiWebViewPermissionKind.Media);
+
+            Assert(
+                args.Response == TaruiWebViewPermissionResponse.Deny,
+                "A permission request without the matching capability must be denied.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static Task WebViewHostDeniesCombinedPermissionWhenAnyFamilyIsMissing()
+    {
+        // Granting media capture must not accidentally grant geolocation: a combined prompt is
+        // answered as one unit, so one unlisted family denies the whole request.
+        var capabilities = new CapabilitySet(["plugin:webview|permission-media"], [], []);
+        var webView = new FakePermissionWebView();
+        var (host, _, _) = CreateWebViewHost(capabilities, webView: webView);
+
+        using (host)
+        {
+            var args = webView.RaisePermissionRequested(
+                TaruiWebViewPermissionKind.Media | TaruiWebViewPermissionKind.Geolocation);
+
+            Assert(
+                args.Response == TaruiWebViewPermissionResponse.Deny,
+                "A combined request must be denied when any requested family lacks a capability.");
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static Task WebViewHostSupportsBackendWithoutPermissionInterception()
+    {
+        // A backend that cannot observe permission prompts keeps the browser default instead of the
+        // session claiming a decision; the host must still construct and dispose such a surface.
+        var (host, _, webView) = CreateWebViewHost(
+            new CapabilitySet(["plugin:webview|permission-media"], [], []));
+
+        using (host)
+        {
+            webView.RaiseFileDropLeft();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private static Task FileAssetResolverServesFilesUnderConfiguredRoot()
+    {
+        using var temp = new TempDirectory();
+        temp.Write("note.txt", "hello asset");
+        var file = System.IO.Path.Combine(temp.Path, "note.txt");
+        var resolver = new FileAssetResolver([temp.Path]);
+
+        Assert(resolver.IsEnabled, "A configured root must enable the asset resolver.");
+
+        var response = resolver.Resolve(AssetUrl(file), "GET");
+        Assert(response.Status == 200, "A file under the configured root must be served.");
+        Assert(response.MimeType == "text/plain", "The MIME type must follow the file extension.");
+
+        using (var stream = response.ContentStream!)
+        using (var reader = new StreamReader(stream))
+        {
+            Assert(reader.ReadToEnd() == "hello asset", "The response must stream the file contents.");
+        }
+
+        var head = resolver.Resolve(AssetUrl(file), "HEAD");
+        Assert(
+            head.Status == 200 && head.ResponseLength == new FileInfo(file).Length,
+            "A HEAD request must advertise the real length without a body.");
+
+        return Task.CompletedTask;
+    }
+
+    private static Task FileAssetResolverRejectsPathsOutsideConfiguredRoots()
+    {
+        using var allowed = new TempDirectory();
+        using var other = new TempDirectory();
+        allowed.Write("inside.txt", "ok");
+        other.Write("outside.txt", "secret");
+
+        var resolver = new FileAssetResolver([allowed.Path]);
+
+        var outside = resolver.Resolve(
+            AssetUrl(System.IO.Path.Combine(other.Path, "outside.txt")),
+            "GET");
+        Assert(outside.Status == 403, "A file outside every configured root must be forbidden.");
+
+        var traversal = resolver.Resolve(
+            AssetUrl(System.IO.Path.Combine(allowed.Path, "..", "outside.txt")),
+            "GET");
+        Assert(traversal.Status == 403, "A path that escapes its root must be forbidden.");
+
+        var directory = resolver.Resolve(AssetUrl(allowed.Path), "GET");
+        Assert(directory.Status == 403, "A directory root is not a servable asset.");
+
+        return Task.CompletedTask;
+    }
+
+    private static Task FileAssetResolverRejectsNonLocalOrMalformedUrls()
+    {
+        using var temp = new TempDirectory();
+        temp.Write("note.txt", "ok");
+        var file = System.IO.Path.Combine(temp.Path, "note.txt");
+        var resolver = new FileAssetResolver([temp.Path]);
+
+        var wrongHost = resolver.Resolve(
+            $"asset://evil/{Uri.EscapeDataString(file)}",
+            "GET");
+        Assert(wrongHost.Status == 403, "A non-local asset host must be forbidden.");
+
+        var wrongScheme = resolver.Resolve(
+            $"http://localhost/{Uri.EscapeDataString(file)}",
+            "GET");
+        Assert(wrongScheme.Status == 403, "A non-asset scheme must be forbidden.");
+
+        var noPath = resolver.Resolve("asset://localhost/", "GET");
+        Assert(noPath.Status == 403, "An asset URL without a path must be forbidden.");
+
+        return Task.CompletedTask;
+    }
+
+    private static Task FileAssetResolverRejectsOversizedFilesAndUnsupportedMethods()
+    {
+        using var temp = new TempDirectory();
+        temp.Write("big.bin", "12345");
+        var file = System.IO.Path.Combine(temp.Path, "big.bin");
+        var resolver = new FileAssetResolver([temp.Path], maxAssetBytes: 4);
+
+        var oversized = resolver.Resolve(AssetUrl(file), "GET");
+        Assert(oversized.Status == 413, "A file above the configured limit must be rejected.");
+
+        var unlimited = new FileAssetResolver([temp.Path]);
+        var method = unlimited.Resolve(AssetUrl(file), "POST");
+        Assert(method.Status == 405, "Only GET and HEAD may read assets.");
+
+        return Task.CompletedTask;
+    }
+
+    private static Task FileAssetResolverIsDisabledWithoutRoots()
+    {
+        var resolver = new FileAssetResolver([]);
+        var response = resolver.Resolve("asset://localhost/anything.txt", "GET");
+
+        Assert(!resolver.IsEnabled, "An empty root list must disable the asset protocol.");
+        Assert(response.Status == 404, "A disabled resolver must serve nothing.");
+        return Task.CompletedTask;
+    }
+
+    private static string AssetUrl(string absolutePath) =>
+        $"asset://localhost/{Uri.EscapeDataString(absolutePath)}";
+
     private static Task WebViewHostDeniesUnsafeSchemeWithoutThrowing()
     {
         // CEF loads about:blank before the real start URL; an unsafe-scheme request must be
@@ -1799,6 +2049,21 @@ internal static class Program
     private sealed class NewWebViewFactory : ITaruiAvaloniaWebViewFactory
     {
         public ITaruiAvaloniaWebView Create(TaruiWebViewOptions options) => new FakeWebView();
+    }
+
+    /// <summary>A web view that also exposes permission interception, used to exercise the prompt path.</summary>
+    private sealed class FakePermissionWebView : FakeWebView, ITaruiWebViewPermissions
+    {
+        public event EventHandler<TaruiWebViewPermissionRequestedEventArgs>? PermissionRequested;
+
+        public TaruiWebViewPermissionRequestedEventArgs RaisePermissionRequested(
+            TaruiWebViewPermissionKind requested,
+            string origin = "https://app.example/")
+        {
+            var args = new TaruiWebViewPermissionRequestedEventArgs(requested, origin);
+            PermissionRequested?.Invoke(this, args);
+            return args;
+        }
     }
 
     /// <summary>A web view that also exposes the optional CDP channel, used to exercise the event path.</summary>

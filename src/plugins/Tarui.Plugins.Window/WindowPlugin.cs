@@ -415,7 +415,7 @@ public sealed class WindowPlugin(IWindowService service) : ITaruiPlugin
             SetIconOptions options,
             CommandContext context,
             CancellationToken cancellationToken) =>
-            service.SetIconAsync(Resolve(options.Label, context, "core:window|set-icon"), options.Png, cancellationToken);
+            service.SetIconAsync(Resolve(options.Label, context, "core:window|set-icon"), options.Png, options.FromAppIcon, cancellationToken);
 
         [TaruiCommand("core:window|set-theme")]
         public ValueTask<Unit> SetThemeAsync(

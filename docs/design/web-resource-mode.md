@@ -68,6 +68,16 @@ Scheme 模式服务 `tarui://localhost/index.html`;`tarui build` 把 `web/dist` 
 
 HTTP 与自定义 app scheme 可以共存:当配置了 content root(`Tarui:Web:Root` 或打包资产),HTTP 模式也会注册无端口的自定义 scheme(如 `tarui://localhost/`),从而允许窗口与 WebView 同时加载远程 HTTP 内容与本地资产。
 
+### 5.1 受限 `asset://` 通道
+
+除应用 origin 外,Shell 还提供一条**独立的本地文件通道** `asset://localhost/<percent-encoded 绝对路径>`,用于 `<img>` / `<video>` / `@font-face` 等浏览器原生加载,等价于 Tauri 的 `convertFileSrc`:
+
+- 由 `ITaruiAssetResolver`(Shell 实现 `FileAssetResolver`)解析,后端仅在 `IsEnabled` 时注册 scheme(`CefGlueNextWebViewFactory.AssetSchemeName = "asset"`)。
+- 白名单来自 `Tarui:Web:Asset:Roots`(逗号分隔绝对目录)。请求路径必须是绝对路径,命中某个 root 且不越界,并再经 `IFileAccessPolicy.Authorize(Read)`;否则 403/404。
+- 仅 `GET` / `HEAD`;非文件 404;超过 `Tarui:Web:Asset:MaxAssetBytes`(默认 64 MiB)413。
+- scheme 注册为 standard / display-isolated / secure / fetch-enabled,但**不**设置 CSP bypass;默认 CSP 已包含 `img-src`/`font-src`/`media-src`/`connect-src` 的 `asset:`。
+- 未配置 root 时不注册 scheme,前端 `convertFileSrc` 生成的 URL 会加载失败——这是有意的默认关闭。
+
 默认导航策略放行所有应用 origin —— HTTP 起始 origin、自定义 scheme origin 与本地 dev server。`TaruiAppOrigin.AllowedSchemes` / `SchemeOrigin` 暴露可接受的 scheme 以便校验:
 
 ```csharp
@@ -94,9 +104,13 @@ Scheme 模式下默认 CSP(可被 `Tarui:Web:Csp` 覆盖):
 default-src 'self';
 script-src 'self';
 style-src 'self' 'unsafe-inline';
-img-src 'self' data:;
-font-src 'self' data:;
-connect-src 'self' ipc: http://ipc.localhost;
+img-src 'self' data: asset:;
+font-src 'self' data: asset:;
+media-src 'self' asset:;
+connect-src 'self' asset:;
+object-src 'none';
+base-uri 'self';
+frame-ancestors 'none';
 ```
 
-`connect-src` 包含 IPC 自定义协议与 `http://ipc.localhost`(CEF 自定义 scheme + HTTP hybrid 模式)。生产环境应显式收紧 `connect-src` 限定业务后端 origin。
+`asset:` 为受限 `asset://` 通道(§5.1)放行;生产环境应显式收紧 `connect-src` 限定业务后端 origin。

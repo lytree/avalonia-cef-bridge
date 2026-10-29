@@ -1,4 +1,5 @@
 ﻿using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Microsoft.Extensions.Logging;
@@ -35,6 +36,12 @@ public sealed class UpdaterSizeLimitException(string message) : Exception(messag
 public sealed partial class UpdaterService : IUpdaterService, IDisposable
 {
     private static readonly JsonTypeInfo<UpdateManifest> ManifestTypeInfo = TaruiJsonContext.Default.UpdateManifest;
+
+    /// <summary>
+    /// The signed manifest persisted next to the staged blobs so <c>apply</c> can re-verify the payload
+    /// immediately before installing it.
+    /// </summary>
+    internal const string StagedManifestFileName = "tarui-update-manifest.json";
 
     private readonly HttpClient _http;
     private readonly UpdaterSettings? _settings;
@@ -153,6 +160,13 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
                     }
                 }
 
+                // Persist the verified manifest with the blobs so apply can re-check the payload it is
+                // about to install instead of trusting files that may have been swapped after download.
+                await File.WriteAllBytesAsync(
+                    Path.Combine(stagingRoot, StagedManifestFileName),
+                    JsonSerializer.SerializeToUtf8Bytes(manifest, ManifestTypeInfo),
+                    cancellationToken).ConfigureAwait(false);
+
                 await EmitStatusAsync("download-success", manifest.Version, cancellationToken: cancellationToken);
                 return new UpdateDownloadResult(true, null, stagingRoot);
             }
@@ -222,20 +236,52 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
         }
 
         // Confine the staging path to the configured staging root; only a DownloadAsync result is valid input.
-        if (string.IsNullOrWhiteSpace(options.StagingPath))
+        var stagingPath = ResolveStagingDirectory(options.StagingPath);
+        if (stagingPath is null)
         {
             return new UpdateApplyResult(false, "invalid-staging-path", restart);
         }
 
-        var stagingRoot = Path.GetFullPath(_settings.StagingDir);
-        var stagingPath = Path.GetFullPath(options.StagingPath);
-        if (!stagingPath.StartsWith(stagingRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
-            !Directory.Exists(stagingPath))
+        // Re-verify the payload about to be installed: the signed manifest persisted by download plus every
+        // staged blob's SHA-256. This is the install-time verification introduced upstream in updater 2.14.
+        UpdateManifest manifest;
+        try
         {
-            return new UpdateApplyResult(false, "invalid-staging-path", restart);
+            var manifestPath = Path.Combine(stagingPath, StagedManifestFileName);
+            if (!File.Exists(manifestPath))
+            {
+                await EmitStatusAsync("apply-failed", error: "missing-update-manifest", cancellationToken: cancellationToken);
+                return new UpdateApplyResult(false, "missing-update-manifest", restart);
+            }
+
+            manifest = ParseAndVerifyManifest(await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false));
+        }
+        catch (UpdateVerificationException exception)
+        {
+            LogVerificationFailure(exception);
+            await EmitStatusAsync("apply-failed", error: exception.Message, cancellationToken: cancellationToken);
+            return new UpdateApplyResult(false, exception.Message, restart);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            LogApplyFailure(exception);
+            await EmitStatusAsync("apply-failed", error: "invalid-update-manifest", cancellationToken: cancellationToken);
+            return new UpdateApplyResult(false, "invalid-update-manifest", restart);
         }
 
-        var bundle = Directory.GetFiles(stagingPath, "*.msix", SearchOption.TopDirectoryOnly)
+        var verificationError = VerifyStagedFiles(manifest, stagingPath);
+        if (verificationError is not null)
+        {
+            var error = $"staged-verification-failed:{verificationError}";
+            await EmitStatusAsync("apply-failed", error: error, cancellationToken: cancellationToken);
+            return new UpdateApplyResult(false, error, restart);
+        }
+
+        // Only a bundle named by the verified manifest may be installed; an extra MSIX dropped into the
+        // staging directory after download is never selected.
+        var bundle = manifest.Files
+            .Where(static file => file.EndsWith(".msix", StringComparison.OrdinalIgnoreCase))
+            .Select(file => ResolveStagedFilePath(stagingPath, file))
             .OrderBy(path => path, StringComparer.Ordinal)
             .FirstOrDefault();
         if (bundle is null)
@@ -270,6 +316,72 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
     }
 
     /// <summary>
+    /// Restores a cached, previously verified manifest without touching the network. The manifest is
+    /// re-parsed and re-verified against the configured public key and version policy, so persisting a
+    /// manifest cannot be used to smuggle in an unsigned or stale release.
+    /// </summary>
+    public ValueTask<UpdateRestoreResult> RestoreAsync(
+        UpdateRestoreOptions options,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_settings is null)
+        {
+            return ValueTask.FromResult(new UpdateRestoreResult(false, null, "updater-not-configured"));
+        }
+
+        try
+        {
+            var manifest = ParseAndVerifyManifest(options.ManifestJson);
+            var comparison = CompareVersions(manifest.Version);
+            return ValueTask.FromResult(comparison.Error is not null
+                ? new UpdateRestoreResult(false, null, comparison.Error)
+                : comparison.IsUpdate
+                    ? new UpdateRestoreResult(true, manifest.Version, null)
+                    : new UpdateRestoreResult(false, null, "no-update"));
+        }
+        catch (UpdateVerificationException exception)
+        {
+            LogVerificationFailure(exception);
+            return ValueTask.FromResult(new UpdateRestoreResult(false, null, exception.Message));
+        }
+    }
+
+    /// <summary>
+    /// Verifies a signed manifest and every staged blob it advertises. No network access and no install
+    /// step happen here: this is the standalone equivalent of Tauri's <c>Update::verify</c>, and the exact
+    /// same check apply performs before handing the bundle to the platform applier.
+    /// </summary>
+    public ValueTask<UpdateVerifyResult> VerifyAsync(
+        UpdateVerifyOptions options,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_settings is null)
+        {
+            return ValueTask.FromResult(new UpdateVerifyResult(false, "updater-not-configured"));
+        }
+
+        try
+        {
+            var manifest = ParseAndVerifyManifest(options.ManifestJson);
+            var stagingPath = ResolveStagingDirectory(options.StagingPath);
+            if (stagingPath is null)
+            {
+                return ValueTask.FromResult(new UpdateVerifyResult(false, "invalid-staging-path"));
+            }
+
+            var error = VerifyStagedFiles(manifest, stagingPath);
+            return ValueTask.FromResult(new UpdateVerifyResult(error is null, error));
+        }
+        catch (UpdateVerificationException exception)
+        {
+            LogVerificationFailure(exception);
+            return ValueTask.FromResult(new UpdateVerifyResult(false, exception.Message));
+        }
+    }
+
+    /// <summary>
     /// Rejects insecure HTTP at runtime as well as configuration time. The configuration layer
     /// already drops HTTP upstreams unless <c>AllowInsecureHttp</c> is set, but a caller might
     /// construct <see cref="UpdaterSettings"/> directly. Defense in depth.
@@ -295,12 +407,107 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
     /// <summary>Fetches the manifest and throws <see cref="UpdateVerificationException"/> if schema or signature fail.</summary>
     private async Task<UpdateManifest> FetchVerifiedManifestAsync(CancellationToken cancellationToken)
     {
-        using var verifier = new UpdateVerifier(_settings!.PublicKeyB64);
         var raw = await DownloadManifestBytesAsync(cancellationToken).ConfigureAwait(false);
-        var manifest = JsonSerializer.Deserialize(raw, ManifestTypeInfo)
-            ?? throw new UpdateVerificationException("malformed-manifest");
-        verifier.Verify(manifest);
-        return manifest;
+        return ParseAndVerifyManifest(raw);
+    }
+
+    /// <summary>
+    /// Parses cached or fetched manifest bytes and verifies them against the configured public key.
+    /// Every failure mode (malformed JSON, bad schema, unusable key or signature) is normalized to
+    /// <see cref="UpdateVerificationException"/> so callers never treat a broken manifest as trusted.
+    /// </summary>
+    private UpdateManifest ParseAndVerifyManifest(byte[] raw)
+    {
+        try
+        {
+            var manifest = JsonSerializer.Deserialize(raw, ManifestTypeInfo)
+                ?? throw new UpdateVerificationException("malformed-manifest");
+            using var verifier = new UpdateVerifier(_settings!.PublicKeyB64);
+            verifier.Verify(manifest);
+            return manifest;
+        }
+        catch (JsonException)
+        {
+            throw new UpdateVerificationException("malformed-manifest");
+        }
+        catch (Exception exception) when (exception is FormatException or CryptographicException)
+        {
+            throw new UpdateVerificationException("invalid-signature");
+        }
+    }
+
+    private UpdateManifest ParseAndVerifyManifest(string json) =>
+        ParseAndVerifyManifest(Encoding.UTF8.GetBytes(json ?? string.Empty));
+
+    /// <summary>
+    /// Resolves an absolute staging directory confined to the configured staging root. Returns null for an
+    /// empty, missing, outside-the-root or malformed path so callers report <c>invalid-staging-path</c>
+    /// rather than touching an arbitrary directory.
+    /// </summary>
+    private string? ResolveStagingDirectory(string? stagingPath)
+    {
+        if (string.IsNullOrWhiteSpace(stagingPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var root = Path.GetFullPath(_settings!.StagingDir);
+            var full = Path.GetFullPath(stagingPath);
+            return full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
+                Directory.Exists(full)
+                ? full
+                : null;
+        }
+        catch (Exception exception) when (exception is ArgumentException or IOException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Re-hashes every staged blob advertised by the verified manifest and compares it with the signed
+    /// SHA-256 table. Returns null when everything matches, otherwise a stable reason
+    /// (<c>missing-file:</c>, <c>hash-mismatch:</c>, <c>unreadable-file:</c> or <c>unsafe-path:</c>).
+    /// </summary>
+    private static string? VerifyStagedFiles(UpdateManifest manifest, string stagingPath)
+    {
+        foreach (var file in manifest.Files)
+        {
+            string full;
+            try
+            {
+                full = ResolveStagedFilePath(stagingPath, file);
+            }
+            catch (UpdateVerificationException exception)
+            {
+                return exception.Message;
+            }
+
+            if (!File.Exists(full))
+            {
+                return $"missing-file:{file}";
+            }
+
+            string actual;
+            try
+            {
+                using var stream = File.OpenRead(full);
+                actual = Convert.ToHexString(SHA256.HashData(stream));
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return $"unreadable-file:{file}";
+            }
+
+            if (!string.Equals(actual, manifest.Sha256[file], StringComparison.OrdinalIgnoreCase))
+            {
+                return $"hash-mismatch:{file}";
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -336,15 +543,37 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
 
     private UpdateCheckResult CompareVersion(UpdateManifest manifest)
     {
-        if (!Version.TryParse(manifest.Version, out var target) ||
+        var comparison = CompareVersions(manifest.Version);
+        return comparison.Error is not null
+            ? new UpdateCheckResult(false, null, comparison.Error)
+            : new UpdateCheckResult(comparison.IsUpdate, comparison.IsUpdate ? manifest.Version : null, null);
+    }
+
+    /// <summary>
+    /// Applies the configured version policy. The default requires a strictly newer target; with
+    /// <see cref="UpdaterSettings.AllowDowngrades"/> set (Tauri's application-level <c>allowDowngrades</c>)
+    /// a merely different target is accepted. Unparsable versions are an explicit error, never "no update".
+    /// </summary>
+    private (bool IsUpdate, string? Error) CompareVersions(string targetVersion)
+    {
+        if (!Version.TryParse(targetVersion, out var target) ||
             !Version.TryParse(_settings!.CurrentVersion, out var current))
         {
-            return new UpdateCheckResult(false, null, "invalid-version");
+            return (false, "invalid-version");
         }
 
-        return target > current
-            ? new UpdateCheckResult(true, manifest.Version, null)
-            : new UpdateCheckResult(false, null, null);
+        return (target != current && (_settings.AllowDowngrades || target > current), null);
+    }
+
+    /// <summary>
+    /// Resolves a validated staging path and creates its parent directory so a blob's sub-path can be
+    /// written. Confinement rules live in <see cref="ResolveStagedFilePath"/>.
+    /// </summary>
+    private static string ResolveStagingPath(string stagingRoot, string file)
+    {
+        var full = ResolveStagedFilePath(stagingRoot, file);
+        Directory.CreateDirectory(Path.GetDirectoryName(full) ?? full);
+        return full;
     }
 
     /// <summary>
@@ -352,7 +581,7 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
     /// smuggle a third-party scheme, an absolute/backslash path or a traversal escaping the root.
     /// The signed manifest is trusted, but the staging path is still confined as defense in depth.
     /// </summary>
-    private static string ResolveStagingPath(string stagingRoot, string file)
+    private static string ResolveStagedFilePath(string stagingRoot, string file)
     {
         if (string.IsNullOrWhiteSpace(file) ||
             file.StartsWith('/') ||
@@ -370,8 +599,6 @@ public sealed partial class UpdaterService : IUpdaterService, IDisposable
             throw new UpdateVerificationException($"unsafe-path:{file}");
         }
 
-        var directory = Path.GetDirectoryName(full) ?? full;
-        Directory.CreateDirectory(directory);
         return full;
     }
 

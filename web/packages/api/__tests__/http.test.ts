@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { fetch, http } from '../http'
 import type { HttpStreamEvent } from '../http'
-import { cleanupIpcMock, installIpcMock, lastInvoke, send } from './ipcMock'
+import { cleanupIpcMock, flushChannelDelivery, installIpcMock, lastInvoke, send } from './ipcMock'
 
 afterEach(() => cleanupIpcMock())
 
@@ -57,6 +57,7 @@ describe('http.fetch', () => {
     send({ protocol: 1, id: call.id, success: true, payload: { status: 200, headers: [{ name: 'x-a', value: '1' }], body: null } })
 
     const res = await pending
+    await flushChannelDelivery()
     expect(res.body).toBeNull()
     expect(onEvent).toHaveBeenCalledTimes(3)
     expect(frames[0]).toMatchObject({ kind: 'meta', status: 200 })

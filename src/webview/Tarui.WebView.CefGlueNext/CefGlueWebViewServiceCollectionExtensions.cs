@@ -14,7 +14,9 @@ public static class CefGlueWebViewServiceCollectionExtensions
         .AddSingleton(sp => new CefGlueNextWebRuntime(sp.GetRequiredService<CefGlueNextWebAppOptions>()))
         .AddSingleton<ITaruiWebRuntime>(sp => sp.GetRequiredService<CefGlueNextWebRuntime>())
         .AddSingleton<CefGlueNextWebViewFactory>(sp =>
-            new CefGlueNextWebViewFactory(sp.GetRequiredService<CefGlueNextWebAppOptions>()))
+            new CefGlueNextWebViewFactory(
+                sp.GetRequiredService<CefGlueNextWebAppOptions>(),
+                sp.GetService<ITaruiAssetResolver>()))
         .AddSingleton<ITaruiAvaloniaWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
         .AddSingleton<ITaruiWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
         .AddSingleton(sp => sp.GetRequiredService<CefGlueNextWebRuntime>().Origin)
@@ -24,7 +26,9 @@ public static class CefGlueWebViewServiceCollectionExtensions
         .AddSingleton(options)
         .AddSingleton(_ => new CefGlueNextWebRuntime(options))
         .AddSingleton<ITaruiWebRuntime>(sp => sp.GetRequiredService<CefGlueNextWebRuntime>())
-        .AddSingleton<CefGlueNextWebViewFactory>(sp => new CefGlueNextWebViewFactory(options))
+        .AddSingleton(sp => new CefGlueNextWebViewFactory(
+            options,
+            sp.GetService<ITaruiAssetResolver>()))
         .AddSingleton<ITaruiAvaloniaWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
         .AddSingleton<ITaruiWebViewFactory>(sp => sp.GetRequiredService<CefGlueNextWebViewFactory>())
         .AddSingleton(sp => sp.GetRequiredService<CefGlueNextWebRuntime>().Origin)

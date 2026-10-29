@@ -42,6 +42,10 @@ const state = await win.getState();
 await win.setTitle('Hello');
 await win.close();
 
+// 图标:PNG 字节,或恢复可执行文件内嵌图标(对标 Tauri `Image::from_app_icon_resource`)
+await win.setIcon(pngBytes);   // null 清除图标
+await win.restoreAppIcon();    // Windows;其它平台抛 NOT_SUPPORTED
+
 // 监听
 const off = await win.onMoved(({ x, y }) => console.log('moved', x, y));
 // off() 解除监听
@@ -55,22 +59,22 @@ const off = await win.onMoved(({ x, y }) => console.log('moved', x, y));
 
 | 错误码 | 含义 |
 | --- | --- |
-| `not_authorized` | 窗口 capability 未授予该命令 |
-| `not_found` | 命令未注册或窗口不存在 |
-| `invalid_payload` | DTO 校验失败 |
-| `scope_denied` | scope allow/deny 命中拒绝 |
-| `not_supported` | 当前平台不支持该能力 |
-| `resource_conflict` | 系统占用或冲突 |
-| `user_denied` | 用户拒绝系统授权 |
-| `io_error` | 文件 / 网络 / 进程 I/O 错误 |
+| `PERMISSION_DENIED` | 窗口 capability 未授予该命令 |
+| `COMMAND_NOT_FOUND` | 命令未注册或窗口不存在 |
+| `INVALID_MESSAGE` | DTO 校验失败 |
+| `PATH_DENIED` | scope allow/deny 命中拒绝 |
+| `NOT_SUPPORTED` | 当前平台不支持该能力 |
+| `RESOURCE_CONFLICT` | 系统占用或冲突 |
+| `USER_DENIED` | 用户拒绝系统授权 |
+| `IO_ERROR` | 文件 / 网络 / 进程 I/O 错误 |
 
 ```ts
 try {
   await fs.readTextFile({ path: 'documents/note.txt' });
 } catch (err) {
-  if (err.code === 'not_authorized') {
+  if (err.code === 'PERMISSION_DENIED') {
     console.error('窗口未授权');
-  } else if (err.code === 'scope_denied') {
+  } else if (err.code === 'PATH_DENIED') {
     console.error('scope 拒绝');
   } else {
     throw err;
@@ -118,7 +122,7 @@ await invoke('plugin:http|fetch', {
 
 Channel 具备消费侧背压(`channel-credit-v1`):原生侧在途帧上限 16,前端 `onmessage`(可为异步)落定后回发 ACK 归还信用;未握手的老前端保持 fire-and-forget。协议细节见 `docs/design/ipc.md` §2。
 
-## 6. 模块一览(30 个)
+## 6. 模块一览(31 个)
 
 | 模块 | 子路径 | 风格 |
 | --- | --- | --- |
@@ -130,6 +134,7 @@ Channel 具备消费侧背压(`channel-credit-v1`):原生侧在途帧上限 16,�
 | `dialog` | `@lytree/api/dialog` | openDialog / openMessage / openAsk |
 | `os` | `@lytree/api/os` | 函数式 |
 | `path` | `@lytree/api/path` | 函数式 |
+| `asset` | `@lytree/api/asset` | convertFileSrc |
 | `process` | `@lytree/api/process` | 函数式 |
 | `shell` | `@lytree/api/shell` | openExternal |
 | `clipboard` | `@lytree/api/clipboard` | readText / writeText / readHtml / writeHtml / readImage / writeImage |
@@ -154,6 +159,20 @@ Channel 具备消费侧背压(`channel-credit-v1`):原生侧在途帧上限 16,�
 | `persisted-scope` | `@lytree/api/persisted-scope` | allowScope / denyScope / resetScope |
 
 完整类型与函数签名见 `web/packages/api/src/<name>.ts`。
+
+### `convertFileSrc`
+
+把本地绝对路径转换为受限 `asset://` URL,用于 `<img>` / `<video>` / `@font-face` 等浏览器原生加载路径(对标 Tauri `convertFileSrc`):
+
+```ts
+import { convertFileSrc } from '@lytree/api/asset'
+
+const src = convertFileSrc('C:\\Users\\me\\Pictures\\a.png')
+// asset://localhost/C%3A%5CUsers%5Cme%5CPictures%5Ca.png
+document.querySelector('img')!.src = src
+```
+
+只有位于 `Tarui:Web:Asset:Roots` 白名单目录内的文件可被读取(逐 root 做包含检查并复用 `IFileAccessPolicy`),仅支持 GET/HEAD,超过 `Tarui:Web:Asset:MaxAssetBytes`(默认 64 MiB)返回 413。未配置任何 root 时 `asset` scheme 不会注册,需要在应用配置中显式开启;默认 CSP 已放行 `asset:`。
 
 ## 7. Demo 实战
 
@@ -201,3 +220,23 @@ const off = wv.onDevtoolsProtocol(({ message }) => console.log('cdp', message));
 ```
 
 `Webview.create()` 对应 `plugin:webview|create`(在既有窗口内挂载新 surface,宿主窗口继承其 capability;跨窗口需 `plugin:webview|create-other-window`)。`setBounds(null)` / `destroy()` 分别对应 `plugin:webview|set-bounds`(受 `-other-webview` 约束)与 `plugin:webview|destroy`。`sendDevtoolsMessage()` 对应 `plugin:webview|send-devtools-message`(受权限 + `-other-webview` 约束,默认不授权;承载后端不支持 CDP 时报 `NOT_SUPPORTED`),`onDevtoolsProtocol` 订阅保留事件 `webview://devtools-protocol`(须在 capability `events` 中声明)。列表与生命周期订阅:`Webview.getAll()`、`onDownloadRequested` / `onNavigationRequested` / `onRenderProcessGone`。
+
+## 9. Updater
+
+```ts
+import { check, download, apply, restore, verify, onStatus } from '@lytree/api/updater';
+
+const status = await check();          // { updateAvailable, version?, error? }
+if (status.updateAvailable) {
+  const staged = await download();     // { succeeded, stagingPath?, error? }
+  if (staged.succeeded && staged.stagingPath) {
+    await verify(cachedManifestJson, staged.stagingPath);
+    await apply(staged.stagingPath);   // 安装前再次验签 + 逐文件复算哈希
+  }
+}
+
+// 从调用方缓存的已签名清单恢复更新(无网络),镜像 Tauri `Updater.restoreUpdate`
+const restored = await restore(cachedManifestJson);
+```
+
+对应命令 `plugin:updater|check` / `download` / `apply` / `restore` / `verify`;进度与结果通过 `updater://status` 投递(须在 capability `events` 中声明)。`apply` 只接受 `download` 产出的 staging 目录:先重新验签清单,再逐文件复算 SHA-256,安装包仅从清单 `Files` 选取,staging 被替换或加塞都会被 `staged-verification-failed:*` 拒绝。`AllowDowngrades` 是应用级配置(`Tarui:Application:Updater:AllowDowngrades`),开启后版本不同即算更新;默认只接受更高版本。`check` / `restore` 的校验失败返回稳定错误码(`invalid-signature` / `malformed-manifest` / `invalid-version`),不会伪装成"无更新"。

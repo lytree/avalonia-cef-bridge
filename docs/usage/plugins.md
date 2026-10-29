@@ -61,7 +61,7 @@ builder.Services
 | `Tarui.Plugins.Sql` | `plugin:sql|*` | `load` / `select` / `execute` / `close` | SQLite 查询(参数化绑定 + scope 授权) |
 | `Tarui.Plugins.Log` | `plugin:log|*` | `record` | 日志落盘 |
 | `Tarui.Plugins.DeepLink` | `plugin:deep-link|*` | `get-current` / `feed` | 自定义 scheme 路由 |
-| `Tarui.Plugins.Updater` | `plugin:updater|*` | `check` / `download` / `apply` | 应用更新(签名 + SHA-256 + MSIX 安装) |
+| `Tarui.Plugins.Updater` | `plugin:updater|*` | `check` / `download` / `apply` / `restore` / `verify` | 应用更新(签名清单 + 逐文件 SHA-256 + 安装前复验 + MSIX 安装) |
 | `Tarui.Plugins.Http` | `plugin:http|*` | `fetch` / `upload` | 受限 fetch / multipart 上传 |
 | `Tarui.Plugins.Shell` | `plugin:shell|*` | `spawn` / `stdin` / `kill` | 子进程 + Channel 流式 stdio |
 | `Tarui.Plugins.Cookie` | `plugin:cookie|*` | `list` / `set` / `remove` / `flush` | Cookie 管理 |

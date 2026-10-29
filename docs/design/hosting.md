@@ -171,6 +171,7 @@ public sealed class TaruiApplication     // Services;StartAsync/StopAsync;Run() 
 | 键 | 作用 | 默认 |
 | --- | --- | --- |
 | `Tarui:Application:DeepLinkSchemes` | 注册的 deep-link schemes | `[]` |
+| `Tarui:Application:Directories:{AppData,AppLocalData,AppConfig,AppCache,AppLog}` | 覆盖对应 `app_*_dir` 基目录(绝对路径,非法值启动失败) | 平台默认 |
 | `Tarui:Window:Title` | 主窗口标题 | `tarui.net` |
 | `Tarui:Window:Url` | 主窗口相对/同源 URL | 空 → `TaruiAppOrigin.StartUri` |
 | `Tarui:Window:Width` / `Height` | 主窗口尺寸 | 1280 / 820 |
@@ -182,8 +183,11 @@ public sealed class TaruiApplication     // Services;StartAsync/StopAsync;Run() 
 | `Tarui:Window:Decorations` | 系统标题栏/边框 | true |
 | `Tarui:Window:AlwaysOnTop` | 置顶 | false |
 | `Tarui:Window:Visible` | 启动即显示 | true |
+| `Tarui:Window:NoRedirectionBitmap` | Windows 专用:去掉原生窗口重定向表面(对标 Tauri `noRedirectionBitmap`),HWND 创建后 best-effort 应用,非 Windows 忽略 | false |
 | `Tarui:Web:Mode` | `http` / `scheme` | 自动推断 |
 | `Tarui:Web:Url` / `Root` / `Scheme` / `Host` / `SpaFallback` / `Csp` / `MaxAssetBytes` | WebView 资源模式参数 | 对应 `TARUI_WEB_*` 环境变量默认 |
+| `Tarui:Web:Asset:Roots` / `Asset:MaxAssetBytes` | 受限 `asset://` 通道白名单(逗号分隔绝对目录)与单文件上限 | 空(禁用) / 64 MiB |
+| `Tarui:Web:Policy:NavExternal` / `LimitToAppBoundDomains` / `AppBoundDomains` | `WebViewRequestPolicy` 外部导航 glob、app-bound 闸门开关与 host glob 列表 | `https://**` / `false` / 应用 origin host + `localhost`、`127.0.0.1` |
 | `Tarui:Notification:AumId` / `DisplayName` | Windows Toast AUMID 注册 | 应用 identifier |
 | `Tarui:FileAssociations` | Windows portable zip 运行时注册 file association | `[]` |
 | `Logging:LogLevel:*` | 标准 M.E.Logging | 框架默认 |

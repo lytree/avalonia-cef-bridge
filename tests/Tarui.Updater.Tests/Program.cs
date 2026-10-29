@@ -25,6 +25,7 @@ internal static class Program
             await CheckReportsNotConfiguredAsync();
             await CheckReportsSignatureFailureAsync();
             await CheckReportsFetchFailureAsync();
+            await CheckReportsDowngradeOnlyWhenAllowedAsync();
             await DownloadStagesVerifiedFilesAsync();
             await DownloadRejectsHashMismatchAsync();
             await DownloadRejectsUnsafePathAsync();
@@ -37,9 +38,17 @@ internal static class Program
             await ApplyNotConfiguredFailsAsync();
             await ApplyRejectsInvalidStagingPathAsync();
             await ApplyRejectsStagingWithoutBundleAsync();
+            await ApplyRejectsMissingManifestAsync();
+            await ApplyRejectsTamperedStagedBlobAsync();
             await ApplyAppliesStagedMsixAsync();
             await ApplyReportsUnsupportedWhenApplierDeclinesAsync();
             await ApplySurfacesApplierFailureAsync();
+            await RestoreAcceptsCachedManifestAsync();
+            await RestoreRejectsTamperedManifestAsync();
+            await RestoreRejectsWhenNoUpdateAsync();
+            await VerifyAcceptsMatchingStagedFilesAsync();
+            await VerifyRejectsTamperedStagedFileAsync();
+            await VerifyRejectsUnsignedManifestAsync();
         }
         catch (Exception exception)
         {
@@ -177,6 +186,33 @@ internal static class Program
                 var result = await service.CheckAsync(new EmptyArgs(), default);
                 Assert(!result.UpdateAvailable, "A fetch failure must not report an update.");
                 Assert(result.Error == "check-fetch-failed", "An unreachable manifest must surface a fetch error.");
+            }
+        }
+    }
+
+    private static async Task CheckReportsDowngradeOnlyWhenAllowedAsync()
+    {
+        var (key, server) = UpdateServer("0.9.0", ["app.tar.gz"], "older-build");
+        using (key)
+        using (server)
+        {
+            var defaultService = BuildService(key, "1.0.0", server, out var defaultHttp);
+            using (defaultHttp)
+            {
+                var result = await defaultService.CheckAsync(new EmptyArgs(), default);
+                Assert(!result.UpdateAvailable,
+                    "A strictly older target must not be reported as an update by default.");
+                Assert(result.Error is null, "A same-or-older release is not an error.");
+            }
+
+            var downgradeService = BuildService(
+                key, "1.0.0", server, out var downgradeHttp, allowDowngrades: true);
+            using (downgradeHttp)
+            {
+                var result = await downgradeService.CheckAsync(new EmptyArgs(), default);
+                Assert(result.UpdateAvailable,
+                    "With AllowDowngrades enabled a different (older) version counts as an update.");
+                Assert(result.Version == "0.9.0", "The downgrade target must be reported.");
             }
         }
     }
@@ -404,7 +440,8 @@ internal static class Program
     {
         var root = TempStaging();
         Directory.CreateDirectory(root);
-        var service = BuildApplyService(root, new RecordingApplier(), out var http);
+        using var key = NewKey();
+        var service = BuildApplyService(root, key, new RecordingApplier(), out var http);
         try
         {
             var outside = await service.ApplyAsync(
@@ -425,8 +462,10 @@ internal static class Program
     {
         var root = TempStaging();
         Directory.CreateDirectory(root);
-        var staged = Directory.CreateDirectory(Path.Combine(root, "txn")).FullName;
-        var service = BuildApplyService(root, new RecordingApplier(), out var http);
+        using var key = NewKey();
+        // A verified staged set that advertises no MSIX: verification passes, bundle selection fails.
+        var staged = StageSignedBundle(root, key, "app.tar.gz", "payload"u8.ToArray());
+        var service = BuildApplyService(root, key, new RecordingApplier(), out var http);
         try
         {
             var result = await service.ApplyAsync(new UpdateApplyOptions(staged), default);
@@ -439,14 +478,60 @@ internal static class Program
         }
     }
 
+    private static async Task ApplyRejectsMissingManifestAsync()
+    {
+        var root = TempStaging();
+        Directory.CreateDirectory(root);
+        using var key = NewKey();
+        var staged = Directory.CreateDirectory(Path.Combine(root, "txn")).FullName;
+        File.WriteAllText(Path.Combine(staged, "app.msix"), "pkg");
+        var service = BuildApplyService(root, key, new RecordingApplier(), out var http);
+        try
+        {
+            var result = await service.ApplyAsync(new UpdateApplyOptions(staged), default);
+            Assert(!result.Succeeded && result.Error == "missing-update-manifest",
+                "Apply must refuse a staged set that carries no signed manifest.");
+        }
+        finally
+        {
+            http.Dispose();
+            TryDeleteDir(root);
+        }
+    }
+
+    private static async Task ApplyRejectsTamperedStagedBlobAsync()
+    {
+        var root = TempStaging();
+        Directory.CreateDirectory(root);
+        using var key = NewKey();
+        var staged = StageSignedBundle(root, key, "app.msix", "pkg"u8.ToArray());
+        // Simulate a blob swapped after download: the hash no longer matches the signed table.
+        File.WriteAllText(Path.Combine(staged, "app.msix"), "tampered");
+        var applier = new RecordingApplier();
+        var service = BuildApplyService(root, key, applier, out var http);
+        try
+        {
+            var result = await service.ApplyAsync(new UpdateApplyOptions(staged), default);
+            Assert(!result.Succeeded, "A tampered staged blob must never be applied.");
+            Assert(result.Error?.StartsWith("staged-verification-failed:hash-mismatch:app.msix", StringComparison.Ordinal) == true,
+                $"The tampered blob must be reported. Got: {result.Error}");
+            Assert(applier.Calls.Count == 0, "The applier must not be invoked for a tampered staged set.");
+        }
+        finally
+        {
+            http.Dispose();
+            TryDeleteDir(root);
+        }
+    }
+
     private static async Task ApplyAppliesStagedMsixAsync()
     {
         var root = TempStaging();
         Directory.CreateDirectory(root);
-        var staged = Directory.CreateDirectory(Path.Combine(root, "txn")).FullName;
-        File.WriteAllText(Path.Combine(staged, "app-1.0.1-win-x64.msix"), "pkg");
+        using var key = NewKey();
+        var staged = StageSignedBundle(root, key, "app-1.0.1-win-x64.msix", "pkg"u8.ToArray());
         var applier = new RecordingApplier { Result = true };
-        var service = BuildApplyService(root, applier, out var http);
+        var service = BuildApplyService(root, key, applier, out var http);
         try
         {
             var result = await service.ApplyAsync(new UpdateApplyOptions(staged, Restart: true), default);
@@ -467,9 +552,9 @@ internal static class Program
     {
         var root = TempStaging();
         Directory.CreateDirectory(root);
-        var staged = Directory.CreateDirectory(Path.Combine(root, "txn")).FullName;
-        File.WriteAllText(Path.Combine(staged, "app.msix"), "pkg");
-        var service = BuildApplyService(root, new RecordingApplier { Result = false }, out var http);
+        using var key = NewKey();
+        var staged = StageSignedBundle(root, key, "app.msix", "pkg"u8.ToArray());
+        var service = BuildApplyService(root, key, new RecordingApplier { Result = false }, out var http);
         try
         {
             var result = await service.ApplyAsync(new UpdateApplyOptions(staged), default);
@@ -486,10 +571,10 @@ internal static class Program
     {
         var root = TempStaging();
         Directory.CreateDirectory(root);
-        var staged = Directory.CreateDirectory(Path.Combine(root, "txn")).FullName;
-        File.WriteAllText(Path.Combine(staged, "app.msix"), "pkg");
+        using var key = NewKey();
+        var staged = StageSignedBundle(root, key, "app.msix", "pkg"u8.ToArray());
         var applier = new RecordingApplier { ThrowOnApply = new InvalidOperationException("boom") };
-        var service = BuildApplyService(root, applier, out var http);
+        var service = BuildApplyService(root, key, applier, out var http);
         try
         {
             var result = await service.ApplyAsync(new UpdateApplyOptions(staged), default);
@@ -501,6 +586,145 @@ internal static class Program
             TryDeleteDir(root);
         }
     }
+
+    private static async Task RestoreAcceptsCachedManifestAsync()
+    {
+        using var key = NewKey();
+        var manifest = Sign(key, "2.0.0", ["app.msix"], Sha256("app.msix", "payload"));
+        var service = BuildRestoreService(key, "1.0.0", out var http);
+        using (http)
+        {
+            var result = await service.RestoreAsync(
+                new UpdateRestoreOptions(JsonSerializer.Serialize(manifest, TaruiJsonContext.Default.UpdateManifest)), default);
+            Assert(result.Succeeded, "A cached manifest with a valid signature must restore.");
+            Assert(result.Version == "2.0.0", "The restored version must be reported.");
+            Assert(result.Error is null, "A successful restore must not carry an error.");
+        }
+    }
+
+    private static async Task RestoreRejectsTamperedManifestAsync()
+    {
+        using var key = NewKey();
+        var manifest = Sign(key, "2.0.0", ["app.msix"], Sha256("app.msix", "payload"));
+        var tampered = manifest with { Version = "9.9.9" };
+        var service = BuildRestoreService(key, "1.0.0", out var http);
+        using (http)
+        {
+            var result = await service.RestoreAsync(
+                new UpdateRestoreOptions(JsonSerializer.Serialize(tampered, TaruiJsonContext.Default.UpdateManifest)), default);
+            Assert(!result.Succeeded, "A cached manifest whose signed version changed must not restore.");
+            Assert(result.Error?.Contains("invalid-signature", StringComparison.Ordinal) == true,
+                $"The signature failure must be reported. Got: {result.Error}");
+        }
+    }
+
+    private static async Task RestoreRejectsWhenNoUpdateAsync()
+    {
+        using var key = NewKey();
+        var manifest = Sign(key, "1.0.0", ["app.msix"], Sha256("app.msix", "payload"));
+        var service = BuildRestoreService(key, "1.0.0", out var http);
+        using (http)
+        {
+            var result = await service.RestoreAsync(
+                new UpdateRestoreOptions(JsonSerializer.Serialize(manifest, TaruiJsonContext.Default.UpdateManifest)), default);
+            Assert(!result.Succeeded && result.Error == "no-update",
+                "A cached manifest that is not an update must fail the version policy.");
+        }
+    }
+
+    private static async Task VerifyAcceptsMatchingStagedFilesAsync()
+    {
+        using var key = NewKey();
+        var root = TempStaging();
+        Directory.CreateDirectory(root);
+        var staged = StageSignedBundle(root, key, "app.msix", "pkg"u8.ToArray());
+        var service = BuildRestoreService(key, "1.0.0", root, out var http);
+        try
+        {
+            var result = await service.VerifyAsync(
+                new UpdateVerifyOptions(ReadStagedManifest(staged), staged), default);
+            Assert(result.Succeeded, "A staged set matching the signed hashes must verify.");
+            Assert(result.Error is null, "A successful verify must not carry an error.");
+        }
+        finally
+        {
+            http.Dispose();
+            TryDeleteDir(root);
+        }
+    }
+
+    private static async Task VerifyRejectsTamperedStagedFileAsync()
+    {
+        using var key = NewKey();
+        var root = TempStaging();
+        Directory.CreateDirectory(root);
+        var staged = StageSignedBundle(root, key, "app.msix", "pkg"u8.ToArray());
+        File.WriteAllText(Path.Combine(staged, "app.msix"), "tampered");
+        var service = BuildRestoreService(key, "1.0.0", root, out var http);
+        try
+        {
+            var result = await service.VerifyAsync(
+                new UpdateVerifyOptions(ReadStagedManifest(staged), staged), default);
+            Assert(!result.Succeeded && result.Error == "hash-mismatch:app.msix",
+                $"A swapped blob must fail hash verification. Got: {result.Error}");
+        }
+        finally
+        {
+            http.Dispose();
+            TryDeleteDir(root);
+        }
+    }
+
+    private static async Task VerifyRejectsUnsignedManifestAsync()
+    {
+        using var key = NewKey();
+        var content = "pkg"u8.ToArray();
+        var root = TempStaging();
+        Directory.CreateDirectory(root);
+        var staged = StageSignedBundle(root, key, "app.msix", content);
+        var service = BuildRestoreService(key, "1.0.0", root, out var http);
+        try
+        {
+            var result = await service.VerifyAsync(
+                new UpdateVerifyOptions(UnsignedManifestJson(key, "2.0.0", "app.msix", content), staged), default);
+            // An empty signature is either rejected as a malformed manifest (missing required field)
+            // or as an invalid signature; both must never succeed.
+            Assert(!result.Succeeded &&
+                   (result.Error?.Contains("invalid-signature", StringComparison.Ordinal) == true ||
+                    result.Error?.Contains("malformed-manifest", StringComparison.Ordinal) == true),
+                $"An unsigned manifest must fail verification. Got: {result.Error}");
+        }
+        finally
+        {
+            http.Dispose();
+            TryDeleteDir(root);
+        }
+    }
+
+    private static UpdaterService BuildRestoreService(
+        ECDsa key,
+        string currentVersion,
+        out HttpClient http,
+        string? stagingDir = null) =>
+        BuildRestoreService(key, currentVersion, stagingDir ?? TempStaging(), out http);
+
+    private static UpdaterService BuildRestoreService(
+        ECDsa key,
+        string currentVersion,
+        string stagingDir,
+        out HttpClient http)
+    {
+        http = new HttpClient();
+        var settings = new UpdaterSettings(
+            new Uri("https://example.test/latest.json"),
+            PublicKeyB64(key),
+            currentVersion,
+            stagingDir);
+        return new UpdaterService(http, settings, null, NullLogger<UpdaterService>.Instance, new NoOpUpdateApplier());
+    }
+
+    private static string ReadStagedManifest(string stagedPath) =>
+        File.ReadAllText(Path.Combine(stagedPath, UpdaterService.StagedManifestFileName));
 
     private static void TryDeleteDir(string path)
     {
@@ -549,7 +773,8 @@ internal static class Program
         string currentVersion,
         TestServer server,
         out HttpClient http,
-        string? staging = null)
+        string? staging = null,
+        bool allowDowngrades = false)
     {
         http = new HttpClient();
         var settings = new UpdaterSettings(
@@ -557,19 +782,61 @@ internal static class Program
             PublicKeyB64(publicKey),
             currentVersion,
             staging ?? TempStaging(),
-            AllowInsecureHttp: true);
+            AllowInsecureHttp: true,
+            AllowDowngrades: allowDowngrades);
         return new UpdaterService(http, settings, null, NullLogger<UpdaterService>.Instance, new NoOpUpdateApplier());
     }
 
-    private static UpdaterService BuildApplyService(string stagingDir, IUpdateApplier applier, out HttpClient http)
+    private static UpdaterService BuildApplyService(string stagingDir, ECDsa key, IUpdateApplier applier, out HttpClient http)
     {
         http = new HttpClient();
         var settings = new UpdaterSettings(
             new Uri("https://example.test/latest.json"),
-            PublicKeyB64: string.Empty,
+            PublicKeyB64(key),
             CurrentVersion: "1.0.0",
             StagingDir: stagingDir);
         return new UpdaterService(http, settings, null, NullLogger<UpdaterService>.Instance, applier);
+    }
+
+    /// <summary>
+    /// Stages a blob plus the signed manifest that download would leave behind, so apply/verify tests
+    /// exercise the post-download contract rather than a bare directory.
+    /// </summary>
+    private static string StageSignedBundle(
+        string root,
+        ECDsa key,
+        string fileName,
+        byte[] content,
+        string version = "1.0.1")
+    {
+        var staged = Directory.CreateDirectory(Path.Combine(root, "txn-" + Guid.NewGuid().ToString("N"))).FullName;
+        var target = Path.Combine(staged, fileName);
+        var directory = Path.GetDirectoryName(target);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllBytes(target, content);
+        var manifest = Sign(
+            key,
+            version,
+            [fileName],
+            new Dictionary<string, string>(StringComparer.Ordinal) { [fileName] = Sha256Hex(content) });
+        File.WriteAllBytes(
+            Path.Combine(staged, UpdaterService.StagedManifestFileName),
+            JsonSerializer.SerializeToUtf8Bytes(manifest, TaruiJsonContext.Default.UpdateManifest));
+        return staged;
+    }
+
+    private static string UnsignedManifestJson(ECDsa key, string version, string fileName, byte[] content)
+    {
+        var manifest = Sign(
+            key,
+            version,
+            [fileName],
+            new Dictionary<string, string>(StringComparer.Ordinal) { [fileName] = Sha256Hex(content) });
+        return JsonSerializer.Serialize(manifest with { Signature = string.Empty }, TaruiJsonContext.Default.UpdateManifest);
     }
 
     /// <summary>Builds a manifest for the target version with the supplied files/hash and a live test server.</summary>

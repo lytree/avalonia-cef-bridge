@@ -532,6 +532,7 @@ export interface SetFullscreenOnMonitorOptions {
 export interface SetIconOptions {
   readonly png?: string;
   readonly label?: string;
+  readonly fromAppIcon: boolean;
 }
 
 export interface SetPositionOptions {
@@ -720,6 +721,26 @@ export interface UpdateDownloadResult {
   readonly stagingPath?: string;
 }
 
+export interface UpdateRestoreOptions {
+  readonly manifestJson: string;
+}
+
+export interface UpdateRestoreResult {
+  readonly succeeded: boolean;
+  readonly version?: string;
+  readonly error?: string;
+}
+
+export interface UpdateVerifyOptions {
+  readonly manifestJson: string;
+  readonly stagingPath: string;
+}
+
+export interface UpdateVerifyResult {
+  readonly succeeded: boolean;
+  readonly error?: string;
+}
+
 export interface WebviewBounds {
   readonly x: number;
   readonly y: number;
@@ -820,6 +841,7 @@ export interface WindowOptions {
   readonly alwaysOnTop: boolean;
   readonly visible: boolean;
   readonly transparent?: boolean;
+  readonly noRedirectionBitmap: boolean;
 }
 
 export interface WindowStateClearOptions {
@@ -1492,6 +1514,16 @@ export interface TaruiCommandContracts {
     readonly input: "EmptyArgs";
     readonly output: "UpdateDownloadResult";
   };
+  readonly "plugin:updater|restore": {
+    readonly permission: "plugin:updater|restore";
+    readonly input: "UpdateRestoreOptions";
+    readonly output: "UpdateRestoreResult";
+  };
+  readonly "plugin:updater|verify": {
+    readonly permission: "plugin:updater|verify";
+    readonly input: "UpdateVerifyOptions";
+    readonly output: "UpdateVerifyResult";
+  };
   readonly "plugin:websocket|close": {
     readonly permission: "plugin:websocket|close";
     readonly input: "WsCloseOptions";
@@ -2065,6 +2097,14 @@ export interface TaruiCommandTypes {
   readonly "plugin:updater|download": {
     readonly input: EmptyArgs;
     readonly output: UpdateDownloadResult;
+  };
+  readonly "plugin:updater|restore": {
+    readonly input: UpdateRestoreOptions;
+    readonly output: UpdateRestoreResult;
+  };
+  readonly "plugin:updater|verify": {
+    readonly input: UpdateVerifyOptions;
+    readonly output: UpdateVerifyResult;
   };
   readonly "plugin:websocket|close": {
     readonly input: WsCloseOptions;

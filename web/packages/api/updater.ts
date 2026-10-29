@@ -29,6 +29,22 @@ export interface UpdateApplyResult {
   restart: boolean
 }
 
+/** Outcome of `plugin:updater|restore`. */
+export interface UpdateRestoreResult {
+  succeeded: boolean
+  /** The restored (already verified) target version, present on success. */
+  version?: string | null
+  /** A Web-facing reason when parsing, signature or version policy failed. */
+  error?: string | null
+}
+
+/** Outcome of `plugin:updater|verify`. */
+export interface UpdateVerifyResult {
+  succeeded: boolean
+  /** A Web-facing reason naming the offending file when a staged blob is missing or mismatched. */
+  error?: string | null
+}
+
 /** Machine-readable progress/completion phases delivered on the `updater://status` event. */
 export const updaterStatusPhases = {
   CheckSuccess: 'check-success',
@@ -96,14 +112,37 @@ export function onStatus(callback: (status: UpdaterStatus) => void): Unlisten {
   return listen<UpdaterStatus>(UPDATER_STATUS_EVENT, received => callback(received.payload))
 }
 
+/**
+ * Restores a previously fetched signed manifest (persisted by the caller after `check`) after
+ * re-verifying its signature and the configured version policy. Mirrors Tauri's
+ * `Updater.restoreUpdate`: a cached manifest is only trusted when its signature still verifies.
+ * Requires `plugin:updater|restore`.
+ */
+export async function restore(manifestJson: string): Promise<UpdateRestoreResult> {
+  return invoke<UpdateRestoreResult>('plugin:updater|restore', { manifestJson })
+}
+
+/**
+ * Verifies every staged blob against the signed manifest's SHA-256 table without touching the
+ * network or the running installation. Mirrors Tauri's `Update.verify`. Requires
+ * `plugin:updater|verify`.
+ */
+export async function verify(manifestJson: string, stagingPath: string): Promise<UpdateVerifyResult> {
+  return invoke<UpdateVerifyResult>('plugin:updater|verify', { manifestJson, stagingPath })
+}
+
 export const updater = {
   check,
   download,
   apply,
+  restore,
+  verify,
   // Aliases kept for parity with the root `@lytree/api` namespace re-exports.
   checkUpdate: check,
   downloadUpdate: download,
   applyUpdate: apply,
+  restoreUpdate: restore,
+  verifyUpdate: verify,
   onStatus,
   updaterStatusPhases,
   UPDATER_STATUS_EVENT,
@@ -113,3 +152,5 @@ export const updater = {
 export const checkUpdate = check
 export const downloadUpdate = download
 export const applyUpdate = apply
+export const restoreUpdate = restore
+export const verifyUpdate = verify

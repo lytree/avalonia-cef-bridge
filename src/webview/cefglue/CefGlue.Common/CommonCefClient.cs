@@ -70,6 +70,11 @@ namespace Xilium.CefGlue.Common
             return _owner.KeyboardHandler;
         }
 
+        protected override CefPermissionHandler GetPermissionHandler()
+        {
+            return _owner.PermissionHandler;
+        }
+
         protected override CefRequestHandler GetRequestHandler()
         {
             return _owner.RequestHandler;

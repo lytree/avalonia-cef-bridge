@@ -296,7 +296,9 @@ public static class PlatformCapabilityProvider
 public static class SystemPluginServiceCollectionExtensions
 {
     public static IServiceCollection AddSystemPlugin(this IServiceCollection services) => services
-        .AddSingleton<IPathService, PathService>()
+        // Resolve app directory overrides lazily so a host that registers them in Build() (after
+        // plugin registration) still reaches the path service.
+        .AddSingleton<IPathService>(sp => new PathService(sp.GetService<AppDirectoryOptions>()))
         .AddSingleton<IOsService, OsService>()
         .AddSingleton<IAppShutdown, NoopAppShutdown>()
         .AddSingleton<IProcessService, ProcessService>()

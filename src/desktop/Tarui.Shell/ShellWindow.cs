@@ -40,6 +40,12 @@ public sealed class ShellWindow : Window
             Background = Brushes.Transparent;
             TransparencyBackgroundFallback = Brushes.Transparent;
         }
+        if (options.NoRedirectionBitmap)
+        {
+            // WS_EX_NOREDIRECTIONBITMAP targets the native HWND, which only exists after the platform
+            // window is created, so it is applied best-effort when the window opens.
+            Opened += (_, _) => WindowsWindowStyle.TryApply(this);
+        }
         _pendingX = options.X;
         _pendingY = options.Y;
         _centerOnStart = options.Center;

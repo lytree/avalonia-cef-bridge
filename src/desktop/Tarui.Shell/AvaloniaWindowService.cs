@@ -113,11 +113,24 @@ public sealed class AvaloniaWindowService(
     public ValueTask<Unit> SetAlwaysOnTopAsync(string label, bool value, CancellationToken cancellationToken) =>
         RunWindowActionAsync(label, window => window.Topmost = value, cancellationToken);
 
-    public ValueTask<Unit> SetIconAsync(string label, byte[]? png, CancellationToken cancellationToken) =>
+    public ValueTask<Unit> SetIconAsync(string label, byte[]? png, bool fromAppIcon, CancellationToken cancellationToken) =>
         RunWindowActionAsync(
             label,
             window =>
             {
+                if (fromAppIcon && png is not { Length: > 0 })
+                {
+                    if (!WindowsAppIcon.TryLoadPng(out var appIcon) || appIcon.Length == 0)
+                    {
+                        throw new NotSupportedException(
+                            "The application icon resource is not available on this platform.");
+                    }
+
+                    using var appIconStream = new MemoryStream(appIcon);
+                    window.Icon = new WindowIcon(appIconStream);
+                    return;
+                }
+
                 if (png is null || png.Length == 0)
                 {
                     window.Icon = null;

@@ -37,7 +37,12 @@ public interface IWindowService
 
     ValueTask<Unit> SetAlwaysOnTopAsync(string label, bool value, CancellationToken cancellationToken);
 
-    ValueTask<Unit> SetIconAsync(string label, byte[]? png, CancellationToken cancellationToken);
+    /// <summary>
+    /// Sets the window icon from PNG bytes, or clears it when <paramref name="png"/> is null. When
+    /// <paramref name="fromAppIcon"/> is set the executable's embedded icon is used instead; platforms
+    /// without such a resource report <see cref="NotSupportedException"/>.
+    /// </summary>
+    ValueTask<Unit> SetIconAsync(string label, byte[]? png, bool fromAppIcon, CancellationToken cancellationToken);
 
     ValueTask<Unit> SetThemeAsync(string label, string? theme, CancellationToken cancellationToken);
 

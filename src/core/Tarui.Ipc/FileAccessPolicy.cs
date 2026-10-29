@@ -92,7 +92,8 @@ public sealed record FileAccessPolicyOptions(
     long MaxReadBytes = 8 * 1024 * 1024,
     long MaxWriteBytes = 8 * 1024 * 1024,
     long MaxTotalBytes = long.MaxValue,
-    string? ResourcesDirectory = null);
+    string? ResourcesDirectory = null,
+    AppDirectoryOptions? AppDirectories = null);
 
 /// <summary>
 /// Default <see cref="IFileAccessPolicy"/> implementation. Performs lexical containment checks and
@@ -109,7 +110,15 @@ public sealed class FileAccessPolicy : IFileAccessPolicy
     private readonly object _gate = new();
 
     public FileAccessPolicy(FileAccessPolicyOptions? options = null)
-        => _options = options ?? new();
+    {
+        _options = options ?? new();
+        if (_options.AppDirectories is not null)
+        {
+            // Normalize even for programmatically-constructed options so an invalid override fails at
+            // construction instead of resolving a relative root against the process working directory.
+            _options = _options with { AppDirectories = _options.AppDirectories.Normalize() };
+        }
+    }
 
     public bool TryGetBaseDirectory(string baseName, out string directoryPath, out bool isReadOnly)
     {
@@ -144,7 +153,9 @@ public sealed class FileAccessPolicy : IFileAccessPolicy
     };
 
     /// <inheritdoc />
-    public string? ResolveBase(string baseName) => ResolveBaseInternal(baseName, _options.ResourcesDirectory);
+    public string? ResolveBase(string baseName)
+        => _options.AppDirectories?.TryGetOverride(baseName)
+            ?? ResolveBaseInternal(baseName, _options.ResourcesDirectory);
 
     public string Authorize(FileAccessKind kind, string baseDirectory, string requestPath)
     {
@@ -421,6 +432,13 @@ public static class FileAccessPolicyServiceCollectionExtensions
             var resourceRoot = configured.ResourcesDirectory
                 ?? ResourceDirectory.ResolveRoot(
                     sp.GetService<ResourceDirectoryOptions>() ?? new ResourceDirectoryOptions());
-            return new FileAccessPolicy(configured with { ResourcesDirectory = resourceRoot });
+            // The host registers the app directory overrides once; every plugin that calls
+            // AddFileAccessPolicy shares that instance rather than re-reading configuration.
+            var appDirectories = configured.AppDirectories ?? sp.GetService<AppDirectoryOptions>();
+            return new FileAccessPolicy(configured with
+            {
+                ResourcesDirectory = resourceRoot,
+                AppDirectories = appDirectories,
+            });
         });
 }

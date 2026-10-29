@@ -18,7 +18,10 @@ public sealed record MonitorInfo(
 
 /// <summary>
 /// Options for creating a window. <see cref="Transparent"/> opts the window into a translucent
-/// (acrylic-blurred) backdrop.
+/// (acrylic-blurred) backdrop. <see cref="NoRedirectionBitmap"/> mirrors Tauri's Windows-only
+/// <c>noRedirectionBitmap</c>: the native window drops its redirection surface so a
+/// DirectComposition-backed transparent window does not flash an opaque backdrop. It is ignored on
+/// platforms without redirection bitmaps.
 /// </summary>
 public sealed record WindowOptions(
     string Label,
@@ -37,7 +40,8 @@ public sealed record WindowOptions(
     bool Decorations = true,
     bool AlwaysOnTop = false,
     bool Visible = true,
-    bool? Transparent = null);
+    bool? Transparent = null,
+    bool NoRedirectionBitmap = false);
 
 public sealed record WindowStateInfo(
     string Label,
@@ -80,8 +84,12 @@ public sealed record SetFlagOptions(bool Value, string? Label = null);
 /// </summary>
 public sealed record SetFullscreenOnMonitorOptions(double X, double Y, string? Label = null);
 
-/// <summary>Sets the window icon from PNG bytes, or clears it when <see cref="Png"/> is null.</summary>
-public sealed record SetIconOptions(byte[]? Png = null, string? Label = null);
+/// <summary>
+/// Sets the window icon from PNG bytes, or clears it when <see cref="Png"/> is null. Setting
+/// <see cref="FromAppIcon"/> restores the icon embedded in the running executable instead, mirroring
+/// Tauri's <c>Image::from_app_icon_resource</c>; it is ignored when <see cref="Png"/> is supplied.
+/// </summary>
+public sealed record SetIconOptions(byte[]? Png = null, string? Label = null, bool FromAppIcon = false);
 
 /// <summary>Sets the window theme variant. <see cref="Theme"/> is <c>system</c>/<c>light</c>/<c>dark</c>,
 /// defaulting to <c>system</c>.</summary>

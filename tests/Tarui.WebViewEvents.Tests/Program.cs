@@ -10,6 +10,8 @@ internal static class Program
         TestNavigationExternal();
         TestNavigationDenyFallback();
         TestSchemeOriginNavigation();
+        TestNavigationAppBoundDomains();
+        TestNavigationAppBoundDomainsDenyWhenUnconfigured();
         TestNavigationMaliciousUrls();
         TestDownloadAllow();
         TestDownloadDenyDefault();
@@ -28,13 +30,17 @@ internal static class Program
         string[]? allowNavigation = null,
         string[]? externalNavigation = null,
         string[]? allowDownload = null,
-        WebViewRequestDecision defaultDownload = WebViewRequestDecision.Deny)
+        WebViewRequestDecision defaultDownload = WebViewRequestDecision.Deny,
+        bool limitToAppBoundDomains = false,
+        string[]? appBoundDomains = null)
     {
         return new WebViewRequestPolicy(new WebViewPolicyOptions(
             AllowedNavigationPatterns: allowNavigation ?? [],
             ExternalNavigationPatterns: externalNavigation ?? [],
             AllowedDownloadHostPatterns: allowDownload ?? [],
-            DefaultDownloadDecision: defaultDownload));
+            DefaultDownloadDecision: defaultDownload,
+            LimitToAppBoundDomains: limitToAppBoundDomains,
+            AppBoundDomainPatterns: appBoundDomains));
     }
 
     private static void TestNavigationAllow()
@@ -118,6 +124,47 @@ internal static class Program
     }
 
     private static WebViewRequestPolicy BroadPolicy() => Policy(allowNavigation: ["tarui://localhost/**"]);
+
+    private static void TestNavigationAppBoundDomains()
+    {
+        var policy = Policy(
+            allowNavigation: ["https://app.example/**", "https://cdn.other.example/**", "https://*.example.org/**"],
+            externalNavigation: ["https://*.authserver.com/**"],
+            limitToAppBoundDomains: true,
+            appBoundDomains: ["app.example", "*.example.org"]);
+
+        AssertEqual(
+            WebViewRequestDecision.Allow,
+            policy.DecideNavigation(new Uri("https://app.example/settings")),
+            "Navigation to an app-bound host that is also allow-listed should be allowed.");
+
+        AssertEqual(
+            WebViewRequestDecision.Deny,
+            policy.DecideNavigation(new Uri("https://cdn.other.example/app.js")),
+            "An allow-listed host outside the app-bound domains must be denied.");
+
+        AssertEqual(
+            WebViewRequestDecision.Deny,
+            policy.DecideNavigation(new Uri("https://login.authserver.com/sso")),
+            "The app-bound gate must run before external rules so OS hand-off is also blocked.");
+
+        AssertEqual(
+            WebViewRequestDecision.Allow,
+            policy.DecideNavigation(new Uri("https://docs.example.org/guide")),
+            "A wildcard app-bound pattern should cover matching subdomains.");
+    }
+
+    private static void TestNavigationAppBoundDomainsDenyWhenUnconfigured()
+    {
+        var policy = Policy(
+            allowNavigation: ["https://app.example/**"],
+            limitToAppBoundDomains: true);
+
+        AssertEqual(
+            WebViewRequestDecision.Deny,
+            policy.DecideNavigation(new Uri("https://app.example/index.html")),
+            "Enabling the app-bound limit without any domains must deny every navigation.");
+    }
 
     private static void TestNavigationMaliciousUrls()
     {

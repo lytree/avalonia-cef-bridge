@@ -28,8 +28,24 @@ public interface IUpdaterService
     /// <summary>
     /// Applies a previously-staged, verified bundle (see <see cref="DownloadAsync"/>'s staging path) using the
     /// platform's install strategy, emitting <c>apply-start</c>/<c>apply-success</c>/<c>apply-failed</c> status.
-    /// Returns <see langword="true"/>-succeeded only when the bundle was actually applied; unsupported bundles or
+    /// Before installing, the signed manifest persisted by <see cref="DownloadAsync"/> is re-verified and every
+    /// staged file is re-hashed, so a blob swapped after download is rejected instead of applied. Returns
+    /// <see langword="true"/>-succeeded only when the bundle was actually applied; unsupported bundles or
     /// platforms surface an explicit error rather than a silent no-op. Restart is left to the caller.
     /// </summary>
     ValueTask<UpdateApplyResult> ApplyAsync(UpdateApplyOptions options, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Re-verifies a cached signed manifest and applies the configured version policy without any network
+    /// access, mirroring Tauri's <c>Updater::restore_update</c>: a previously fetched manifest can be turned
+    /// back into a trusted update handle only when its signature still verifies against the configured key.
+    /// </summary>
+    ValueTask<UpdateRestoreResult> RestoreAsync(UpdateRestoreOptions options, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Verifies the signed manifest and every staged file's SHA-256, mirroring Tauri's <c>Update::verify</c>.
+    /// The running installation and the network are never touched; a mismatch or missing blob is reported as
+    /// an explicit error instead of succeeding.
+    /// </summary>
+    ValueTask<UpdateVerifyResult> VerifyAsync(UpdateVerifyOptions options, CancellationToken cancellationToken);
 }

@@ -42,6 +42,14 @@ export function send(envelope: MockEnvelope): void {
   }
 }
 
+/**
+ * Waits until the serialized channel delivery queue drained. `Channel.push` defers each frame to a
+ * microtask so async handlers keep frame order; a macrotask boundary flushes that whole chain.
+ */
+export function flushChannelDelivery(): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, 0))
+}
+
 export const invokeLog: RecordedInvoke[] = []
 
 export function lastInvoke(): RecordedInvoke | undefined {

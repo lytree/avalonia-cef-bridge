@@ -18,6 +18,22 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
         "plugin:webview|send-devtools-message"
     ];
 
+    // Permission interception is per browser family and denied by default, so each family is a
+    // standalone permission id a capability file can grant independently. Registering them keeps
+    // capability validation strict (an unknown permission id is still rejected).
+    private static readonly string[] BrowserPermissionPolicies =
+    [
+        "plugin:webview|permission-media",
+        "plugin:webview|permission-geolocation",
+        "plugin:webview|permission-notifications",
+        "plugin:webview|permission-midi",
+        "plugin:webview|permission-clipboard-read",
+        "plugin:webview|permission-local-fonts",
+        "plugin:webview|permission-pointer-lock",
+        "plugin:webview|permission-window-management",
+        "plugin:webview|permission-other",
+    ];
+
     public void ConfigureCommands(CommandRouterBuilder commands)
     {
         var handlers = new WebviewCommands(service);
@@ -129,6 +145,13 @@ public sealed class WebviewPlugin(IWebviewService service) : ITaruiPlugin
         // Attaching a surface to another window requires the -other-window variant, since the new web
         // view inherits that window's capability profile.
         commands.AddPermission(WebviewPermissionGuard.OtherWindowPermission("plugin:webview|create"));
+
+        // Browser permission families are consumed by the shell's session policy rather than a command,
+        // but they are registered here so capability files may reference them and validation stays strict.
+        foreach (var permission in BrowserPermissionPolicies)
+        {
+            commands.AddPermission(permission);
+        }
     }
 
     private sealed class WebviewCommands(IWebviewService service)

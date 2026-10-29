@@ -36,5 +36,8 @@ public sealed class TaruiWindowBuilder
 
     public bool? Visible { get; set; }
 
+    /// <summary>Windows-only: drops the native redirection bitmap (Tauri <c>noRedirectionBitmap</c>).</summary>
+    public bool? NoRedirectionBitmap { get; set; }
+
     public void Configure(Action<TaruiWindowBuilder> configure) => configure(this);
 }

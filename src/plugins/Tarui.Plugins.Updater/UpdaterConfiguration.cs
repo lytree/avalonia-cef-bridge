@@ -10,6 +10,8 @@ namespace Tarui.Plugins.Updater;
 /// running installation). <see cref="MaxManifestBytes"/>, <see cref="MaxFileBytes"/> and
 /// <see cref="MaxTotalBytes"/> cap the resources an updater transaction may consume so a malicious
 /// or misconfigured manifest cannot exhaust memory or disk before its signature is checked.
+/// <see cref="AllowDowngrades"/> mirrors Tauri's application-level <c>allowDowngrades</c> setting: when
+/// enabled a target version that differs from (rather than exceeds) the current one counts as an update.
 /// <see langword="null"/> means the updater is not configured.
 /// </summary>
 public sealed record UpdaterSettings(
@@ -20,7 +22,8 @@ public sealed record UpdaterSettings(
     long MaxManifestBytes = 1L * 1024 * 1024,
     long MaxFileBytes = 200L * 1024 * 1024,
     long MaxTotalBytes = 1L * 1024 * 1024 * 1024,
-    bool AllowInsecureHttp = false);
+    bool AllowInsecureHttp = false,
+    bool AllowDowngrades = false);
 
 /// <summary>
 /// Reads and validates the updater configuration from <c>Tarui:Application:Updater</c>. A missing or
@@ -84,7 +87,8 @@ internal static class UpdaterConfiguration
             MaxManifestBytes: ReadBytes(section, "MaxManifestBytes", defaultValue: 1L * 1024 * 1024),
             MaxFileBytes: ReadBytes(section, "MaxFileBytes", defaultValue: 200L * 1024 * 1024),
             MaxTotalBytes: ReadBytes(section, "MaxTotalBytes", defaultValue: 1L * 1024 * 1024 * 1024),
-            AllowInsecureHttp: TryGetBool(section, "AllowInsecureHttp", defaultValue: false, out var insecure) && insecure);
+            AllowInsecureHttp: TryGetBool(section, "AllowInsecureHttp", defaultValue: false, out var insecure) && insecure,
+            AllowDowngrades: TryGetBool(section, "AllowDowngrades", defaultValue: false, out var downgrades) && downgrades);
     }
 
     private static bool TryGetBool(IConfigurationSection section, string key, bool defaultValue, out bool value)

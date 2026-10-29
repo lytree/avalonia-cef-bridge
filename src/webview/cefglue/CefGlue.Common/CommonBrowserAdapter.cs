@@ -127,6 +127,7 @@ namespace Xilium.CefGlue.Common
         public FindHandler FindHandler { get; set; }
         public FocusHandler FocusHandler { get; set; }
         public KeyboardHandler KeyboardHandler { get; set; }
+        public CefPermissionHandler PermissionHandler { get; set; }
         public RequestHandler RequestHandler { get; set; }
         public LifeSpanHandler LifeSpanHandler { get; set; }
         public DisplayHandler DisplayHandler { get; set; }

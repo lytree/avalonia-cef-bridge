@@ -208,6 +208,11 @@ namespace Xilium.CefGlue.Common
         public KeyboardHandler KeyboardHandler { get => _adapter.KeyboardHandler; set => _adapter.KeyboardHandler = value; }
 
         /// <summary>
+        /// Return the handler for permission requests.
+        /// </summary>
+        public CefPermissionHandler PermissionHandler { get => _adapter.PermissionHandler; set => _adapter.PermissionHandler = value; }
+
+        /// <summary>
         /// Return the handler for browser request events.
         /// </summary>
         public RequestHandler RequestHandler { get => _adapter.RequestHandler; set => _adapter.RequestHandler = value; }

@@ -13,9 +13,54 @@ public static class CefGlueRuntimeBootstrap
         CefGlueNextAvaloniaRuntime.RunSubProcess(args);
     }
 
-    public static void Initialize(CefGlueNextWebAppOptions webAppOptions)
+    public static void Initialize(
+        CefGlueNextWebAppOptions webAppOptions,
+        ITaruiAssetResolver? assetResolver = null)
     {
         ArgumentNullException.ThrowIfNull(webAppOptions);
+
+        var schemes = new List<CefGlueNextAvaloniaSchemeOptions>();
+        if (webAppOptions.ContentRoot is not null)
+        {
+            // The custom scheme is served whenever local assets exist — in scheme mode and in
+            // HTTP mode configured with a content root — so both schemes stay usable at once.
+            schemes.Add(new CefGlueNextAvaloniaSchemeOptions
+            {
+                SchemeName = webAppOptions.SchemeName,
+                DomainName = webAppOptions.DomainName,
+                IsStandard = true,
+                IsDisplayIsolated = true,
+                IsSecure = true,
+                IsCorsEnabled = false,
+                IsCspBypassing = false,
+                IsFetchEnabled = true,
+                ResourceProvider = new LocalWebAssetResolver(
+                    webAppOptions.ContentRoot,
+                    webAppOptions.SchemeName,
+                    webAppOptions.DomainName,
+                    webAppOptions.SpaFallback,
+                    webAppOptions.MaxAssetBytes,
+                    webAppOptions.ContentSecurityPolicy)
+            });
+        }
+
+        if (assetResolver?.IsEnabled == true)
+        {
+            // The restricted asset scheme (Tauri convertFileSrc equivalent) is registered only when
+            // the host configured at least one root, so an unconfigured app never exposes it.
+            schemes.Add(new CefGlueNextAvaloniaSchemeOptions
+            {
+                SchemeName = AssetSchemeName,
+                DomainName = AssetDomainName,
+                IsStandard = true,
+                IsDisplayIsolated = true,
+                IsSecure = true,
+                IsCorsEnabled = false,
+                IsCspBypassing = false,
+                IsFetchEnabled = true,
+                ResourceProvider = new CefGlueNextAvaloniaAssetResourceProvider(assetResolver)
+            });
+        }
 
         CefGlueNextAvaloniaRuntime.Initialize(
             new CefGlueNextAvaloniaRuntimeOptions
@@ -24,33 +69,13 @@ public static class CefGlueRuntimeBootstrap
                 CacheDirectory = ResolveCacheDirectory(),
                 UserAgent = ReadEnvironmentVariable("TARUI_WEB_USER_AGENT"),
                 ProxyServer = ReadEnvironmentVariable("TARUI_WEB_PROXY_SERVER"),
-                // The custom scheme is served whenever local assets exist — in scheme mode and in
-                // HTTP mode configured with a content root — so both schemes stay usable at once.
-                Schemes = webAppOptions.ContentRoot is null
-                    ? []
-                    :
-                    [
-                        new CefGlueNextAvaloniaSchemeOptions
-                        {
-                            SchemeName = webAppOptions.SchemeName,
-                            DomainName = webAppOptions.DomainName,
-                            IsStandard = true,
-                            IsDisplayIsolated = true,
-                            IsSecure = true,
-                            IsCorsEnabled = false,
-                            IsCspBypassing = false,
-                            IsFetchEnabled = true,
-                            ResourceProvider = new LocalWebAssetResolver(
-                                webAppOptions.ContentRoot,
-                                webAppOptions.SchemeName,
-                                webAppOptions.DomainName,
-                                webAppOptions.SpaFallback,
-                                webAppOptions.MaxAssetBytes,
-                                webAppOptions.ContentSecurityPolicy)
-                        }
-                    ]
+                Schemes = schemes
             });
     }
+
+    public const string AssetSchemeName = "asset";
+
+    public const string AssetDomainName = "localhost";
 
     private static string? ReadEnvironmentVariable(string name)
     {
@@ -118,10 +143,12 @@ public static class CefGlueRuntimeBootstrap
 
 public sealed class CefGlueNextWebViewFactory : ITaruiWebViewFactory, ITaruiAvaloniaWebViewFactory
 {
-    public CefGlueNextWebViewFactory(CefGlueNextWebAppOptions webAppOptions)
+    public CefGlueNextWebViewFactory(
+        CefGlueNextWebAppOptions webAppOptions,
+        ITaruiAssetResolver? assetResolver = null)
     {
         ArgumentNullException.ThrowIfNull(webAppOptions);
-        CefGlueRuntimeBootstrap.Initialize(webAppOptions);
+        CefGlueRuntimeBootstrap.Initialize(webAppOptions, assetResolver);
     }
 
     ITaruiWebView ITaruiWebViewFactory.Create(TaruiWebViewOptions options) => Create(options);
@@ -135,9 +162,10 @@ public sealed class CefGlueNextWebViewFactory : ITaruiWebViewFactory, ITaruiAval
     }
 }
 
-public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, ITaruiDevToolsProtocol, IAsyncDisposable
+public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, ITaruiDevToolsProtocol, ITaruiWebViewPermissions, IAsyncDisposable
 {
     private readonly CefGlueNextAvaloniaWebView _component;
+    private EventHandler<TaruiWebViewPermissionRequestedEventArgs>? _permissionRequested;
     private EventHandler<TaruiWebMessage>? _messageReceived;
     private EventHandler<TaruiWebViewFileDropEventArgs>? _fileDropEntered;
     private EventHandler<TaruiWebViewFileDropLeftEventArgs>? _fileDropLeft;
@@ -162,6 +190,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, ITaruiDevToolsPr
         _component.ExternalNavigationRequested += OnComponentExternalNavigationRequested;
         _component.DragRegionsUpdated += OnComponentDragRegionsUpdated;
         _component.RenderProcessGone += OnComponentRenderProcessGone;
+        _component.PermissionRequested += OnComponentPermissionRequested;
         _component.DevToolsMessageReceived += OnComponentDevToolsMessage;
     }
 
@@ -221,6 +250,12 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, ITaruiDevToolsPr
     {
         add => _devToolsMessageReceived += value;
         remove => _devToolsMessageReceived -= value;
+    }
+
+    public event EventHandler<TaruiWebViewPermissionRequestedEventArgs>? PermissionRequested
+    {
+        add => _permissionRequested += value;
+        remove => _permissionRequested -= value;
     }
 
     public void Navigate(Uri source) => _component.Navigate(source);
@@ -290,6 +325,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, ITaruiDevToolsPr
         _component.ExternalNavigationRequested -= OnComponentExternalNavigationRequested;
         _component.DragRegionsUpdated -= OnComponentDragRegionsUpdated;
         _component.RenderProcessGone -= OnComponentRenderProcessGone;
+        _component.PermissionRequested -= OnComponentPermissionRequested;
         _component.DevToolsMessageReceived -= OnComponentDevToolsMessage;
         _component.Dispose();
         _messageReceived = null;
@@ -300,6 +336,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, ITaruiDevToolsPr
         _navigationRequested = null;
         _dragRegionsUpdated = null;
         _renderProcessGone = null;
+        _permissionRequested = null;
         _devToolsMessageReceived = null;
     }
 
@@ -326,6 +363,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, ITaruiDevToolsPr
         _component.ExternalNavigationRequested -= OnComponentExternalNavigationRequested;
         _component.DragRegionsUpdated -= OnComponentDragRegionsUpdated;
         _component.RenderProcessGone -= OnComponentRenderProcessGone;
+        _component.PermissionRequested -= OnComponentPermissionRequested;
         _component.DevToolsMessageReceived -= OnComponentDevToolsMessage;
     }
 
@@ -339,6 +377,7 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, ITaruiDevToolsPr
         _navigationRequested = null;
         _dragRegionsUpdated = null;
         _renderProcessGone = null;
+        _permissionRequested = null;
         _devToolsMessageReceived = null;
     }
 
@@ -347,6 +386,11 @@ public sealed class CefGlueNextWebView : ITaruiAvaloniaWebView, ITaruiDevToolsPr
 
     private void OnComponentDevToolsMessage(object? sender, TaruiDevToolsMessageEventArgs args) =>
         _devToolsMessageReceived?.Invoke(this, args);
+
+    private void OnComponentPermissionRequested(
+        object? sender,
+        TaruiWebViewPermissionRequestedEventArgs args) =>
+        _permissionRequested?.Invoke(this, args);
 
     private void OnComponentFileDropEntered(object? sender, CefGlueNextAvaloniaFileDropEventArgs args)
     {

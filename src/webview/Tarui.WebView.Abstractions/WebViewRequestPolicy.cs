@@ -48,20 +48,33 @@ public sealed class WebViewRequestDeniedException(WebViewDenialReason reason)
 /// <summary>
 /// Pure, dependency-free configuration for <see cref="WebViewRequestPolicy"/>. Patterns are URL globs
 /// (<c>https://app.example/**</c>, <c>http://localhost:*/*</c>). For navigation, rules are evaluated
-/// deny-from-malformed first, then external, then allow, with an implicit deny fallback. Downloads only
-/// ever allow or deny.
+/// deny-from-malformed first, then the app-bound gate, then external, then allow, with an implicit
+/// deny fallback. Downloads only ever allow or deny.
 /// </summary>
+/// <param name="LimitToAppBoundDomains">
+/// When true, navigation is restricted to hosts matched by <paramref name="AppBoundDomainPatterns"/>;
+/// every other target is denied, including ones an external rule would otherwise hand to the OS. This
+/// mirrors Tauri/WKWebView's app-bound-domain restriction for embedded content.
+/// </param>
+/// <param name="AppBoundDomainPatterns">
+/// Host-only globs (<c>app.example</c>, <c>*.app.example</c>) that define the app-bound domains. Null or
+/// empty with <paramref name="LimitToAppBoundDomains"/> enabled denies every navigation.
+/// </param>
 public sealed record WebViewPolicyOptions(
     IReadOnlyList<string> AllowedNavigationPatterns,
     IReadOnlyList<string> ExternalNavigationPatterns,
     IReadOnlyList<string> AllowedDownloadHostPatterns,
-    WebViewRequestDecision DefaultDownloadDecision = WebViewRequestDecision.Deny)
+    WebViewRequestDecision DefaultDownloadDecision = WebViewRequestDecision.Deny,
+    bool LimitToAppBoundDomains = false,
+    IReadOnlyList<string>? AppBoundDomainPatterns = null)
 {
     public static WebViewPolicyOptions None { get; } = new(
         AllowedNavigationPatterns: [],
         ExternalNavigationPatterns: [],
         AllowedDownloadHostPatterns: [],
-        DefaultDownloadDecision: WebViewRequestDecision.Deny);
+        DefaultDownloadDecision: WebViewRequestDecision.Deny,
+        LimitToAppBoundDomains: false,
+        AppBoundDomainPatterns: []);
 }
 
 /// <summary>
@@ -88,10 +101,15 @@ public sealed class WebViewRequestPolicy
     }
 
     /// <summary>Decides a navigation target. Result is never <see cref="WebViewRequestDecision.Allow"/> for
-    /// a malformed or malicious URL.</summary>
+    /// a malformed or malicious URL, nor outside the app-bound domains when that limit is enabled.</summary>
     public WebViewRequestDecision DecideNavigation(Uri url)
     {
         Validate(url);
+
+        if (!IsAppBound(url))
+        {
+            return WebViewRequestDecision.Deny;
+        }
 
         var external = _options.ExternalNavigationPatterns;
         foreach (var pattern in external)
@@ -128,6 +146,34 @@ public sealed class WebViewRequestPolicy
         }
 
         return _options.DefaultDownloadDecision;
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="url"/>'s host is within the configured app-bound domains, or
+    /// when the app-bound limit is disabled. An enabled limit with no domains denies everything.
+    /// </summary>
+    private bool IsAppBound(Uri url)
+    {
+        if (!_options.LimitToAppBoundDomains)
+        {
+            return true;
+        }
+
+        var patterns = _options.AppBoundDomainPatterns;
+        if (patterns is null)
+        {
+            return false;
+        }
+
+        foreach (var pattern in patterns)
+        {
+            if (MatchHostGlob(pattern, url))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

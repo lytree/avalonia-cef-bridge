@@ -26,6 +26,7 @@ internal static class Program
         await ReturnsWindowStateAndLabels();
         await EmitsEventsThroughEventPlugin();
         await ResolvesPathsThroughSystemPlugin();
+        ResolvesOverriddenAppDirectoriesThroughPathService();
         await ReadsAndWritesClipboard();
         await ReadsAndWritesClipboardHtmlAndImage();
         ParsesStructuredCliArguments();
@@ -181,6 +182,17 @@ internal static class Program
         Assert(
             service.Calls.Contains("set-icon|main|png:2"),
             "The icon bytes must reach the service with the caller window label.");
+
+        var appIconResponse = await router.InvokeAsync(
+            Request(
+                "core:window|set-icon",
+                new SetIconOptions(FromAppIcon: true),
+                TaruiJsonContext.Default.SetIconOptions),
+            AllowAll());
+        Assert(appIconResponse.Success, "Restoring the app icon must succeed.");
+        Assert(
+            service.Calls.Contains("set-icon|main|app-icon"),
+            "The app-icon flag must reach the service instead of PNG bytes.");
 
         var themeResponse = await router.InvokeAsync(
             Request(
@@ -369,6 +381,27 @@ internal static class Program
         Assert(
             result.Path == "/resolved/appdata/cache/db.sqlite",
             "Path resolution must delegate to the path service.");
+    }
+
+    private static void ResolvesOverriddenAppDirectoriesThroughPathService()
+    {
+        // appDirectoriesOverride 必须同样作用于 core:path|resolve，而不只是 fs/store 的授权基准。
+        var root = Path.Combine(Path.GetTempPath(), "tarui-path-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var service = new PathService(new AppDirectoryOptions { AppLog = root });
+            Assert(
+                service.Resolve("appLog", null) == Path.GetFullPath(root),
+                "The overridden appLog base must be returned by the path service.");
+            Assert(
+                service.Resolve("appLog", "app.log") == Path.Combine(Path.GetFullPath(root), "app.log"),
+                "Relative paths must resolve under the override, not the platform default.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     private static async Task ReadsAndWritesClipboard()

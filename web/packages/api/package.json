@@ -72,6 +72,10 @@
       "types": "./dist/platform.d.ts",
       "default": "./dist/platform.js"
     },
+    "./asset": {
+      "types": "./dist/asset.d.ts",
+      "default": "./dist/asset.js"
+    },
     "./fs": {
       "types": "./dist/fs.d.ts",
       "default": "./dist/fs.js"

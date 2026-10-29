@@ -33,6 +33,20 @@ public sealed class UpdaterPlugin(IUpdaterService service) : ITaruiPlugin
             TaruiJsonContext.Default.UpdateApplyResult,
             (options, _, ct) => service.ApplyAsync(options, ct),
             "plugin:updater|apply");
+
+        commands.Add(
+            "plugin:updater|restore",
+            TaruiJsonContext.Default.UpdateRestoreOptions,
+            TaruiJsonContext.Default.UpdateRestoreResult,
+            (options, _, ct) => service.RestoreAsync(options, ct),
+            "plugin:updater|restore");
+
+        commands.Add(
+            "plugin:updater|verify",
+            TaruiJsonContext.Default.UpdateVerifyOptions,
+            TaruiJsonContext.Default.UpdateVerifyResult,
+            (options, _, ct) => service.VerifyAsync(options, ct),
+            "plugin:updater|verify");
     }
 }
 

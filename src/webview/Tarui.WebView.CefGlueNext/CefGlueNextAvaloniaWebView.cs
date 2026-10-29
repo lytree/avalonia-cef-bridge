@@ -18,6 +18,7 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
     private readonly CefGlueNextAvaloniaNavigationHandler _navigationHandler;
     private readonly CefGlueNextAvaloniaDownloadHandler _downloadHandler;
     private readonly CefGlueNextAvaloniaDragHandler _dragHandler;
+    private readonly CefGlueNextAvaloniaPermissionHandler _permissionHandler;
     private readonly CefGlueNextAvaloniaDevToolsLifeSpanHandler _devToolsLifeSpanHandler;
     private CefBrowserHost? _devToolsHost;
     private CefGlueNextAvaloniaDevToolsObserver? _devToolsObserver;
@@ -46,11 +47,13 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
         _navigationHandler = new CefGlueNextAvaloniaNavigationHandler(this);
         _downloadHandler = new CefGlueNextAvaloniaDownloadHandler(this);
         _dragHandler = new CefGlueNextAvaloniaDragHandler(this);
+        _permissionHandler = new CefGlueNextAvaloniaPermissionHandler(this);
         _devToolsLifeSpanHandler = new CefGlueNextAvaloniaDevToolsLifeSpanHandler(this);
 
         _browser.RequestHandler = _navigationHandler;
         _browser.DownloadHandler = _downloadHandler;
         _browser.DragHandler = _dragHandler;
+        _browser.PermissionHandler = _permissionHandler;
         _browser.LifeSpanHandler = _devToolsLifeSpanHandler;
         _browser.WebMessageReceived += OnWebMessageReceived;
         _browser.BrowserInitialized += OnBrowserInitialized;
@@ -94,6 +97,15 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
 
     /// <summary>Raised when the browser's render process terminated (crash, kill or other reason).</summary>
     public event EventHandler<CefGlueNextAvaloniaRenderProcessGoneEventArgs>? RenderProcessGone;
+
+    /// <summary>
+    /// Raised before the browser resolves a permission request (media capture, geolocation, …).
+    /// The subscriber sets <see cref="TaruiWebViewPermissionRequestedEventArgs.Response"/>.
+    /// </summary>
+    public event EventHandler<TaruiWebViewPermissionRequestedEventArgs>? PermissionRequested;
+
+    internal void RaisePermissionRequested(TaruiWebViewPermissionRequestedEventArgs args) =>
+        PermissionRequested?.Invoke(this, args);
 
     /// <summary>Raised for every CDP message (method result or event) the browser emits.</summary>
     public event EventHandler<TaruiDevToolsMessageEventArgs>? DevToolsMessageReceived;
@@ -358,6 +370,8 @@ public sealed class CefGlueNextAvaloniaWebView : ContentControl, IAsyncDisposabl
         _browser.RequestHandler = null;
         _browser.DownloadHandler = null;
         _browser.DragHandler = null;
+        _browser.PermissionHandler = null;
+        PermissionRequested = null;
         Content = null;
 
         if (!_browser.IsBrowserInitialized)

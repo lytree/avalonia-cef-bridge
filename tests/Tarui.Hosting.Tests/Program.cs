@@ -20,12 +20,15 @@ internal static class Program
             MainWindowUsesDefaults();
             ConfigurationOverridesWindowDefaults();
             WindowCodeConfigurationOverridesConfigurationValues();
+            NoRedirectionBitmapFollowsConfigurationAndCode();
             InvalidWindowConfigurationFailsFast();
             PluginCompositionRegistersCommands();
             await HostLifecycleDrivesShutdownBridge();
             ShutdownCoordinatorDefaultsToMainWindowClose();
             ShutdownModeConfigurationOverridesCoordinator();
             InvalidShutdownModeFailsFast();
+            AppDirectoryConfigurationOverridesDefaults();
+            InvalidAppDirectoryConfigurationFailsFast();
             ShutdownCoordinatorEnforcesEachMode();
             HostAppShutdownStopsGracefully();
             ApplicationIdentityHasStableSanitizedIdentifier();
@@ -144,6 +147,36 @@ internal static class Program
         Assert(options.Width == 777, "Window code configuration must win over configuration values.");
     }
 
+    private static void NoRedirectionBitmapFollowsConfigurationAndCode()
+    {
+        var builder = TaruiHost.CreateApplicationBuilder();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Tarui:Window:NoRedirectionBitmap"] = "true",
+        });
+
+        using (var app = builder.Build())
+        {
+            var options = app.Services.GetRequiredService<WindowOptions>();
+            Assert(options.NoRedirectionBitmap,
+                "Tarui:Window:NoRedirectionBitmap=true must reach WindowOptions.");
+        }
+
+        var overridden = TaruiHost.CreateApplicationBuilder();
+        overridden.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Tarui:Window:NoRedirectionBitmap"] = "true",
+        });
+        overridden.Window.Configure(window => window.NoRedirectionBitmap = false);
+
+        using (var app = overridden.Build())
+        {
+            var options = app.Services.GetRequiredService<WindowOptions>();
+            Assert(!options.NoRedirectionBitmap,
+                "Window code configuration must win over the noRedirectionBitmap setting.");
+        }
+    }
+
     private static void InvalidWindowConfigurationFailsFast()
     {
         var builder = TaruiHost.CreateApplicationBuilder();
@@ -230,6 +263,63 @@ internal static class Program
         Assert(
             coordinator.Mode == AppShutdownMode.OnLastWindowClose,
             "The configured shutdown mode must override the default.");
+    }
+
+    private static void AppDirectoryConfigurationOverridesDefaults()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var builder = TaruiHost.CreateApplicationBuilder();
+            builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Tarui:Application:Directories:AppLocalData"] = root,
+            });
+
+            using var app = builder.Build();
+            var directories = app.Services.GetRequiredService<AppDirectoryOptions>();
+            Assert(
+                directories.AppLocalData == Path.GetFullPath(root),
+                "The configured appLocalData override must be registered in the container.");
+            Assert(
+                directories.AppData is null && directories.AppCache is null,
+                "Unconfigured app directories must stay null so they keep the platform default.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void InvalidAppDirectoryConfigurationFailsFast()
+    {
+        var builder = TaruiHost.CreateApplicationBuilder();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Tarui:Application:Directories:AppConfig"] = "relative/config",
+        });
+
+        InvalidOperationException? failure = null;
+        try
+        {
+            _ = builder.Build();
+        }
+        catch (InvalidOperationException exception)
+        {
+            failure = exception;
+        }
+
+        Assert(failure is not null, "A relative app directory override must fail the build.");
+        Assert(
+            failure!.Message.Contains("Tarui:Application:Directories:AppConfig", StringComparison.Ordinal),
+            "The failure must name the offending app directory key.");
+    }
+
+    private static string CreateTempDirectory()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "tarui-hosting-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(path);
+        return path;
     }
 
     private static void InvalidShutdownModeFailsFast()

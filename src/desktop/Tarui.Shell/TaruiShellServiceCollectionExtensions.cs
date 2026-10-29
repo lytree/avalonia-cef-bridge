@@ -48,6 +48,11 @@ public static class TaruiShellServiceCollectionExtensions
         .AddSingleton<WebViewRequestPolicy>(sp => BuildWebViewRequestPolicy(
             sp.GetService<IConfiguration>(),
             sp.GetRequiredService<TaruiAppOrigin>()))
+        // Restricted asset protocol (Tauri convertFileSrc equivalent): only the roots listed under
+        // Tarui:Web:Asset:Roots are readable, and the file access policy rejects link escapes.
+        .AddSingleton<ITaruiAssetResolver>(sp => BuildAssetResolver(
+            sp.GetService<IConfiguration>(),
+            sp.GetService<IFileAccessPolicy>()))
         // One composition-time plugin pass shared by the router and the permission-set catalog, so a
         // capability manifest can name a set such as "core:window|default" and still be validated
         // against the exact permissions the plugins registered.
@@ -157,12 +162,15 @@ public static class TaruiShellServiceCollectionExtensions
     /// navigation allow list covers every application origin — the start URI's origin plus, when local
     /// assets are served, the portless custom app scheme — and local dev servers; unlisted targets
     /// default to deny. External (OS-handled) navigation defaults to every <c>https</c> URL.
+    /// <c>LimitToAppBoundDomains</c> additionally pins navigation to <c>AppBoundDomains</c>, which
+    /// defaults to the application hosts plus the local dev hosts.
     /// </summary>
     private static WebViewRequestPolicy BuildWebViewRequestPolicy(
         IConfiguration? configuration,
         TaruiAppOrigin appOrigin)
     {
         var originAllows = new List<string>();
+        var originHosts = new List<string>();
         foreach (var origin in new[] { appOrigin.StartUri, appOrigin.SchemeOrigin })
         {
             if (origin is null)
@@ -176,6 +184,11 @@ public static class TaruiShellServiceCollectionExtensions
             if (!originAllows.Contains(pattern))
             {
                 originAllows.Add(pattern);
+            }
+
+            if (!originHosts.Contains(origin.Host, StringComparer.OrdinalIgnoreCase))
+            {
+                originHosts.Add(origin.Host);
             }
         }
 
@@ -194,11 +207,36 @@ public static class TaruiShellServiceCollectionExtensions
             : ReadList(configuration, "Tarui:Web:Policy:DownloadHosts");
         downloadHosts ??= [];
 
+        var limitToAppBoundDomains = configuration is not null &&
+            ReadBool(configuration, "Tarui:Web:Policy:LimitToAppBoundDomains");
+        var appBoundDomains = configuration is null
+            ? null
+            : ReadList(configuration, "Tarui:Web:Policy:AppBoundDomains");
+        appBoundDomains ??= [.. originHosts, "localhost", "127.0.0.1"];
+
         return new WebViewRequestPolicy(new WebViewPolicyOptions(
             navAllow,
             navExternal,
             downloadHosts,
-            DefaultDownloadDecision: WebViewRequestDecision.Deny));
+            DefaultDownloadDecision: WebViewRequestDecision.Deny,
+            LimitToAppBoundDomains: limitToAppBoundDomains,
+            AppBoundDomainPatterns: appBoundDomains));
+    }
+
+    private static bool ReadBool(IConfiguration configuration, string key)
+    {
+        var raw = configuration[key];
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+
+        if (!bool.TryParse(raw.Trim(), out var value))
+        {
+            throw new InvalidOperationException($"{key} must be 'true' or 'false'.");
+        }
+
+        return value;
     }
 
     private static string[]? ReadList(IConfiguration configuration, string key)
@@ -210,6 +248,43 @@ public static class TaruiShellServiceCollectionExtensions
         }
 
         return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    /// <summary>
+    /// Builds the restricted asset resolver from <c>Tarui:Web:Asset:Roots</c> (comma-separated
+    /// absolute directories) and an optional <c>Tarui:Web:Asset:MaxAssetBytes</c> limit. Without any
+    /// roots the resolver is disabled and the backend must not register the asset scheme.
+    /// </summary>
+    private static FileAssetResolver BuildAssetResolver(
+        IConfiguration? configuration,
+        IFileAccessPolicy? policy)
+    {
+        var roots = configuration is null
+            ? null
+            : ReadList(configuration, "Tarui:Web:Asset:Roots");
+        return new FileAssetResolver(roots, ReadMaxAssetBytes(configuration), policy);
+    }
+
+    private static long ReadMaxAssetBytes(IConfiguration? configuration)
+    {
+        const long defaultMaximum = 64L * 1024L * 1024L;
+        var raw = configuration?["Tarui:Web:Asset:MaxAssetBytes"];
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return defaultMaximum;
+        }
+
+        if (!long.TryParse(
+                raw,
+                System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var value) || value <= 0)
+        {
+            throw new InvalidOperationException(
+                "Tarui:Web:Asset:MaxAssetBytes must be a positive integer.");
+        }
+
+        return value;
     }
 
     /// <summary>

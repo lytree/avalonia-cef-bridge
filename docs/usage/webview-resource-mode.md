@@ -47,6 +47,8 @@ Scheme 模式服务 `tarui://localhost/index.html`;`tarui build` 把 `web/dist` 
 | `Tarui:Web:SpaFallback` | `TARUI_WEB_SPA_FALLBACK` | 默认 `true`;关闭后扩展名缺失的主帧导航直接 404 |
 | `Tarui:Web:Csp` | `TARUI_WEB_CSP` | 覆盖生产环境 CSP |
 | `Tarui:Web:MaxAssetBytes` | `TARUI_WEB_MAX_ASSET_BYTES` | 资源体积上限,默认 64 MiB |
+| `Tarui:Web:Asset:Roots` | — | 逗号分隔的绝对目录,启用受限 `asset://` 通道(配合 `convertFileSrc`);空即禁用 |
+| `Tarui:Web:Asset:MaxAssetBytes` | — | 单个 `asset://` 文件上限,默认 64 MiB |
 | `Tarui:Web:UserAgent` | `TARUI_WEB_USER_AGENT` | CEF `UserAgent`(仅初始化期) |
 | `Tarui:Web:ProxyServer` | `TARUI_WEB_PROXY_SERVER` | CEF `--proxy-server`(仅初始化期) |
 
@@ -60,12 +62,38 @@ Scheme 模式下默认 CSP(可被 `Tarui:Web:Csp` 覆盖):
 default-src 'self';
 script-src 'self';
 style-src 'self' 'unsafe-inline';
-img-src 'self' data:;
-font-src 'self' data:;
-connect-src 'self' ipc: http://ipc.localhost;
+img-src 'self' data: asset:;
+font-src 'self' data: asset:;
+media-src 'self' asset:;
+connect-src 'self' asset:;
+object-src 'none';
+base-uri 'self';
+frame-ancestors 'none';
 ```
 
-`connect-src` 包含 IPC 自定义协议与 `http://ipc.localhost`(CEF 自定义 scheme + HTTP hybrid 模式)。生产环境应显式收紧 `connect-src` 限定业务后端 origin。
+`asset:` 仅为启用受限 `asset://` 文件通道(见 §4.1)而放行;不使用该通道时可自行收紧。生产环境应显式收紧 `connect-src` 限定业务后端 origin。
+
+### 4.1 受限 `asset://` 文件通道
+
+除了应用 origin(`tarui://localhost` 或 HTTP dev server),Shell 还可以提供 `asset://localhost/<percent-encoded 绝对路径>` 供 `<img>` / `<video>` / `@font-face` 直接加载本地文件:
+
+```jsonc
+"Tarui": {
+  "Web": {
+    "Asset": {
+      "Roots": "D:\\Portable\\assets,C:\\Users\\me\\Pictures",
+      "MaxAssetBytes": 67108864
+    }
+  }
+}
+```
+
+```ts
+import { convertFileSrc } from '@lytree/api/asset'
+img.src = convertFileSrc('D:\\Portable\\assets\\logo.png')
+```
+
+规则:路径必须是绝对路径且落在某个 root 内(越界由 `IFileAccessPolicy` 拒绝);只允许 `GET`/`HEAD`;超限返回 413;未配置 `Roots` 时不注册 scheme,通道默认关闭。
 
 ## 5. SPA fallback
 
@@ -86,7 +114,9 @@ HTTP 与自定义 app scheme 可以共存:当配置了 content root(`Tarui:Web:R
   "Tarui": {
     "Web": {
       "Policy": {
-        "NavExternal": "https:*"
+        "NavExternal": "https:*",
+        "LimitToAppBoundDomains": true,
+        "AppBoundDomains": "app.example, *.example.org"
       }
     }
   }
@@ -94,6 +124,8 @@ HTTP 与自定义 app scheme 可以共存:当配置了 content root(`Tarui:Web:R
 ```
 
 `NavExternal` 控制主帧之外允许导航的 origin(`https:*` / 自定义 glob)。
+
+`LimitToAppBoundDomains` 对标 Tauri / WKWebView 的 `limitNavigationsToAppBoundDomains`:开启后,任何主帧导航都必须先命中 `AppBoundDomains`(host glob),否则一律 `Deny` —— 即使 `NavExternal` 本可以交给系统浏览器。`AppBoundDomains` 缺省为应用 origin host 加上 `localhost` / `127.0.0.1`;显式配置为空时开限制等于拒绝所有导航。
 
 ## 8. 开发 vs 生产差异
 

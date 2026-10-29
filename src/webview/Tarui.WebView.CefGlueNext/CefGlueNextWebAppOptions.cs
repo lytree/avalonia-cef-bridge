@@ -16,7 +16,8 @@ public sealed record CefGlueNextWebAppOptions
 
     private const string DefaultContentSecurityPolicy =
         "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
-        "img-src 'self' data:; font-src 'self' data:; connect-src 'self'; " +
+        "img-src 'self' data: asset:; font-src 'self' data: asset:; media-src 'self' asset:; " +
+        "connect-src 'self' asset:; " +
         "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 
     private CefGlueNextWebAppOptions(

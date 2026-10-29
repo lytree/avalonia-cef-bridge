@@ -51,6 +51,11 @@ export type WindowOptions = {
   visible?: boolean
   /** Renders the window with a translucent backdrop (acrylic blur where the platform supports it). */
   transparent?: boolean
+  /**
+   * Windows only: drops the native window's redirection bitmap, mirroring Tauri's `noRedirectionBitmap`.
+   * Intended for DirectComposition-backed transparent windows; ignored on other platforms.
+   */
+  noRedirectionBitmap?: boolean
 }
 
 export type WindowGeometry = {
@@ -203,6 +208,15 @@ export class Window {
    */
   async setIcon(png: Uint8Array | null): Promise<void> {
     await invoke('core:window|set-icon', { png: png === null ? undefined : toBase64(png), ...this.target() })
+  }
+
+  /**
+   * Restores the icon embedded in the application executable, mirroring Tauri's
+   * `Image::from_app_icon_resource`. Windows only: other platforms reject the command with
+   * `NOT_SUPPORTED` because their bundles do not expose a single icon resource.
+   */
+  async restoreAppIcon(): Promise<void> {
+    await invoke('core:window|set-icon', { fromAppIcon: true, ...this.target() })
   }
 
   /** Sets the window theme variant: 'system' | 'light' | 'dark'. */

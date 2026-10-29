@@ -38,6 +38,9 @@ internal static class Program
         await ResourceDirectoryMirrorsRemappedResources();
         ResourcesBaseFollowsConfiguredResourceDirectory();
         FileAccessPolicySharesResourceDirectoryOptions();
+        AppDirectoryOverridesReplaceBaseRoots();
+        RejectsInvalidAppDirectoryOverride();
+        AppDirectoryOverridesFlowThroughPolicyRegistration();
         Console.WriteLine("Tarui.Ipc self-tests passed.");
         return 0;
     }
@@ -210,6 +213,97 @@ internal static class Program
 
             var directory = provider.GetRequiredService<ITaruiResourceDirectory>();
             Assert(directory.Root == Path.GetFullPath(root), "The resource directory must use the same root.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static void AppDirectoryOverridesReplaceBaseRoots()
+    {
+        // appDirectoriesOverride：便携应用把 app_* 目录搬走，fs/store/sql/persisted-scope 的
+        // scope 基准全部经由 IFileAccessPolicy.ResolveBase，因此覆盖必须在这里生效。
+        var appData = CreateTempDirectory();
+        var appLocalData = CreateTempDirectory();
+        try
+        {
+            var policy = new FileAccessPolicy(new FileAccessPolicyOptions(
+                AppDirectories: new AppDirectoryOptions
+                {
+                    AppData = appData,
+                    AppLocalData = appLocalData,
+                }));
+
+            Assert(
+                policy.ResolveBase("appData") == Path.GetFullPath(appData),
+                "The appData base must resolve to the configured override.");
+            Assert(
+                policy.ResolveBase("APPDATA") == Path.GetFullPath(appData),
+                "Base names must match the override case-insensitively.");
+            Assert(
+                policy.ResolveBase("appLocalData") == Path.GetFullPath(appLocalData),
+                "The appLocalData base must resolve to its own override.");
+            Assert(
+                policy.ResolveBase("appConfig") == new FileAccessPolicy().ResolveBase("appConfig"),
+                "Un-overridden app bases must keep the platform default.");
+            Assert(
+                policy.TryGetBaseDirectory("appData", out var resolved, out var readOnly),
+                "An overridden app base must stay usable through TryGetBaseDirectory.");
+            Assert(resolved == Path.GetFullPath(appData), "TryGetBaseDirectory must use the override.");
+            Assert(!readOnly, "Overridden app bases stay writable.");
+        }
+        finally
+        {
+            Directory.Delete(appData, recursive: true);
+            Directory.Delete(appLocalData, recursive: true);
+        }
+    }
+
+    private static void RejectsInvalidAppDirectoryOverride()
+    {
+        var relativeRejected = false;
+        try
+        {
+            _ = new FileAccessPolicy(new FileAccessPolicyOptions(
+                AppDirectories: new AppDirectoryOptions { AppData = "relative/dir" }));
+        }
+        catch (InvalidOperationException exception)
+        {
+            relativeRejected = exception.Message.Contains(
+                "Tarui:Application:Directories:AppData",
+                StringComparison.Ordinal);
+        }
+
+        Assert(relativeRejected, "A relative app directory override must fail fast and name the key.");
+
+        var controlRejected = false;
+        try
+        {
+            _ = new AppDirectoryOptions { AppLog = "C:\\logs\u0001" }.Normalize();
+        }
+        catch (InvalidOperationException exception)
+        {
+            controlRejected = exception.Message.Contains("control", StringComparison.OrdinalIgnoreCase);
+        }
+
+        Assert(controlRejected, "A control-character app directory override must be rejected.");
+    }
+
+    private static void AppDirectoryOverridesFlowThroughPolicyRegistration()
+    {
+        var root = CreateTempDirectory();
+        try
+        {
+            var services = new ServiceCollection();
+            services.AddSingleton(new AppDirectoryOptions { AppCache = root });
+            services.AddFileAccessPolicy();
+            using var provider = services.BuildServiceProvider();
+
+            var policy = provider.GetRequiredService<IFileAccessPolicy>();
+            Assert(
+                policy.ResolveBase("appCache") == Path.GetFullPath(root),
+                "A registered AppDirectoryOptions must reach every AddFileAccessPolicy registration.");
         }
         finally
         {

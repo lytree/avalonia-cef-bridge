@@ -1,4 +1,5 @@
 using Tarui.Contracts;
+using Tarui.Ipc;
 
 namespace Tarui.Plugins.System;
 
@@ -10,6 +11,15 @@ public interface IPathService
 public sealed class PathService : IPathService
 {
     private const string AppName = "tarui.net";
+
+    private readonly AppDirectoryOptions? _directories;
+
+    /// <summary>
+    /// Creates a path service. <paramref name="directories"/> carries the host's
+    /// <c>appDirectoriesOverride</c> values; null keeps every <c>app_*_dir</c> at its platform default.
+    /// </summary>
+    public PathService(AppDirectoryOptions? directories = null)
+        => _directories = directories?.Normalize();
 
     public string Resolve(string kind, string? relativePath)
     {
@@ -37,7 +47,10 @@ public sealed class PathService : IPathService
         return combined;
     }
 
-    private static string? ResolveBase(string kind) => kind switch
+    private string? ResolveBase(string kind)
+        => _directories?.TryGetOverride(kind) ?? ResolveDefaultBase(kind);
+
+    private static string? ResolveDefaultBase(string kind) => kind switch
     {
         "appData" => UnderApp(Environment.SpecialFolder.ApplicationData),
         "appLocalData" => UnderApp(Environment.SpecialFolder.LocalApplicationData),

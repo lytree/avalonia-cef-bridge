@@ -96,6 +96,8 @@ export type { PlatformCapabilities } from './platform'
 export { resolve as resolvePath } from './path'
 export type { PathKind } from './path'
 
+export { convertFileSrc } from './asset'
+
 export { exit, relaunch } from './process'
 
 export { open as openExternal } from './shell'

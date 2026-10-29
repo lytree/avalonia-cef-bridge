@@ -9,6 +9,7 @@ import {
   listen,
   reset,
 } from '../ipc'
+import { flushChannelDelivery } from './ipcMock'
 
 type PendingEnvelope =
   | { protocol: number; id: string; success: boolean; payload?: unknown; error?: { code: string; message: string } }
@@ -180,15 +181,23 @@ describe('Channel', () => {
     expect(received).toBe(channel.id)
   })
 
-  it('streams channel frames to onmessage via dispatch', () => {
+  it('streams channel frames to onmessage via dispatch', async () => {
+    const control: Record<string, unknown>[] = []
+    window.invokeCSharpAction = message => {
+      control.push(JSON.parse(message) as Record<string, unknown>)
+    }
     const channel = new Channel<number>()
     const onmessage = vi.fn()
     channel.onmessage = onmessage
     sendResponse({ type: 'channel', channel: channel.id, payload: 42 })
     sendResponse({ type: 'channel', channel: channel.id, payload: 43 })
+    await flushChannelDelivery()
     expect(onmessage).toHaveBeenCalledTimes(2)
     expect(onmessage).toHaveBeenNthCalledWith(1, 42)
     expect(onmessage).toHaveBeenNthCalledWith(2, 43)
+    // Every delivered frame releases exactly one native credit.
+    const acks = control.filter(frame => frame.type === 'channel-ack' && frame.channel === channel.id)
+    expect(acks).toHaveLength(2)
   })
 
   it('does not deliver to an unknown channel id', () => {
