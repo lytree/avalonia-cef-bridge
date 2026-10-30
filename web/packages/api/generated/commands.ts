@@ -588,6 +588,7 @@ export interface ShellSpawnOptions {
   readonly workingDir?: string;
   readonly captureStdout: boolean;
   readonly captureStderr: boolean;
+  readonly killOnDrop: boolean;
 }
 
 export interface ShellSpawnResult {

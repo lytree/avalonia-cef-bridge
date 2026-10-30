@@ -70,6 +70,8 @@ builder.Services
 
 完整插件清单与命令 ID 见 [`../design/plugin-system.md`](../design/plugin-system.md) §3。
 
+`spawn` 支持 `killOnDrop`（对齐 Tauri shell 2.6.0 `kill_on_drop`）：设为 `true` 后，子进程在其所属 Webview 被销毁或宿主窗口关闭时自动终止（含进程树）；默认 `false`，由应用显式管理生命周期。
+
 ## 3. Scope 配置
 
 许多插件支持细化的 scope 配置(在 capability 文件中):

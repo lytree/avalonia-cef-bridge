@@ -44,6 +44,7 @@ internal static class Program
         WebviewSurfaceHostFillsUnboundedAndPositionsBounded();
         AttachWebviewRegistersInWebviewRegistry();
         await RepeatedWebviewChurnLeavesNoResidue();
+        await NotifiesWebviewLifecycleObserversOnTeardown();
         await RouterDeliversEventsToTargetWindows();
         await RouterBroadcastsToAllWindows();
         await RouterNotifiesHubSubscribers();
@@ -1464,8 +1465,23 @@ internal static class Program
         }
     }
 
+    private static async Task NotifiesWebviewLifecycleObserversOnTeardown()
+    {
+        var observer = new RecordingWebviewLifecycleObserver();
+        var (provider, attacher, _, _, shell) = CreateAttacherHarness(observer);
+        using (provider)
+        {
+            attacher.AttachWebview(shell, "main", "dyn", new Uri("http://127.0.0.1:5173/"), new WebviewBounds(0, 0, 10, 10));
+            await attacher.DestroyWebviewAsync("dyn");
+            Assert(observer.Closed.Contains("main|dyn"),
+                "Destroying a web view must notify lifecycle observers with both labels.");
+            await attacher.DestroyWebviewAsync("dyn");
+            Assert(observer.Closed.Count == 1, "A repeated destroy must not notify observers twice.");
+        }
+    }
+
     private static (ServiceProvider Provider, WebviewAttacher Attacher, WebviewRegistry Webviews, WindowRegistry Registry, ShellWindow Shell)
-        CreateAttacherHarness()
+        CreateAttacherHarness(IWebviewLifecycleObserver? lifecycleObserver = null)
     {
         // Mounting surfaces touches a real ShellWindow, so the Avalonia windowing platform must be up.
         EnsureAvaloniaInitialized();
@@ -1475,6 +1491,10 @@ internal static class Program
         services.AddSingleton(new TaruiAppOrigin(new Uri("http://127.0.0.1:5173/")));
         services.AddSingleton(new WindowOptions("main"));
         services.AddSingleton<ITaruiAvaloniaWebViewFactory>(new NewWebViewFactory());
+        if (lifecycleObserver is not null)
+        {
+            services.AddSingleton(lifecycleObserver);
+        }
 
         var provider = services.BuildServiceProvider();
         var registry = provider.GetRequiredService<WindowRegistry>();
@@ -2488,6 +2508,14 @@ internal static class Program
         {
             throw new InvalidOperationException(message);
         }
+    }
+
+    private sealed class RecordingWebviewLifecycleObserver : IWebviewLifecycleObserver
+    {
+        public List<string> Closed { get; } = [];
+
+        public void OnWebviewClosed(string windowLabel, string webviewLabel) =>
+            Closed.Add(windowLabel + "|" + webviewLabel);
     }
 
     private sealed class FakeSink : IEventSink

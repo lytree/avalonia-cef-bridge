@@ -4,7 +4,9 @@ namespace Tarui.Contracts;
 /// Request for the <c>plugin:shell|spawn</c> command. <see cref="Program"/> is validated against the caller
 /// capability's allow/deny program scopes (deny-by-default) before any process is started. When
 /// <see cref="Channel"/> is set, stdout/stderr are streamed to it node by node and a termination frame closes
-/// it; the call resolves once the process is spawned and its output pump is running.
+/// it; the call resolves once the process is spawned and its output pump is running. When
+/// <see cref="KillOnDrop"/> is set, the child is terminated (with its process tree) as soon as the web view
+/// that spawned it is destroyed or its window closes, mirroring Tauri's <c>kill_on_drop</c>.
 /// </summary>
 public sealed record ShellSpawnOptions(
     string Program,
@@ -12,7 +14,8 @@ public sealed record ShellSpawnOptions(
     string? Channel = null,
     string? WorkingDir = null,
     bool CaptureStdout = true,
-    bool CaptureStderr = true);
+    bool CaptureStderr = true,
+    bool KillOnDrop = false);
 
 /// <summary>Handle for a spawned child process; used by <c>plugin:shell|stdin</c> and <c>plugin:shell|kill</c>.</summary>
 public sealed record ShellSpawnResult(string Id);

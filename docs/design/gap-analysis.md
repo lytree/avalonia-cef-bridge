@@ -1,8 +1,8 @@
 # Tarui 与 Tauri v2 功能差距分析
 
-> 状态：分析基线（2026-10-29 Tauri v2 基准复核 + Windows `noRedirectionBitmap` 落地）
-> 基线日期：2026-10-29（§1.2 上游版本经 GitHub Releases / crates.io / npm 复核无变化；§1.3 核心 2.12 API 面复核，第 5 项本轮落地；能力快照沿用 2026-10-16 代码实测，见 §1.1）
-> 对比对象：Tauri v2 官方插件与核心 API（**tauri 2.12.5** / cli 2.12.4 / `@tauri-apps/api` 2.12.4，2026-10-21；updater **2.14.1**、sql 2.6.0 等插件 2.x 为 2026-10-28）
+> 状态：分析基线（2026-10-30 Tauri v2 基准复核 + Shell `killOnDrop` 落地）
+> 基线日期：2026-10-30（上游核心 2.12.5 未变化；插件基线刷新到 shell 2.6.0 / notification 2.8.0 / single-instance 2.5.5 / dialog 2.8.4 / deep-link 2.6.3，见 §1.2.1；能力快照沿用 2026-10-16 代码实测，见 §1.1）
+> 对比对象：Tauri v2 官方插件与核心 API（**tauri 2.12.5** / cli 2.12.4 / `@tauri-apps/api` 2.12.4，2026-10-21；updater **2.14.1**、shell **2.6.0**、notification **2.8.0**、single-instance **2.5.5** 等插件 2.x 为 2026-10-28）
 > 姊妹文档：[tauri-desktop-alignment-plan.md](./alignment-plan.md)（实施步骤与状态跟踪的权威入口，本文不重复其阶段门禁）、[`./architecture.md`](architecture.md)（架构总览）
 > 本文目的：静态盘点当前仓库实际能力，对照 Tauri v2 输出缺口清单与可优化项，供排期决策。
 
@@ -15,6 +15,7 @@
 - **2026-10-27 基准刷新**：把 §1.3 剩余 P1/P2 增量中的三项落到实现——`appDirectoriesOverride`（`Tarui:Application:Directories:*` 统一覆盖 fs/store/sql/`core:path|resolve`）、wry 权限处理器等价物（`ITaruiWebViewPermissions` + 9 个 `plugin:webview|permission-*` capability + CEF 权限回调接线）、`convertFileSrc` + 受限 `asset://` 协议（`Tarui:Web:Asset:Roots` 白名单 + `IFileAccessPolicy` + 默认 CSP 放行）。
 - **2026-10-28 基准刷新**：§1.3 剩余增量再落地三项——app-bound 导航域（`Tarui:Web:Policy:LimitToAppBoundDomains` + `AppBoundDomains`）、内嵌应用图标（`core:window|set-icon` 的 `fromAppIcon`，Win32 `ExtractIconEx` + DIB 转 PNG）、updater `restore_update` / `Update::verify`（外加 2.12 的 `AllowDowngrades` 与安装前包校验）。
 - **2026-10-29 基准复核**：上游 tauri 2.12.5 / CLI 2.12.4 / `@tauri-apps/api` 2.12.4 / updater 2.14.1 均未变化（无 2.13），能力面无新增。本轮落地 §1.3 第 5 项 Windows `no_redirection_bitmap`：`WindowOptions.NoRedirectionBitmap` + `Tarui:Window:NoRedirectionBitmap` + `WindowsWindowStyle` 在 HWND 创建后补 `WS_EX_NOREDIRECTIONBITMAP`（best-effort，非 Windows 忽略）。剩余未跟进仅 macOS `activate_ignoring_other_apps`（平台未验证）与 `bundleVCRuntime`（语义不等价，记为已知差异）。
+- **2026-10-30 基准刷新**：核心仍为 2.12.5（2026-10-21 后无新版本）；2026-10-28 plugins-workspace 批量发布推进插件基线（§1.2.1）。本轮落地 shell 2.6.0 的 `Command::kill_on_drop` 等价能力：`ShellSpawnOptions.KillOnDrop` + `IWebviewLifecycleObserver`，Webview 销毁或宿主窗口关闭时按 `(window, webview)` 回收该 surface 派生的子进程（§1.7）。notification 2.8.0 仅 Android chronometer（移动端非目标），single-instance 2.5.5 / dialog 2.8.4 / deep-link 2.6.3 复核后无需改动。
 
 ### 1.1 本次复核方法与修正记录（2026-10-16）
 
@@ -50,6 +51,19 @@
 | updater 2.14.0：`Update::install` 安装前校验 | 已下载的包在安装前必须仍满足签名与哈希 | **已跟进**：`download` 落盘签名清单，`apply` 先验签再逐文件复算 SHA-256，bundle 只从清单 `Files` 选取 |
 | sql 2.6.0：`Database.load` 新增 `autoCreate` 选项 | 当时 Tarui `plugin:sql|load` 无创建开关 | 已于 2026-10-26 跟进（见 §1.3 第 3 项） |
 | 其余 2.12.4 / 2.12.5 与插件补丁 | 移动端 IPC、NSIS 降级保护、Linux AppImage 更新、通知 D-Bus 连接等修复 | 对 Tarui 桌面契约无影响，无需跟进 |
+
+### 1.2.1 插件基线刷新（2026-10-30）
+
+GitHub Releases 复核：核心与 CLI 自 2026-10-21 后无新版本（tauri **2.12.5** / cli **2.12.4** / `@tauri-apps/api` **2.12.4**）；plugins-workspace 在 2026-10-28 批量发布，推进了下列插件。逐项处置如下，未落地的能力不计入已对齐。
+
+| 插件 | 旧基线 | 新基线 | 增量 | 处置 |
+| --- | --- | --- | --- | --- |
+| shell | 2.5.0 | **2.6.0** | `Command::kill_on_drop`：`CommandChild` 被 drop 时终止子进程；启用 `set_process_group` 时按进程组 / 作业对象回收 | **已跟进**：`ShellSpawnOptions.KillOnDrop` + `IWebviewLifecycleObserver`；Webview 销毁或宿主窗口关闭即按 `(window, webview)` 回收该 surface 派生的子进程（§1.7） |
+| notification | 2.7.0 | **2.8.0** | Android 通知 chronometer（`when` / `usesChronometer` / `chronometerCountDown`） | 不跟进：移动端非目标（对齐计划 §1 明确排除） |
+| single-instance | 2.5.4 | **2.5.5** | 锁改在 `cleanup_before_exit`（进程退出/重启前最后一步）释放，退出处理期间仍保持唯一实例；Windows 启动期 `FindWindowW` 竞态修复 | 已复核：Tarui 的 `using var handle` 在 `Main` 末尾（host 停止、退出处理完成后）释放，语义等价；Windows 走命名管道 + 三次重试，不依赖 `FindWindowW`，无需改动 |
+| dialog | 2.8.2 | **2.8.4** | 依赖 rfd 0.17 | 无能力面变化，不跟进 |
+| deep-link | 2.6.1 | **2.6.3** | Linux 缺 `update-desktop-database` 时注册/注销不再失败；iOS entitlement 与 `CFBundleURLTypes` 修复 | Linux 侧 Tarui 只写 `.desktop` + `xdg-mime` best-effort，本就不以外部工具存在为前提；iOS 属移动端非目标，不跟进 |
+| updater | 2.14.1 | 2.14.1 | 无新版本 | — |
 
 ### 1.3 核心 2.12 API 面复核（2026-10-26）
 
@@ -110,7 +124,15 @@
 
 门禁：`dotnet build tarui.net.slnx` 0 警告 0 错误；`./eng/test-all.ps1 -Configuration Debug` 28/28 套自测试全部通过；`oxlint` 0 错误（仅 1 条既有 React purity 警告）；`tsc -b`（api、web）与 `vite build` 成功。真机未验收项：真实 DirectComposition 透明窗口去掉重定向表面后的视觉/撕裂表现（需要在 Windows 真机上以透明窗口验收）。
 
-## 2. Tarui 当前能力基线（2026-10-29 复核；能力面为 2026-10-16 实测快照 + 本轮增量）
+### 1.7 本轮实现的验证证据（2026-10-30）
+
+| 项 | 落点 | 验证 |
+| --- | --- | --- |
+| shell `kill_on_drop` | `ShellSpawnOptions.KillOnDrop`（DTO + `TaruiJsonContext` 源生成元数据）、`IWebviewLifecycleObserver`（`Tarui.Ipc/WebviewLifecycle.cs`）、`ChildProcessService` 按 `(window, webview)` 记录归属并回收、`AddShellPlugin` 显式注册 observer（无扫描）、`WebviewAttacher.NotifyWebviewClosed` 在窗口关闭与 `DestroyWebviewAsync` 两条路径通知、TS `spawn(..., { killOnDrop })` | `Tarui.ShellPlugin.Tests`：kill-on-drop 子进程在 Webview 关闭后被回收（terminated 帧 + stdin 失效）、未开启 `killOnDrop` 的子进程继续存活且可写 stdin、关闭 `side` surface 只回收该 surface 的子进程而兄弟 surface 子进程存活；`Tarui.Shell.Tests`：`DestroyWebviewAsync` 通知 observer（携带 window/webview 双标签），重复销毁不重复通知；`Tarui.Bindings.Tests` 重新生成 `generated/commands.ts` 并核对契约 |
+
+门禁：`dotnet build tarui.net.slnx` 0 警告 0 错误；`./eng/test-all.ps1 -Configuration Debug` 28/28 套自测试通过；`oxlint` 0 错误、`tsc -b` 与 `vite build` 成功。真机未验收项：windowed CEF 中真实关闭窗口时子进程回收的时序（门禁级已由服务层用例覆盖）。
+
+## 2. Tarui 当前能力基线（2026-10-30 复核；能力面为 2026-10-16 实测快照 + 本轮增量）
 
 | 能力域 | 状态 | 关键落点 |
 | --- | --- | --- |
@@ -187,7 +209,7 @@
 | OS Information | ✅ | 等价 |
 | Persisted Scope | ✅ | `plugin:persisted-scope|scope-allow/deny/reset`（可扩展权限白名单硬编码）+ `scope://changed` 事件 + `appData/scope.json` 原子持久化；`IRuntimeScopeOverlay` 在 IPC 层与静态 capability scope 合并（仅扩展已声明 scope 的权限，deny 优先）；`tests/Tarui.PersistedScope.Tests` |
 | Process | ✅ | exit/restart 走 Host 协调退出，等价 |
-| Shell（子进程/sidecar） | ✅ | spawn + Channel 流式 stdio（stdout/stderr/`terminated`）+ 退出码 + 程序白名单作用域（默认拒绝） + stdin/kill + 进程树终止 |
+| Shell（子进程/sidecar） | ✅ | spawn + Channel 流式 stdio（stdout/stderr/`terminated`）+ 退出码 + 程序白名单作用域（默认拒绝） + stdin/kill + 进程树终止；`ShellSpawnOptions.KillOnDrop` 对齐上游 2.6.0 `kill_on_drop`（Webview 销毁或其宿主窗口关闭时按 `(window, webview)` 回收该 surface 派生子进程，见 §1.7） |
 | Single Instance | ✅ | Mutex + 管道/Unix socket + 参数转发事件 |
 | SQL | ✅ | `plugin:sql|load/select/execute/close`（2026-10-16 落地）。SQLite 驱动内置（`Microsoft.Data.Sqlite` 10.0.13），连接串 scheme 决定驱动，`ISqlDriverResolver` 可显式注册 PostgreSQL/MySQL；`?` 位置参数经 `RewritePositionalPlaceholders` 改写为命名参数绑定（跳过字符串字面量与注释），值永不拼接进 SQL；cell 以「值 + 存储类 + IsNull」承载，区分 NULL/空串/整数/实数/blob（base64）；句柄按 `SemaphoreSlim` 串行化以规避 `SQLITE_BUSY`，`:memory:` 因随连接销毁而共享连接；**`load` 的 scope 语义比 fs/store 更严——空 allow 列表拒绝一切文件库**（load 会创建文件），须显式 allow 该数据库文件；路径经 `IFileAccessPolicy.Authorize` 拒绝根路径/逃逸。`tests/Tarui.Sql.Tests` 16 例 + 前端 10 例；上游 2.6.0 的 `autoCreate` 已于 2026-10-26 跟进（§1.3 第 3 项：`SqlLoadOptions.AutoCreate`，`false` 时 `Mode=ReadWrite` + 缺文件明确报错） |
 | Store | ✅ | 等价（JSON KV + scope + 原子写） |

@@ -30,6 +30,7 @@ public sealed partial class WebviewAttacher
     private readonly IAppShutdownCoordinator _shutdownCoordinator;
     private readonly WindowExtensionRegistry _extensionRegistry;
     private readonly IRuntimeScopeOverlay? _scopeOverlay;
+    private readonly IReadOnlyList<IWebviewLifecycleObserver> _webviewLifecycleObservers;
     private readonly ILogger<WebviewAttacher> _logger;
 
     public WebviewAttacher(
@@ -43,7 +44,8 @@ public sealed partial class WebviewAttacher
         IAppShutdownCoordinator shutdownCoordinator,
         WindowExtensionRegistry extensionRegistry,
         IRuntimeScopeOverlay? scopeOverlay = null,
-        ILogger<WebviewAttacher>? logger = null)
+        ILogger<WebviewAttacher>? logger = null,
+        IEnumerable<IWebviewLifecycleObserver>? webviewLifecycleObservers = null)
     {
         _services = services;
         _registry = registry;
@@ -55,6 +57,7 @@ public sealed partial class WebviewAttacher
         _shutdownCoordinator = shutdownCoordinator;
         _extensionRegistry = extensionRegistry;
         _scopeOverlay = scopeOverlay;
+        _webviewLifecycleObservers = webviewLifecycleObservers?.ToArray() ?? [];
         _logger = logger ?? NullLogger<WebviewAttacher>.Instance;
     }
 
@@ -129,7 +132,24 @@ public sealed partial class WebviewAttacher
             shell.RemoveWebview(webview.Presenter);
         }
 
+        NotifyWebviewClosed([webview]);
         await webview.Session.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Notifies every registered lifecycle observer that the surfaces are gone, so services that own
+    /// web-view-scoped native resources (for example shell child processes spawned with
+    /// <c>kill-on-drop</c>) can release them. Observers are registered explicitly in DI; no scanning.
+    /// </summary>
+    private void NotifyWebviewClosed(IReadOnlyList<WebviewEntry> webviews)
+    {
+        foreach (var webview in webviews)
+        {
+            foreach (var observer in _webviewLifecycleObservers)
+            {
+                observer.OnWebviewClosed(webview.WindowLabel, webview.WebviewLabel);
+            }
+        }
     }
 
     private (WebviewSession Session, WebviewPresenter Presenter) CreateSession(CommandContext context, Uri source)
@@ -241,7 +261,9 @@ public sealed partial class WebviewAttacher
         }
 
         // A window owns its web views; closing it detaches and disposes every hosted surface.
-        await DisposeWebviewsAsync(_webviews.RemoveWindow(label));
+        var webviews = _webviews.RemoveWindow(label);
+        NotifyWebviewClosed(webviews);
+        await DisposeWebviewsAsync(webviews);
 
         _shutdownCoordinator.NotifyWindowClosed(label, _registry.Labels.Count);
         await _eventRouter.EmitToAllAsync(

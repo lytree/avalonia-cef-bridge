@@ -17,6 +17,9 @@ internal static class Program
         await ReportsExitCodeAsync();
         await WritesToChildStdinAsync();
         await KillsLongRunningChildAsync();
+        await KillsDropScopedChildWhenItsWebviewClosesAsync();
+        await KeepsChildWhenKillOnDropIsUnsetAsync();
+        await KillsOnlyChildrenOfTheClosedWebviewAsync();
         await StdinCommandWithoutSessionFailsAsync();
         Console.WriteLine("Tarui.ShellPlugin self-tests passed.");
         return 0;
@@ -150,6 +153,70 @@ internal static class Program
         Assert(!stale!.Success, "The killed session must no longer accept stdin writes.");
     }
 
+    private static async Task KillsDropScopedChildWhenItsWebviewClosesAsync()
+    {
+        using var service = new ChildProcessService();
+        var dispatcher = NewDispatcher(service);
+        var sink = new RecordingChannelSink();
+
+        var (response, id) = await Spawn(dispatcher, sink,
+            new ShellSpawnOptions(LongRunningProgram().Program, LongRunningArgs(), KillOnDrop: true),
+            ShellCapability([LongRunningProgram().Program]));
+        Assert(response!.Success, "An allowed kill-on-drop spawn must succeed.");
+
+        await Task.Delay(300);
+        service.OnWebviewClosed("main", "main");
+        await WaitForTerminatedAsync(sink);
+        Assert(await StdinFailsAsync(dispatcher, id), "A dropped child must be removed from the session registry.");
+    }
+
+    private static async Task KeepsChildWhenKillOnDropIsUnsetAsync()
+    {
+        using var service = new ChildProcessService();
+        var dispatcher = NewDispatcher(service);
+        var sink = new RecordingChannelSink();
+
+        var (response, id) = await Spawn(dispatcher, sink,
+            new ShellSpawnOptions(LongRunningProgram().Program, LongRunningArgs()),
+            ShellCapability([LongRunningProgram().Program]));
+        Assert(response!.Success, "An allowed long-running spawn must succeed.");
+
+        await Task.Delay(300);
+        service.OnWebviewClosed("main", "main");
+        // 没有 kill-on-drop 的子进程必须在 Webview 关闭后继续存活。
+        await Task.Delay(500);
+        Assert(sink.TerminatedCode() is null, "A child without kill-on-drop must outlive the web view that spawned it.");
+        Assert(!await StdinFailsAsync(dispatcher, id), "The surviving child must still accept stdin writes.");
+
+        await KillAsync(dispatcher, id);
+        await WaitForTerminatedAsync(sink);
+    }
+
+    private static async Task KillsOnlyChildrenOfTheClosedWebviewAsync()
+    {
+        using var service = new ChildProcessService();
+        var dispatcher = NewDispatcher(service);
+        var mainSink = new RecordingChannelSink();
+        var sideSink = new RecordingChannelSink();
+
+        var (mainResponse, mainId) = await Spawn(dispatcher, mainSink,
+            new ShellSpawnOptions(LongRunningProgram().Program, LongRunningArgs(), KillOnDrop: true),
+            ShellCapability([LongRunningProgram().Program]));
+        var (sideResponse, sideId) = await Spawn(dispatcher, sideSink,
+            new ShellSpawnOptions(LongRunningProgram().Program, LongRunningArgs(), KillOnDrop: true),
+            ShellCapability([LongRunningProgram().Program]), webviewLabel: "side");
+        Assert(mainResponse!.Success && sideResponse!.Success, "Both kill-on-drop spawns must succeed.");
+
+        await Task.Delay(300);
+        service.OnWebviewClosed("main", "side");
+        await WaitForTerminatedAsync(sideSink);
+        Assert(await StdinFailsAsync(dispatcher, sideId), "The closed web view's child must be dropped.");
+        Assert(!await StdinFailsAsync(dispatcher, mainId), "A sibling web view's child must keep running.");
+
+        await KillAsync(dispatcher, mainId);
+        await WaitForTerminatedAsync(mainSink);
+    }
+
     private static async Task StdinCommandWithoutSessionFailsAsync()
     {
         using var service = new ChildProcessService();
@@ -176,7 +243,8 @@ internal static class Program
     }
 
     private static async Task<(InvokeResponse? Response, string Id)> Spawn(
-        IpcDispatcher dispatcher, RecordingChannelSink sink, ShellSpawnOptions options, CapabilitySet caps)
+        IpcDispatcher dispatcher, RecordingChannelSink sink, ShellSpawnOptions options, CapabilitySet caps,
+        string windowLabel = "main", string webviewLabel = "main")
     {
         // 流式帧必须绑定到前端通道；未指定则强制分配一个，使输出泵能写入录制 sink。
         options = options with { Channel = options.Channel ?? "chan-" + DateTime.UtcNow.Ticks };
@@ -184,10 +252,34 @@ internal static class Program
             JsonSerializer.SerializeToElement(options, TaruiJsonContext.Default.ShellSpawnOptions));
         var json = JsonSerializer.Serialize(request, TaruiJsonContext.Default.InvokeRequest);
         var responseText = await dispatcher.DispatchJsonAsync(
-            json, new CommandContext("main", "main", caps), channelSink: sink);
+            json, new CommandContext(windowLabel, webviewLabel, caps), channelSink: sink);
         var response = JsonSerializer.Deserialize(responseText, TaruiJsonContext.Default.InvokeResponse);
         var id = response?.Payload?.Deserialize(TaruiJsonContext.Default.ShellSpawnResult)?.Id ?? string.Empty;
         return (response, id);
+    }
+
+    private static async Task KillAsync(IpcDispatcher dispatcher, string id)
+    {
+        var killResp = JsonSerializer.Deserialize(
+            await dispatcher.DispatchJsonAsync(
+                JsonSerializer.Serialize(new InvokeRequest(1, "sh-kill-" + id, ShellPlugin.KillCommand,
+                    JsonSerializer.SerializeToElement(new ShellKillOptions(id, KillTree: true),
+                        TaruiJsonContext.Default.ShellKillOptions)), TaruiJsonContext.Default.InvokeRequest),
+                new CommandContext("main", "main", new CapabilitySet([ShellPlugin.KillCommand]))),
+            TaruiJsonContext.Default.InvokeResponse);
+        Assert(killResp!.Success, $"Killing child '{id}' must succeed.");
+    }
+
+    private static async Task<bool> StdinFailsAsync(IpcDispatcher dispatcher, string id)
+    {
+        var response = JsonSerializer.Deserialize(
+            await dispatcher.DispatchJsonAsync(
+                JsonSerializer.Serialize(new InvokeRequest(1, "sh-stdin-" + id, ShellPlugin.StdinCommand,
+                    JsonSerializer.SerializeToElement(new ShellWriteStdinOptions(id, [1]),
+                        TaruiJsonContext.Default.ShellWriteStdinOptions)), TaruiJsonContext.Default.InvokeRequest),
+                new CommandContext("main", "main", new CapabilitySet([ShellPlugin.StdinCommand]))),
+            TaruiJsonContext.Default.InvokeResponse);
+        return !response!.Success;
     }
 
     private static async Task<InvokeResponse?> DispatchSpawn(IpcDispatcher dispatcher, CapabilitySet caps, ShellSpawnOptions options)

@@ -106,6 +106,7 @@ public interface IChildProcessService : IDisposable
     ValueTask<ShellSpawnResult> SpawnAsync(
         ShellSpawnOptions options,
         string windowLabel,
+        string webviewLabel,
         IReadOnlyList<PathScope> allow,
         IReadOnlyList<PathScope> deny,
         CancellationToken cancellationToken);
@@ -120,9 +121,11 @@ public interface IChildProcessService : IDisposable
 /// <summary>
 /// Default child-process service. Each spawn gets a session that redirects the child's stdio and pumps it to the
 /// bound channel in frames, then emits a <c>terminated</c> frame with the exit code. Sessions are removed on exit,
-/// killed on <see cref="Dispose"/>, so no child can outlive the host.
+/// killed on <see cref="Dispose"/>, so no child can outlive the host. Sessions spawned with
+/// <c>kill-on-drop</c> are also killed when the web view that spawned them is torn down
+/// (<see cref="IWebviewLifecycleObserver"/>), matching Tauri's <c>kill_on_drop</c>.
 /// </summary>
-public sealed class ChildProcessService : IChildProcessService
+public sealed class ChildProcessService : IChildProcessService, IWebviewLifecycleObserver
 {
     private readonly ConcurrentDictionary<string, ChildSession> _sessions = new(StringComparer.Ordinal);
     private int _disposed;
@@ -130,6 +133,7 @@ public sealed class ChildProcessService : IChildProcessService
     public ValueTask<ShellSpawnResult> SpawnAsync(
         ShellSpawnOptions options,
         string windowLabel,
+        string webviewLabel,
         IReadOnlyList<PathScope> allow,
         IReadOnlyList<PathScope> deny,
         CancellationToken cancellationToken)
@@ -171,7 +175,8 @@ public sealed class ChildProcessService : IChildProcessService
         }
 
         var session = new ChildSession(
-            NewSessionId(), windowLabel, process, channel, options.CaptureStdout, options.CaptureStderr, _sessions);
+            NewSessionId(), windowLabel, webviewLabel, process, channel, options.CaptureStdout, options.CaptureStderr,
+            options.KillOnDrop, _sessions);
         _sessions[session.Id] = session;
         session.StartPump();
         return ValueTask.FromResult(new ShellSpawnResult(session.Id));
@@ -200,6 +205,25 @@ public sealed class ChildProcessService : IChildProcessService
         session.Kill(options.KillTree);
         _sessions.TryRemove(options.Id, out _);
         return ValueTask.FromResult(new Unit());
+    }
+
+    /// <summary>
+    /// Kills every child spawned with <c>kill-on-drop</c> by the web view that just closed. Children spawned
+    /// without the flag keep running and stay reachable through <c>plugin:shell|kill</c>.
+    /// </summary>
+    public void OnWebviewClosed(string windowLabel, string webviewLabel)
+    {
+        foreach (var (id, session) in _sessions)
+        {
+            if (!session.KillOnDrop || !session.BelongsTo(windowLabel, webviewLabel))
+            {
+                continue;
+            }
+
+            // 先标记移除再杀，避免退出泵和这里竞争重复处理同一会话。
+            _sessions.TryRemove(id, out _);
+            session.Kill(true);
+        }
     }
 
     public void Dispose()
@@ -249,15 +273,24 @@ public sealed class ChildProcessService : IChildProcessService
     private sealed class ChildSession(
         string id,
         string windowLabel,
+        string webviewLabel,
         Process process,
         TaruiChannel<ShellStreamEvent> channel,
         bool captureStdout,
         bool captureStderr,
+        bool killOnDrop,
         ConcurrentDictionary<string, ChildSession> owner)
     {
         public string Id { get; } = id;
         public string WindowLabel { get; } = windowLabel;
+        public string WebViewLabel { get; } = webviewLabel;
+        public bool KillOnDrop { get; } = killOnDrop;
         public Process Process { get; } = process;
+
+        /// <summary>Whether this child was spawned by the given web view surface.</summary>
+        public bool BelongsTo(string window, string webview) =>
+            string.Equals(WindowLabel, window, StringComparison.Ordinal) &&
+            string.Equals(WebViewLabel, webview, StringComparison.Ordinal);
 
         /// <summary>The redirect target of the child; stdin writes here reach the child.</summary>
         public Stream Stdin { get; } = process.StandardInput.BaseStream;
@@ -377,7 +410,8 @@ public sealed class ShellPlugin(IChildProcessService service) : ITaruiPlugin
                     throw new ScopeDeniedException(SpawnCommand);
                 }
 
-                return service.SpawnAsync(options, context.WindowLabel, scope.Allow, scope.Deny, ct);
+                return service.SpawnAsync(
+                    options, context.WindowLabel, context.WebViewLabel, scope.Allow, scope.Deny, ct);
             },
             SpawnCommand);
 
@@ -401,5 +435,7 @@ public static class ShellPluginServiceCollectionExtensions
 {
     public static IServiceCollection AddShellPlugin(this IServiceCollection services) => services
         .AddSingleton<IChildProcessService, ChildProcessService>()
+        .AddSingleton<IWebviewLifecycleObserver>(sp =>
+            (IWebviewLifecycleObserver)sp.GetRequiredService<IChildProcessService>())
         .AddPlugin<ShellPlugin>();
 }

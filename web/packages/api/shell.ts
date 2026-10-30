@@ -20,6 +20,8 @@ export interface ShellSpawnOptions {
   workingDir?: string | undefined
   captureStdout?: boolean | undefined
   captureStderr?: boolean | undefined
+  /** Kills the child (and its process tree) once the web view that spawned it is destroyed. */
+  killOnDrop?: boolean | undefined
   /** When provided, stdout/stderr are streamed here frame-by-frame and a `terminated` frame closes the stream. */
   onEvent?: (event: ShellStreamEvent) => void
 }
@@ -45,6 +47,7 @@ export async function spawn(program: string, options: ShellSpawnOptions = {}): P
     workingDir: options.workingDir,
     captureStdout: options.captureStdout,
     captureStderr: options.captureStderr,
+    killOnDrop: options.killOnDrop,
     channel,
   })
 }

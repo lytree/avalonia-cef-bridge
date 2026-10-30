@@ -136,7 +136,7 @@ Channel 具备消费侧背压(`channel-credit-v1`):原生侧在途帧上限 16,�
 | `path` | `@lytree/api/path` | 函数式 |
 | `asset` | `@lytree/api/asset` | convertFileSrc |
 | `process` | `@lytree/api/process` | 函数式 |
-| `shell` | `@lytree/api/shell` | openExternal |
+| `shell` | `@lytree/api/shell` | openExternal / spawn(killOnDrop) |
 | `clipboard` | `@lytree/api/clipboard` | readText / writeText / readHtml / writeHtml / readImage / writeImage |
 | `cli` | `@lytree/api/cli` | parseCliArgs / getCliMatches |
 | `channel` | `@lytree/api/channel` | Channel 类 |
