@@ -247,11 +247,12 @@ internal static class Program
             $"The socket path must carry the application id. Got: {socketPath}");
         Assert(lockName.Contains("com.example.foo", StringComparison.OrdinalIgnoreCase),
             $"The lock name must carry the application id. Got: {lockName}");
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert(socketPath.Contains(identity.SanitizedChannelName, StringComparison.Ordinal),
-                "The Unix socket path must also carry the channel name.");
-        }
+        // macOS 的 /var/folders 临时目录较长，socket 文件名超过 108 字符时会被确定性折叠为
+        // 哈希名（SingleInstanceIdentity.BuildUnixSocketPath），此时路径不再含可读的 channel 段。
+        // channel 仍参与哈希，因此用“不同 channel ⇒ 不同路径”验证端点未丢失通道维度。
+        var otherChannel = new SingleInstanceIdentity("com.example.foo", "aux").SocketPath;
+        Assert(!string.Equals(socketPath, otherChannel, StringComparison.Ordinal),
+            $"Distinct channels must yield distinct endpoints; both were '{socketPath}'.");
         return Task.CompletedTask;
     }
 
