@@ -1,32 +1,8 @@
 # CI / CD
 
-> CI / Release 工作流、OIDC 发布、签名密钥、版本策略。
+> Release 工作流、OIDC 发布、签名密钥、版本策略。
 
-## 1. CI 工作流(`.github/workflows/ci.yml`)
-
-PR / 分支门禁分两段执行:先三平台构建 + 自测试,全部通过后才进入打包与架构门禁。
-
-第一段 `build-and-test` job(matrix:`ubuntu-latest` / `windows-latest` / `macos-latest`):
-
-1. 每个平台各自 `dotnet restore` + `dotnet build -c Release`。
-2. `eng/test-all.ps1 -BaselineCount 24` 全量自测试;平台不支持的套件由 `.requires-os.txt` 自动 skipped。
-3. `fail-fast: false`,三个平台独立报错,互不阻塞。
-
-第二段 `pack-and-gates` job(Ubuntu,`needs: build-and-test`):
-
-1. 三平台全部通过后启动;矩阵工作区不共享,因此本 job 重新 `dotnet restore` + `dotnet build -c Release`。
-2. `dotnet pack` 产出 `artifacts/nuget/*.nupkg` 与 `.snupkg`,校验存在。
-3. `Tarui.Architecture.Tests --require-package` 对 `Tarui.WebView.CefGlueNext` 包做组件包内容门禁。
-4. 外部 NuGet 消费者冒烟(还原 + 构建)。
-5. 版本一致性:`Directory.Build.props#TaruiVersion` == `@lytree/api/package.json#version`。
-6. `tarui info` 清单完整性。
-7. `Tarui.Architecture.Tests`(无参)反射门禁。
-
-`web` job(Ubuntu,与平台无关,独立并行):
-
-1. `pnpm install --frozen-lockfile` + `pnpm lint` + `pnpm build`。
-
-## 2. Release 工作流(`.github/workflows/release.yml`)
+## 1. Release 工作流(`.github/workflows/release.yml`)
 
 tag `tarui-v<version>`(或 manual trigger):
 
@@ -39,29 +15,29 @@ tag `tarui-v<version>`(或 manual trigger):
 
 Release notes 模板提示 macOS 包未签名/未公证;MSIX 未签名(无证书时)。
 
-## 3. 签名密钥(GitHub `release` 环境)
+## 2. 签名密钥(GitHub `release` 环境)
 
 - `NUGET_USER`:nuget.org 用户名(profile name,而非 email)。
 - `NPM_USER`:与 npm trusted-publisher 关联的 GitHub 用户名。
 - `WINDOWS_CERT_BASE64` / `WINDOWS_CERT_PUBLISHER` / `WINDOWS_CERT_PASSWORD` / `WINDOWS_CERT_TIMESTAMP`(可选):MSIX Authenticode 签名。
 - `MACOS_CODESIGN_IDENTITY` / `MACOS_NOTARY_KEY_ID` / `MACOS_NOTARY_ISSUER_ID`(可选,待解锁):macOS 真机发版前见 [`../adr/0002-macos-real-build-pipeline.md`](../adr/0002-macos-real-build-pipeline.md) §8。
 
-## 4. OIDC trusted publishing
+## 3. OIDC trusted publishing
 
 nuget.org 与 npmjs.com 上需预先配置 trusted publishing(OIDC),允许 `release` 环境 + `release.yml` 工作流文件名,**无需长寿命 API key**。
 
 - NuGet 配置步骤:[trusted publishing 文档](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing),添加 `NUGET_USER` 环境密钥(nuget.org profile 名,不是邮箱)。
 - npm 配置步骤:[provenance 文档](https://docs.npmjs.com/generating-provenance-statements),为该仓库添加 `NPM_USER` 关联的 trusted-publisher 条目。
 
-## 5. 版本策略
+## 4. 版本策略
 
 - `Directory.Build.props#TaruiVersion` 是单源。
 - 所有可打包项目 `Version` 继承 `TaruiVersion`。
-- `web/packages/api/package.json#version` 与 `TaruiVersion` 同步(CI 守护)。
+- `web/packages/api/package.json#version` 与 `TaruiVersion` 同步(发布门禁守护)。
 - 0.0.x 视为 preview 通道;1.0 后保持 lockstep + 兼容窗口。
 - prerelease 通道:版本后缀 `-preview.N`,同流水线,推送至独立 feed 权限组(尚未启用,详见 [`../design/cli-workflow.md`](../design/cli-workflow.md) §6.3)。
 
-## 6. 失败排查
+## 5. 失败排查
 
 | 现象 | 排查 |
 | --- | --- |

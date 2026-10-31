@@ -437,7 +437,7 @@ my-app/
 
 ## 10. CI/CD 与发布工程
 
-- **PR 门禁**（不变量，复用 alignment plan §13）：`dotnet build` 0 警告 → `dotnet pack` → `Tarui.Architecture.Tests --require-package`（ProjectReference 边界 + Tarui.WebView.CefGlueNext 包内容/nuspec）→ 全部自测试退出码 0 → `pnpm lint` + `pnpm build`。
+- **门禁**（不变量，复用 alignment plan §13，本地执行）：`dotnet build` 0 警告 → `dotnet pack` → `Tarui.Architecture.Tests --require-package`（ProjectReference 边界 + Tarui.WebView.CefGlueNext 包内容/nuspec）→ 全部自测试退出码 0 → `pnpm lint` + `pnpm build`。
 - **新增包门禁**：所有可打包项目 `dotnet pack` 成功；`Tarui.WebView.CefGlueNext` 必须包含全部托管 CefGlue DLL 且无 Xilium 包依赖；临时外部 classlib 必须能仅通过 NuGet 包 restore/build；`@lytree/api` `npm pack` dry-run 成功；版本一致性校验（`Directory.Build.props` == 全部 `package.json`）。
 - **发布流水线**：tag `tarui-v{version}` 驱动 → NuGet 拓扑序推送 → `npm publish` → GitHub Release 附 `tarui build` 产物。
 - **签名与密钥**：

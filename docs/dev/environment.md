@@ -211,7 +211,6 @@ F:\Code\tauri.net\
     usage/                      # 应用开发者:脚手架 / 配置 / 能力清单 / CLI
     adr/                        # 架构决策记录
   .github/workflows/
-    ci.yml                      # PR 门禁 + 三平台自测试 matrix
     release.yml                 # tag 触发:pack / build / publish / release
 ```
 
@@ -226,7 +225,7 @@ CI 与 Release 的关键步骤都设计为本地可复现:
 | `dotnet build -c Release --no-restore` | `dotnet build tarui.net.slnx -c Release --no-restore` |
 | `dotnet pack` + 校验 | `dotnet pack tarui.net.slnx -c Release --no-build -o artifacts/nuget` |
 | `Architecture.Tests --require-package --package` | `dotnet run --project tests/Tarui.Architecture.Tests -c Release --no-build -- --require-package --package artifacts/nuget/Tarui.WebView.CefGlueNext.<version>.nupkg` |
-| 外部 NuGet 消费者冒烟 | 复制 `.github/workflows/ci.yml` 中 "External NuGet consumer smoke" 步骤到本地 |
+| 外部 NuGet 消费者冒烟 | 复制 `.github/workflows/release.yml` 中 "External NuGet consumer smoke" 步骤到本地 |
 | 版本一致性 | `pnpm exec node -e "console.log(require('./web/packages/api/package.json').version)"` 应等于 `<TaruiVersion>` |
 | `./eng/test-all.ps1 -BaselineCount 21` | 同左 |
 | `Tarui.Architecture.Tests`(无参) | `dotnet run --project tests/Tarui.Architecture.Tests -c Release --no-build` |

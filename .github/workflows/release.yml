@@ -334,31 +334,30 @@ jobs:
 
             ## 改动
 
-            - **三平台门禁**：Ubuntu / Windows / macOS 先并行构建并跑全量自测试，全部通过后才统一执行打包与包门禁。
-            - **macOS 自测试修复**：SingleInstance 兼容折叠后的 Unix socket 路径断言，并按子进程上报的 cwd 断言（兼容 `/private/var` 规范化）。
-            - 移除独立 `ci-macos` 工作流，macOS `.app` 结构校验并入 release。
-            - 同步版本号到 0.5.1（Directory.Build.props / @lytree/api / examples/demo/tarui.app.json / Tarui.Templates / tarui CLI）。
+            - **CLI 修复**：多目标桌面项目在非 Windows RID 发布时显式指定 `-f net10.0`，修复 macOS / Linux 打包 `NETSDK1129`。
+            - **流水线收敛**：移除 `ci.yml`（PR 门禁）与 `ci-macos.yml`，`release.yml` 成为唯一自动化门禁；三个平台打包全部成功后才推送 NuGet / npm 并创建 GitHub Release。
+            - 同步版本号到 0.5.2（Directory.Build.props / @lytree/api / examples/demo/tarui.app.json / Tarui.Templates / tarui CLI）。
 
             ## 附件
 
-            - Windows：`demo-0.5.1-win-x64.zip`、`demo-0.5.1-win-x64.msix`
-            - macOS (osx-arm64)：`demo-0.5.1-osx-arm64.app.tar.gz`
-            - Linux (linux-x64)：`demo-0.5.1-linux-x64.zip`
-            - NuGet 包：`*.nupkg`（含 `Tarui.WebView.CefGlueNext.0.5.1.nupkg`、`Tarui.Hosting.0.5.1.nupkg` 等）
+            - Windows：`demo-0.5.2-win-x64.zip`、`demo-0.5.2-win-x64.msix`
+            - macOS (osx-arm64)：`demo-0.5.2-osx-arm64.app.tar.gz`
+            - Linux (linux-x64)：`demo-0.5.2-linux-x64.zip`
+            - NuGet 包：`*.nupkg`（含 `Tarui.WebView.CefGlueNext.0.5.2.nupkg`、`Tarui.Hosting.0.5.2.nupkg` 等）
 
             ## 安装与启动
 
             - **Windows**：解压 zip 或安装 msix，启动 `demo.exe`。
             - **macOS**：
               ```bash
-              tar -xzf demo-0.5.1-osx-arm64.app.tar.gz
+              tar -xzf demo-0.5.2-osx-arm64.app.tar.gz
               xattr -dr com.apple.quarantine demo.app 2>/dev/null || true
               chmod +x demo.app/Contents/MacOS/demo
               open demo.app
               ```
             - **Linux**：
               ```bash
-              unzip demo-0.5.1-linux-x64.zip
+              unzip demo-0.5.2-linux-x64.zip
               ./demo
               ```
 

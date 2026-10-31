@@ -79,7 +79,7 @@ macOS 应用的标准分发产物是 `*.app`（Apple Bundle）而不是 zip/MSIX
 - `BuildCommand.BundleAppBundleAsync` 把 `.app.tar.gz` 的 SHA-256 入 `BundleArtifact`，沿用 `BuildCommand.EmitUpdaterManifestAsync` 既有的 ECDSA P-384/SHA-384 签名链。updater 与 release 共用一份清单。
 
 ### 4.4 macOS 真机门禁（已并入 release）
-- 2026-10-31 更新：原独立 PR 门禁 `ci-macos.yml` 已移除；下列结构校验改由 `release.yml` 的 `pack-and-build-macos`（`_pack-and-build.yml` 的 `plutil_check`）覆盖，PR 阶段的 macOS 覆盖只保留 `ci.yml` 的 `build-and-test` matrix。
+- 2026-10-31 更新：`ci-macos.yml` 与 `ci.yml` 均已移除；下列结构校验改由 `release.yml` 的 `pack-and-build-macos`（`_pack-and-build.yml` 的 `plutil_check`）覆盖，macOS 覆盖只存在于发布流水线。
 - 不安装 CEF：本期只验证 `.app` 结构层 + DeepLink runtime 行为，避免 macOS GUI session 复杂度。CEF 集成留 ADR-0003。
 - 必跑校验：
   1. 文件存在：`Contents/{Info.plist, PkgInfo, MacOS/<exe>, Resources/}`；`.app.tar.gz` 与 `.sha256`。

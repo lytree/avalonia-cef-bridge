@@ -69,7 +69,7 @@ GitHub `release` 环境 secrets:
 `.app.tar.gz` 解包与启动:
 
 ```bash
-tar -xzf my-app-0.5.1-osx-arm64.app.tar.gz
+tar -xzf my-app-0.5.2-osx-arm64.app.tar.gz
 xattr -dr com.apple.quarantine my-app.app 2>/dev/null || true
 chmod +x my-app.app/Contents/MacOS/my-app
 open my-app.app
@@ -82,7 +82,7 @@ open my-app.app
 Linux `linux-x64` self-contained zip 解包与启动(产物体积较大约 400 MB,因为带 .NET 运行时 + 原生 CEF):
 
 ```bash
-unzip my-app-0.5.1-linux-x64.zip
+unzip my-app-0.5.2-linux-x64.zip
 chmod +x my-app
 ./my-app
 ```
@@ -95,20 +95,20 @@ chmod +x my-app
 
 ```json
 {
-  "version": "0.5.1",
+  "version": "0.5.2",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/.../my-app-0.5.1-win-x64.zip",
+      "url": "https://github.com/.../my-app-0.5.2-win-x64.zip",
       "sha256": "...",
       "signature": "<ECDSA-P384-SHA384>"
     },
     "darwin-arm64": {
-      "url": "https://github.com/.../my-app-0.5.1-osx-arm64.app.tar.gz",
+      "url": "https://github.com/.../my-app-0.5.2-osx-arm64.app.tar.gz",
       "sha256": "...",
       "signature": "<ECDSA-P384-SHA384>"
     },
     "linux-x86_64": {
-      "url": "https://github.com/.../my-app-0.5.1-linux-x64.zip",
+      "url": "https://github.com/.../my-app-0.5.2-linux-x64.zip",
       "sha256": "...",
       "signature": "<ECDSA-P384-SHA384>"
     }
@@ -157,17 +157,17 @@ chmod +x my-app
 
 Release notes 提示 macOS 包未签名/未公证;MSIX 未签名(无证书时)。
 
-## 7. CI 与发布门禁
+## 7. 门禁
 
-PR / 分支门禁(`.github/workflows/ci.yml`)分两段执行:
+仓库不再有独立 CI 工作流;提交前在本地执行门禁,发布时由 `release.yml#validate` 重复包级检查。
 
-第一段 `build-and-test`(matrix:Ubuntu / Windows / macOS 三平台独立执行):
+本地门禁:
 
-- 各平台 `dotnet build -c Release` 0 警告
-- 各平台跑 `eng/test-all.ps1 -BaselineCount 24`
-- 平台不支持的套件由 `.requires-os.txt` 自动 skipped
+- `dotnet build tarui.net.slnx -c Release`:0 警告
+- `./eng/test-all.ps1 -BaselineCount 24`:全量自测试
+- `web/`: `pnpm lint` + `pnpm build`
 
-第二段 `pack-and-gates`(`needs: build-and-test`,三平台全部通过后才启动):
+发布门禁(`validate`,Ubuntu):
 
 1. `dotnet pack` 产出 `artifacts/nuget/*.nupkg`
 2. `Tarui.Architecture.Tests --require-package` 校验
@@ -175,7 +175,3 @@ PR / 分支门禁(`.github/workflows/ci.yml`)分两段执行:
 4. 版本一致性
 5. `tarui info` 清单完整性
 6. `Tarui.Architecture.Tests` 反射门禁
-
-`web` job(Ubuntu,与平台无关,独立并行):
-
-- `pnpm lint` + `pnpm build`
