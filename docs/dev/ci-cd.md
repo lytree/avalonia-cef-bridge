@@ -32,7 +32,7 @@ tag `tarui-v<version>`(或 manual trigger):
 
 1. 校验 tag 格式。
 2. `dotnet pack` + `dotnet build src/tarui-cli`。
-3. `pack-and-build` job(Windows `win-x64`,`bundle.targets: zip;msix`)+ `pack-and-build-macos` job(`macos-14`,`bundle.targets: app-bundle`)+ `pack-and-build-linux` job(`ubuntu-latest`,`bundle.targets: zip`,self-contained)+ `pack-and-build-linux-arm64` job。
+3. `pack-and-build` job(Windows `win-x64`,`bundle.targets: zip;msix`)+ `pack-and-build-macos` job(`macos-14`,`bundle.targets: app-bundle`)+ `pack-and-build-linux` job(`ubuntu-latest`,`bundle.targets: zip`,self-contained),三者全部成功后才进入发布。
 4. 推 NuGet(OIDC trusted publishing,需 `NUGET_USER` secret)。
 5. 推 npm `@lytree/api`(OIDC provenance,需 `NPM_USER` 关联的 trusted-publisher 配置)。
 6. `release` job 下载 Windows / macOS / Linux 产物到 `dist-*`,`Where-Object` 白名单接受 `*.zip` / `*.msix` / `*.app.tar.gz` / `*.gz`,`softprops/action-gh-release` 上传到带产物的 GitHub Release。

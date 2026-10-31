@@ -140,7 +140,7 @@ jobs:
 
   publish-dotnet:
     name: 推送 NuGet（OIDC Trusted Publishing，拓扑序，幂等）
-    needs: [validate, pack-and-build]
+    needs: [validate, pack-and-build, pack-and-build-macos, pack-and-build-linux]
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -201,7 +201,7 @@ jobs:
 
   publish-npm:
     name: 发布 @lytree/api 到 npm（OIDC provenance，幂等）
-    needs: [validate, pack-and-build]
+    needs: [validate, pack-and-build, pack-and-build-macos, pack-and-build-linux]
     runs-on: ubuntu-latest
     environment: release
     permissions:

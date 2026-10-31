@@ -151,10 +151,9 @@ chmod +x my-app
 1. `pack-and-build` job(Windows `win-x64`,`zip;msix`)
 2. `pack-and-build-macos` job(`macos-14`,`app-bundle`)
 3. `pack-and-build-linux` job(`ubuntu-latest`,`zip`,self-contained)
-4. `pack-and-build-linux-arm64` job
-5. 推 NuGet(OIDC trusted publishing,需 `NUGET_USER` secret)
-6. 推 npm `@lytree/api`(OIDC provenance,需 `NPM_USER` 关联的 trusted-publisher 配置)
-7. `release` job 下载所有产物到 `dist-*`,`Where-Object` 白名单接受 `*.zip` / `*.msix` / `*.app.tar.gz` / `*.gz`,`softprops/action-gh-release` 上传到带产物的 GitHub Release
+4. 推 NuGet(OIDC trusted publishing,需 `NUGET_USER` secret)
+5. 推 npm `@lytree/api`(OIDC provenance,需 `NPM_USER` 关联的 trusted-publisher 配置)
+6. `release` job 下载所有产物到 `dist-*`,`Where-Object` 白名单接受 `*.zip` / `*.msix` / `*.app.tar.gz` / `*.gz`,`softprops/action-gh-release` 上传到带产物的 GitHub Release
 
 Release notes 提示 macOS 包未签名/未公证;MSIX 未签名(无证书时)。
 
