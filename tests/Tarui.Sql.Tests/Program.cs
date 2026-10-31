@@ -273,6 +273,13 @@ internal static class Program
         Assert(SqliteConnectionString.ExtractRelativePath("sqlite://nested/app.db") == "nested/app.db",
             "The database path must be extracted relative to the base directory.");
         Assert(new SqliteDriver().CanHandle("sqlite://app.db"), "The built-in driver must claim the sqlite scheme.");
+
+        // The service hands the provider an already-resolved rooted path. On Unix that surfaces as
+        // "sqlite:///tmp/app.db"; losing the leading separator would make the provider look for a
+        // relative file and fail with "unable to open database file".
+        var rooted = Path.Combine(Path.GetTempPath(), "rooted.db");
+        Assert(SqliteConnectionString.Normalize($"sqlite://{rooted}") == $"Data Source={rooted};Mode=ReadWriteCreate",
+            "Normalizing a connection string with a rooted path must preserve the rooted path.");
     }
 
     private static void PlaceholderRewriteSkipsLiteralsAndComments()

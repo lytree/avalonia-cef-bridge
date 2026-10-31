@@ -144,6 +144,26 @@ public static class SqliteConnectionString
         }
 
         var mode = createIfMissing ? "ReadWriteCreate" : "ReadWrite";
-        return $"Data Source={ExtractRelativePath(connectionString)};Mode={mode}";
+        return $"Data Source={ExtractProviderPath(connectionString)};Mode={mode}";
+    }
+
+    /// <summary>
+    /// Extracts the path handed to the provider. Unlike <see cref="ExtractRelativePath"/> this keeps
+    /// a rooted path rooted: once <c>SqlService</c> resolves a database inside the base directory,
+    /// it passes <c>sqlite://{absolute}</c>, which on Unix becomes <c>sqlite:///tmp/app.db</c>. Stripping
+    /// every leading slash would turn that into the relative <c>tmp/app.db</c> and the provider would
+    /// fail with <c>unable to open database file</c>.
+    /// </summary>
+    private static string ExtractProviderPath(string connectionString)
+    {
+        var tail = connectionString[SqliteDriver.Scheme.Length..];
+        if (tail.StartsWith("//", StringComparison.Ordinal))
+        {
+            // Drop only the scheme/authority separator ("//"), so a third slash that marks a rooted
+            // Unix path survives. Windows' "sqlite://C:\..." has no extra slash and is unaffected.
+            return tail[2..];
+        }
+
+        return tail.TrimStart(':', '/', ' ');
     }
 }
