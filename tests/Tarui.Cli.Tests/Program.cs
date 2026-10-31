@@ -10,6 +10,7 @@ internal static class Program
         try
         {
             Parser();
+            TargetFrameworkSelection();
             ManifestLoading();
             ManifestValidation();
             PathResolution();
@@ -57,6 +58,37 @@ internal static class Program
         Assert(options.Command == TaruiCommand.Build, "Parse(['build', ...]) must select the Build command.");
         Assert(options.Rid == "win-x64", "--rid must be captured.");
         Assert(options.Bundles is ["zip"], "--bundle must split into a single zip target.");
+    }
+
+    private static void TargetFrameworkSelection()
+    {
+        using var directory = TempDirectory.Create();
+        var dual = Path.Combine(directory.Path, "Dual.csproj");
+        File.WriteAllText(dual, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFrameworks>net10.0;net10.0-windows10.0.19041.0</TargetFrameworks>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        Assert(BuildCommand.ResolveTargetFramework(dual, "osx-arm64") == "net10.0",
+            "Non-Windows RIDs must publish the portable net10.0 flavor.");
+        Assert(BuildCommand.ResolveTargetFramework(dual, "linux-x64") == "net10.0",
+            "Linux RIDs must publish the portable net10.0 flavor.");
+        Assert(BuildCommand.ResolveTargetFramework(dual, "win-x64") == "net10.0-windows10.0.19041.0",
+            "Windows RIDs must publish the windows flavor.");
+
+        var single = Path.Combine(directory.Path, "Single.csproj");
+        File.WriteAllText(single, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+        Assert(BuildCommand.ResolveTargetFramework(single, "osx-arm64") == "net10.0",
+            "Single-flavor projects must publish their only framework.");
     }
 
     private static void ParsesHelpAndVersion()

@@ -100,13 +100,13 @@ internal sealed class BuildCommand
         };
 
         // A desktop project may ship dual flavors (plain TFM + a windows TFM that links the WinRT
-        // toast engine). When bundling for a Windows RID, publish that flavor so notifications get
-        // Action Center integration; single-flavor projects keep publishing their only TFM.
-        var windowsTargetFramework = ResolveWindowsTargetFramework(desktopProject);
-        if (windowsTargetFramework is not null && rid.StartsWith("win-", StringComparison.OrdinalIgnoreCase))
+        // toast engine). Multi-target projects require an explicit TFM for `dotnet publish`, so pick
+        // the windows flavor for win-* RIDs and the portable flavor everywhere else.
+        var targetFramework = ResolveTargetFramework(desktopProject, rid);
+        if (targetFramework is not null)
         {
-            arguments.AddRange(["-f", windowsTargetFramework]);
-            _console.Info($"  framework: {windowsTargetFramework} (windows flavor for WinRT notifications)");
+            arguments.AddRange(["-f", targetFramework]);
+            _console.Info($"  framework: {targetFramework}");
         }
 
         var result = await ProcessRunner.RunAsync(
@@ -124,12 +124,11 @@ internal sealed class BuildCommand
     }
 
     /// <summary>
-    /// Reads the desktop project's <c>TargetFrameworks</c>/<c>TargetFramework</c> and returns the
-    /// windows flavor when the project declares one, so the publish can opt into it for win-* RIDs.
-    /// Returns <see langword="null"/> for single-flavor or unreadable projects (publish then uses
-    /// the project default).
+    /// Reads the desktop project's <c>TargetFrameworks</c>/<c>TargetFramework</c> and picks the TFM to
+    /// publish: the windows flavor for win-* RIDs when present, otherwise the first portable flavor.
+    /// Returns <see langword="null"/> for unreadable projects (publish then uses the project default).
     /// </summary>
-    private static string? ResolveWindowsTargetFramework(string desktopProject)
+    internal static string? ResolveTargetFramework(string desktopProject, string rid)
     {
         try
         {
@@ -137,9 +136,24 @@ internal sealed class BuildCommand
             var frameworks = document.Descendants()
                 .Where(element => element.Name.LocalName is "TargetFrameworks" or "TargetFramework")
                 .SelectMany(element => element.Value.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-                .Where(framework => framework.Contains("-windows", StringComparison.OrdinalIgnoreCase))
                 .ToList();
-            return frameworks.Count > 0 ? frameworks[0] : null;
+            if (frameworks.Count == 0)
+            {
+                return null;
+            }
+
+            if (rid.StartsWith("win-", StringComparison.OrdinalIgnoreCase))
+            {
+                var windows = frameworks.FirstOrDefault(framework =>
+                    framework.Contains("-windows", StringComparison.OrdinalIgnoreCase));
+                if (windows is not null)
+                {
+                    return windows;
+                }
+            }
+
+            return frameworks.FirstOrDefault(framework =>
+                !framework.Contains("-windows", StringComparison.OrdinalIgnoreCase)) ?? frameworks[0];
         }
         catch (Exception)
         {
