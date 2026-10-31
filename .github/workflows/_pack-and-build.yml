@@ -274,7 +274,7 @@ jobs:
               public static bool DispatchSubprocess(string[] args) => CefGlueNextAvaloniaRuntime.RunSubProcess(args, false);
           }
           "@ | Set-Content (Join-Path $consumer 'Class1.cs')
-          dotnet restore (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj') --source (Join-Path (Get-Location) 'artifacts/nuget') --source https://api.nuget.org/v3/index.json
+          dotnet restore (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj') --source (Join-Path (Get-Location) 'artifacts/nuget') --source 'https://api.nuget.org/v3/index.json'
           dotnet build (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj') -c Release --no-restore --nologo
 
       - name: Build cli + demo bundle (${{ inputs.bundle_csv }}, ${{ inputs.rid }})
