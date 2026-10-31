@@ -19,6 +19,7 @@ using Tarui.Plugins.Dialog;
 using Tarui.Plugins.Events;
 using Tarui.Plugins.System;
 using Tarui.Plugins.Window;
+using Tarui.Plugins.Webview;
 using Tarui.WebView.Abstractions;
 using Tarui.WebView.Avalonia;
 
@@ -77,6 +78,8 @@ internal static class Program
         FullscreenTargetResolvesContainingMonitor();
         WindowEffectBadgeLabelsCollapseAboveNine();
         CapabilitySetProviderCachesDirectorySnapshot();
+        CapabilityProviderDefersThePluginPassUntilFirstQuery();
+        StartupResolvesWebviewServiceWithoutStartingThePluginPass();
         AddTaruiShellRegistersShellServices();
         OptionalPluginsOwnTheirServices();
         await AutostartPlatformServicesRoundTripLaunchEntries();
@@ -593,6 +596,63 @@ internal static class Program
         var second = provider.Capabilities;
         Assert(ReferenceEquals(first, second), "Repeated access must return the cached snapshot.");
         Assert(!second["main"].Allows("test:shell|two"), "The capability directory must only be read once.");
+    }
+
+    /// <summary>
+    /// A plugin's constructor may resolve services that in turn depend on
+    /// <see cref="WindowCapabilityResolver"/>, which depends on <see cref="ICapabilityProvider"/>. The
+    /// provider must therefore be constructible before the composition-time plugin pass runs, and only
+    /// expand that pass on the first manifest query — otherwise resolution recurses into itself.
+    /// </summary>
+    private static void CapabilityProviderDefersThePluginPassUntilFirstQuery()
+    {
+        CyclicCapabilityPlugin.Instances = 0;
+        var services = new ServiceCollection();
+        services.AddTaruiShell();
+        services.AddSingleton<ITaruiPlugin, CyclicCapabilityPlugin>();
+
+        using var provider = services.BuildServiceProvider();
+
+        var capabilities = provider.GetRequiredService<ICapabilityProvider>();
+        Assert(CyclicCapabilityPlugin.Instances == 0,
+            "Resolving the capability provider must not start the plugin pass.");
+
+        _ = capabilities.Capabilities;
+        Assert(CyclicCapabilityPlugin.Instances == 1,
+            "The first manifest query must run the plugin pass exactly once.");
+    }
+
+    /// <summary>
+    /// The real startup chain is the launcher -> web view attacher -> window capability resolver ->
+    /// capability provider before any manifest is read. A plugin constructed during the plugin pass
+    /// (the real <c>WebviewPlugin</c>) depends on the web view service, which reaches that same resolver.
+    /// Resolving every piece of that chain must not recurse back into the plugin pass.
+    /// </summary>
+    private static void StartupResolvesWebviewServiceWithoutStartingThePluginPass()
+    {
+        CyclicCapabilityPlugin.Instances = 0;
+        var services = new ServiceCollection();
+        services.AddTaruiShell();
+        services.AddSingleton(new TaruiAppOrigin(new Uri("http://127.0.0.1:5173/")));
+        services.AddSingleton(new WindowOptions("main"));
+        services.AddSingleton<ITaruiWebRuntime, StubWebRuntime>();
+        services.AddSingleton<ITaruiPlugin, CyclicCapabilityPlugin>();
+
+        using var provider = services.BuildServiceProvider();
+
+        _ = provider.GetRequiredService<IMainWindowLauncher>();
+        _ = provider.GetRequiredService<IWebviewService>();
+        Assert(CyclicCapabilityPlugin.Instances == 0,
+            "Launching the shell must not run the plugin pass before any capability is queried.");
+
+        var capabilities = provider.GetRequiredService<ICapabilityProvider>();
+        _ = capabilities.Capabilities;
+        Assert(CyclicCapabilityPlugin.Instances == 1,
+            "The first manifest query must run the plugin pass exactly once.");
+
+        _ = capabilities.Capabilities;
+        Assert(CyclicCapabilityPlugin.Instances == 1,
+            "Repeated manifest queries must reuse the plugin pass result.");
     }
 
     private static void AddTaruiShellRegistersShellServices()
@@ -2057,6 +2117,38 @@ internal static class Program
                 TaruiJsonContext.Default.Unit,
                 static (_, _, _) => ValueTask.FromResult(new Unit()),
                 "app|greet");
+    }
+
+    /// <summary>
+    /// Stands in for a real plugin such as the web view plugin, whose service graph resolves
+    /// <see cref="WindowCapabilityResolver"/> and therefore the capability provider.
+    /// </summary>
+    private sealed class CyclicCapabilityPlugin : ITaruiPlugin
+    {
+        public static int Instances;
+
+        public CyclicCapabilityPlugin(WindowCapabilityResolver resolver) => Instances++;
+
+        public void ConfigureCommands(CommandRouterBuilder commands)
+        {
+        }
+    }
+
+    /// <summary>The smallest runtime the shell's web view service accepts; no browser is started.</summary>
+    private sealed class StubWebRuntime : ITaruiWebRuntime
+    {
+        public string Name => "stub";
+
+        public string WebviewVersion => "0.0.0";
+
+        public TaruiAppOrigin Origin { get; } = new(new Uri("http://127.0.0.1:5173/"));
+
+        public string ResourceMode => "http";
+
+        public ValueTask InitializeAsync(CancellationToken cancellationToken = default) =>
+            ValueTask.CompletedTask;
+
+        public ValueTask ShutdownAsync() => ValueTask.CompletedTask;
     }
 
     private static void WindowCapabilityResolverRejectsTargetThatExpandsAllow()

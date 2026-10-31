@@ -25,7 +25,7 @@ public interface ICapabilityProvider
 /// </summary>
 public sealed class CapabilitySetProvider : ICapabilityProvider
 {
-    private readonly IPermissionSetCatalog _permissionSets;
+    private readonly Lazy<IPermissionSetCatalog> _permissionSets;
     private readonly string? _directory;
     private readonly Lazy<CapabilityManifests> _manifests;
 
@@ -35,6 +35,15 @@ public sealed class CapabilitySetProvider : ICapabilityProvider
     }
 
     public CapabilitySetProvider(IPermissionSetCatalog permissionSets, string? directory = null)
+        : this(new Lazy<IPermissionSetCatalog>(permissionSets), directory)
+    {
+    }
+
+    // The catalog is built from the composition-time plugin pass, which in turn may construct
+    // plugins whose services depend on this provider. Keeping the catalog behind a Lazy lets the
+    // provider be created without running that pass, so dependency resolution cannot recurse back
+    // into itself before the first manifest query.
+    internal CapabilitySetProvider(Lazy<IPermissionSetCatalog> permissionSets, string? directory = null)
     {
         ArgumentNullException.ThrowIfNull(permissionSets);
         _permissionSets = permissionSets;
@@ -42,7 +51,7 @@ public sealed class CapabilitySetProvider : ICapabilityProvider
         _manifests = new Lazy<CapabilityManifests>(
             () => CapabilityLoader.LoadManifests(
                 _directory ?? Path.Combine(AppContext.BaseDirectory, "capabilities"),
-                _permissionSets));
+                _permissionSets.Value));
     }
 
     public IReadOnlyDictionary<string, CapabilitySet> Capabilities => _manifests.Value.Windows;

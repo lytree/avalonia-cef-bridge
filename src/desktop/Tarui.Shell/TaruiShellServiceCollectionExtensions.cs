@@ -60,7 +60,7 @@ public static class TaruiShellServiceCollectionExtensions
         .AddSingleton<IPermissionSetCatalog>(sp => new PermissionSetCatalog(
             sp.GetRequiredService<CommandRouterBuilder>().BuildPermissionSets()))
         .AddSingleton<ICapabilityProvider>(sp => new CapabilitySetProvider(
-            sp.GetRequiredService<IPermissionSetCatalog>()))
+            new Lazy<IPermissionSetCatalog>(() => sp.GetRequiredService<IPermissionSetCatalog>())))
         .AddSingleton<WindowCapabilityResolver>()
         .AddSingleton<ISingleInstanceCoordinator, NoopSingleInstanceCoordinator>()
         .AddSingleton<IAppShutdown, NoopAppShutdown>()
