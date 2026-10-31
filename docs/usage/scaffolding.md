@@ -52,7 +52,7 @@ Demo 自带一份可参考的清单(`examples/demo/tarui.app.json`):
 ```json
 {
   "$schema": "https://tarui.dev/schemas/app.v1.json",
-  "product": { "name": "demo", "version": "0.5.0", "identifier": "dev.demo" },
+  "product": { "name": "demo", "version": "0.5.1", "identifier": "dev.demo" },
   "build": {
     "frontend": "web",
     "beforeDevCommand": "pnpm dev",

@@ -3,7 +3,7 @@ namespace Tarui.Cli;
 /// <summary>Static CLI identity and help text (kept in sync with Directory.Build.props TaruiVersion).</summary>
 internal static class CliInfo
 {
-    public const string Version = "0.5.0";
+    public const string Version = "0.5.1";
 
     public const string HelpText =
         """
