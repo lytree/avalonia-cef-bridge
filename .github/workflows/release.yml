@@ -344,28 +344,28 @@ jobs:
             ## 改动
 
             - **发布流水线**：三平台各自独立执行自测试 → `dotnet pack` → Demo 打包，全部通过后才推送 NuGet / npm 并创建 GitHub Release；Windows 额外跑包门禁（架构 `--require-package` + 外部消费者冒烟）。
-            - 同步版本号到 0.5.3（Directory.Build.props / @lytree/api / examples/demo/tarui.app.json / Tarui.Templates / tarui CLI）。
+            - 同步版本号到 0.5.4（Directory.Build.props / @lytree/api / examples/demo/tarui.app.json / Tarui.Templates / tarui CLI）。
 
             ## 附件
 
-            - Windows：`demo-0.5.3-win-x64.zip`、`demo-0.5.3-win-x64.msix`
-            - macOS (osx-arm64)：`demo-0.5.3-osx-arm64.app.tar.gz`
-            - Linux (linux-x64)：`demo-0.5.3-linux-x64.zip`
-            - NuGet 包：`*.nupkg`（含 `Tarui.WebView.CefGlueNext.0.5.3.nupkg`、`Tarui.Hosting.0.5.3.nupkg` 等）
+            - Windows：`demo-0.5.4-win-x64.zip`、`demo-0.5.4-win-x64.msix`
+            - macOS (osx-arm64)：`demo-0.5.4-osx-arm64.app.tar.gz`
+            - Linux (linux-x64)：`demo-0.5.4-linux-x64.zip`
+            - NuGet 包：`*.nupkg`（含 `Tarui.WebView.CefGlueNext.0.5.4.nupkg`、`Tarui.Hosting.0.5.4.nupkg` 等）
 
             ## 安装与启动
 
             - **Windows**：解压 zip 或安装 msix，启动 `demo.exe`。
             - **macOS**：
               ```bash
-              tar -xzf demo-0.5.3-osx-arm64.app.tar.gz
+              tar -xzf demo-0.5.4-osx-arm64.app.tar.gz
               xattr -dr com.apple.quarantine demo.app 2>/dev/null || true
               chmod +x demo.app/Contents/MacOS/demo
               open demo.app
               ```
             - **Linux**：
               ```bash
-              unzip demo-0.5.3-linux-x64.zip
+              unzip demo-0.5.4-linux-x64.zip
               ./demo
               ```
 

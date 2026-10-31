@@ -108,9 +108,9 @@ internal static class PluginScaffolder
               </PropertyGroup>
               <ItemGroup>
                 <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
-                <PackageReference Include="Tarui.Ipc" Version="0.5.3" />
-                <PackageReference Include="Tarui.Contracts" Version="0.5.3" />
-                <PackageReference Include="Tarui.Ipc.Generators" Version="0.5.3"
+                <PackageReference Include="Tarui.Ipc" Version="0.5.4" />
+                <PackageReference Include="Tarui.Contracts" Version="0.5.4" />
+                <PackageReference Include="Tarui.Ipc.Generators" Version="0.5.4"
                                   OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
               </ItemGroup>
               <ItemGroup>
@@ -246,7 +246,7 @@ internal static class PluginScaffolder
                 "prepack": "tsc -b"
               },
               "dependencies": {
-                "@lytree/api": "^0.5.3"
+                "@lytree/api": "^0.5.4"
               },
               "devDependencies": {
                 "typescript": "^5.0.0"

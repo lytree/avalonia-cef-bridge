@@ -83,7 +83,7 @@ on:
         type: string
         default: '21'
       version:
-        description: 'Tag version (e.g. "0.5.3"); echoed back as an output so downstream jobs can chain'
+        description: 'Tag version (e.g. "0.5.4"); echoed back as an output so downstream jobs can chain'
         required: true
         type: string
     secrets:
