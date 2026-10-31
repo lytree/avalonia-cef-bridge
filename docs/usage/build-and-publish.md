@@ -69,7 +69,7 @@ GitHub `release` 环境 secrets:
 `.app.tar.gz` 解包与启动:
 
 ```bash
-tar -xzf my-app-0.4.1-osx-arm64.app.tar.gz
+tar -xzf my-app-0.5.0-osx-arm64.app.tar.gz
 xattr -dr com.apple.quarantine my-app.app 2>/dev/null || true
 chmod +x my-app.app/Contents/MacOS/my-app
 open my-app.app
@@ -82,7 +82,7 @@ open my-app.app
 Linux `linux-x64` self-contained zip 解包与启动(产物体积较大约 400 MB,因为带 .NET 运行时 + 原生 CEF):
 
 ```bash
-unzip my-app-0.4.1-linux-x64.zip
+unzip my-app-0.5.0-linux-x64.zip
 chmod +x my-app
 ./my-app
 ```
@@ -95,20 +95,20 @@ chmod +x my-app
 
 ```json
 {
-  "version": "0.4.1",
+  "version": "0.5.0",
   "platforms": {
     "windows-x86_64": {
-      "url": "https://github.com/.../my-app-0.4.1-win-x64.zip",
+      "url": "https://github.com/.../my-app-0.5.0-win-x64.zip",
       "sha256": "...",
       "signature": "<ECDSA-P384-SHA384>"
     },
     "darwin-arm64": {
-      "url": "https://github.com/.../my-app-0.4.1-osx-arm64.app.tar.gz",
+      "url": "https://github.com/.../my-app-0.5.0-osx-arm64.app.tar.gz",
       "sha256": "...",
       "signature": "<ECDSA-P384-SHA384>"
     },
     "linux-x86_64": {
-      "url": "https://github.com/.../my-app-0.4.1-linux-x64.zip",
+      "url": "https://github.com/.../my-app-0.5.0-linux-x64.zip",
       "sha256": "...",
       "signature": "<ECDSA-P384-SHA384>"
     }

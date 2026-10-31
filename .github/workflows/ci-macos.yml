@@ -37,9 +37,9 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: '1'
       # pin macOS self-contained publish RID; .NET 10 produces an osx-arm64 binary on Apple Silicon.
       TARUI_RID: 'osx-arm64'
-      # macOS .app bundle + tar.gz name must follow TaruiVersion; v0.4.1 here, the validation
+      # macOS .app bundle + tar.gz name must follow TaruiVersion; v0.5.0 here, the validation
       # steps below key off this so the version bump stays a one-line change.
-      TARUI_VERSION: '0.4.1'
+      TARUI_VERSION: '0.5.0'
     steps:
       - uses: actions/checkout@v6
 
