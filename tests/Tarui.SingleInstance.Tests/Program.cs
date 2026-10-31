@@ -12,6 +12,9 @@ internal static class Program
 {
     private const string SecondInstanceEvent = "app://second-instance";
 
+    /// <summary>Stdout marker the child probe uses to report the working directory it forwarded.</summary>
+    private const string CwdProbePrefix = "--si-cwd:";
+
     public static async Task<int> Main(string[] args)
     {
         // Child-process probe for the real two-process activation test.
@@ -56,10 +59,16 @@ internal static class Program
 
         // args: --si-probe <applicationId> <channel> [forward...]
         var identity = new SingleInstanceIdentity(args[1], args[2]);
+        var cwd = Directory.GetCurrentDirectory();
         using var handle = SingleInstanceGuard.Acquire(
             identity,
             args.Skip(3).ToArray(),
-            Directory.GetCurrentDirectory());
+            cwd);
+
+        // Report the exact working directory that was forwarded. The parent cannot derive it from
+        // Path.GetTempPath(): on macOS getcwd() resolves the /var -> /private/var symlink, so the
+        // child's cwd is not byte-identical to the temp path the parent started it in.
+        Console.Out.WriteLine($"{CwdProbePrefix}{cwd}");
 
         // The primary already holds the lock, so the probe must always be the secondary instance.
         exitCode = handle.Role == InstanceRole.Secondary ? 0 : 1;
@@ -132,7 +141,6 @@ internal static class Program
         coordinator.Start();
         try
         {
-            var workingDirectory = Path.GetTempPath().TrimEnd('\\', '/');
             var startInfo = new ProcessStartInfo
             {
                 FileName = Environment.ProcessPath!,
@@ -150,9 +158,13 @@ internal static class Program
 
             using var child = Process.Start(startInfo)!;
             Assert(child.WaitForExit(10_000), "The second-instance probe must exit promptly.");
+
+            // Drain both streams once: Assert messages are built eagerly, so reading them inside a
+            // message would consume the probe's reported cwd before it can be parsed.
+            var stdout = child.StandardOutput.ReadToEnd();
+            var stderr = child.StandardError.ReadToEnd();
             Assert(child.ExitCode == 0,
-                $"The second instance must forward and exit as Secondary (exit {child.ExitCode}).\n" +
-                $"{child.StandardOutput.ReadToEnd()}\n{child.StandardError.ReadToEnd()}");
+                $"The second instance must forward and exit as Secondary (exit {child.ExitCode}).\n{stdout}\n{stderr}");
 
             var deadline = DateTime.UtcNow.AddSeconds(5);
             while (sink.Received.IsEmpty && DateTime.UtcNow < deadline)
@@ -165,11 +177,28 @@ internal static class Program
             var delivered = payload.Deserialize(TaruiJsonContext.Default.SecondInstanceArgs);
             Assert(delivered is { Arguments: ["--open", "docs/plan.md"] },
                 "The primary must receive the second instance's forwarded arguments.");
+
+            // Compare against the cwd the child actually forwarded instead of Path.GetTempPath().
+            // On macOS getcwd() canonicalizes /var -> /private/var, so the two strings differ even
+            // though the child was started in the temp directory.
+            string? reportedCwd = null;
+            foreach (var line in stdout.Split('\n'))
+            {
+                var trimmed = line.TrimEnd('\r');
+                if (trimmed.StartsWith(CwdProbePrefix, StringComparison.Ordinal))
+                {
+                    reportedCwd = trimmed[CwdProbePrefix.Length..].TrimEnd('\\', '/');
+                    break;
+                }
+            }
+
+            Assert(reportedCwd is not null,
+                $"The second-instance probe must report the working directory it forwarded.\n{stdout}\n{stderr}");
             Assert(string.Equals(
                     delivered!.WorkingDirectory.TrimEnd('\\', '/'),
-                    workingDirectory,
+                    reportedCwd,
                     StringComparison.OrdinalIgnoreCase),
-                "The primary must receive the second instance's working directory.");
+                $"The primary must receive the second instance's working directory (expected '{reportedCwd}', got '{delivered.WorkingDirectory}').");
         }
         finally
         {
