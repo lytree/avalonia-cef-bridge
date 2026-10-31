@@ -180,9 +180,3 @@ PR / 分支门禁(`.github/workflows/ci.yml`)分两段执行:
 `web` job(Ubuntu,与平台无关,独立并行):
 
 - `pnpm lint` + `pnpm build`
-
-macOS 真机门禁(`.github/workflows/ci-macos.yml`):
-
-- `plutil -lint` + `plutil -extract CFBundleURLTypes`
-- `tar -tzf` / `tar -xOf` archive round-trip
-- `shasum -a 256 -c` 自校验

@@ -1,9 +1,9 @@
 # ADR-0002：macOS 真机构建管道
 
-> 状态：已落地（签名/公证前置门禁未解锁）
+> 状态：已落地（签名/公证前置门禁未解锁）；2026-10-31 起独立 macOS PR 门禁 `ci-macos.yml` 已移除，结构校验并入 release 的 `pack-and-build-macos`
 > 日期：2026-09-19
 > 决策者：Tarui 桌面壳层维护者
-> 影响模块：`src/tarui-cli/InfoPlistBuilder.cs`、`src/tarui-cli/MacOsBundleBuilder.cs`、`src/tarui-cli/TarArchive.cs`、`examples/demo/tarui.app.json`（保持 zip-only，CI 用 scratch manifest）、`.github/workflows/ci-macos.yml`、`.github/workflows/release.yml`
+> 影响模块：`src/tarui-cli/InfoPlistBuilder.cs`、`src/tarui-cli/MacOsBundleBuilder.cs`、`src/tarui-cli/TarArchive.cs`、`examples/demo/tarui.app.json`（保持 zip-only，CI 用 scratch manifest）、`.github/workflows/release.yml`
 
 ## 1. 背景与问题
 
@@ -21,8 +21,7 @@ macOS 应用的标准分发产物是 `*.app`（Apple Bundle）而不是 zip/MSIX
 
 **本期（已落地）**
 - `app-bundle` target：`MacOsBundleBuilder` + `InfoPlistBuilder` + `TarArchive` + 11 单元测试 + manifest validator
-- `ci-macos.yml` 真机门禁（结构层：plutil、tar、shasum、DeepLink 行为）
-- `release.yml` macOS 打包分支接入
+- `release.yml` macOS 打包分支 + 结构校验（原独立的 `ci-macos.yml` 真机门禁已于 2026-10-31 移除）
 
 **本期不交付**
 - 端到端 Demo 启动 + 真实 `open tarui://...` → AppleEvent → `DeepLinkService.Deliver` → `deeplink://tarui` 事件的 GUI session CI
@@ -79,8 +78,8 @@ macOS 应用的标准分发产物是 `*.app`（Apple Bundle）而不是 zip/MSIX
 ### 4.3 sha256 → latest.json
 - `BuildCommand.BundleAppBundleAsync` 把 `.app.tar.gz` 的 SHA-256 入 `BundleArtifact`，沿用 `BuildCommand.EmitUpdaterManifestAsync` 既有的 ECDSA P-384/SHA-384 签名链。updater 与 release 共用一份清单。
 
-### 4.4 macOS 真机 CI（独立 PR 门禁）
-- `runs-on: macos-14`，独立 job，不阻塞 Windows/Linux PR gate（CI 入口 `ci-macos.yml`）。
+### 4.4 macOS 真机门禁（已并入 release）
+- 2026-10-31 更新：原独立 PR 门禁 `ci-macos.yml` 已移除；下列结构校验改由 `release.yml` 的 `pack-and-build-macos`（`_pack-and-build.yml` 的 `plutil_check`）覆盖，PR 阶段的 macOS 覆盖只保留 `ci.yml` 的 `build-and-test` matrix。
 - 不安装 CEF：本期只验证 `.app` 结构层 + DeepLink runtime 行为，避免 macOS GUI session 复杂度。CEF 集成留 ADR-0003。
 - 必跑校验：
   1. 文件存在：`Contents/{Info.plist, PkgInfo, MacOS/<exe>, Resources/}`；`.app.tar.gz` 与 `.sha256`。
@@ -171,7 +170,7 @@ sequenceDiagram
 | 2 | Apple Developer ID 证书 + `MACOS_CODESIGN_IDENTITY` GitHub secret + Runner keychain 写入 | Apple Developer Program 注册 | 一旦证书到位即接入 `pack-and-build-macos` |
 | 3 | `xcrun notarytool` 公证：`MACOS_NOTARY_KEY_ID` + `MACOS_NOTARY_ISSUER_ID` + App-specific password | App Store Connect API key | 接 `pack-and-build-macos` 末尾，staple 到 `.app` |
 | 4 | Hardened runtime (`--options=runtime`) + Library Validation + notarized entitlements | Apple 签名证书 | 长期强化项 |
-| 5 | macOS 真机 GUI session CI：Demo 启动 + `open tarui://...` 端到端 | GUI runner + CEF runtime | 待 runner 支持 GUI session 后纳入 `ci-macos.yml` |
+| 5 | macOS 真机 GUI session CI：Demo 启动 + `open tarui://...` 端到端 | GUI runner + CEF runtime | 待 runner 支持 GUI session 后纳入 `release.yml` 的 macOS job |
 | 6 | `tap`/Homebrew 安装包（`brew install --cask`） | 上游 #5 稳定 | 后续生态分发 |
 | 7 | CFBundleDocumentTypes（自定义文档关联） | Phase 1 文件关联落地后 | 与文件关联缺口联动 |
 
@@ -207,7 +206,7 @@ sequenceDiagram
   - [`src/tarui-cli/InfoPlistBuilder.cs`](../../src/tarui-cli/InfoPlistBuilder.cs)
   - [`src/tarui-cli/MacOsBundleBuilder.cs`](../../src/tarui-cli/MacOsBundleBuilder.cs)
   - [`src/tarui-cli/TarArchive.cs`](../../src/tarui-cli/TarArchive.cs)
-  - [`.github/workflows/ci-macos.yml`](../../.github/workflows/ci-macos.yml)
+  - [`.github/workflows/_pack-and-build.yml`](../../.github/workflows/_pack-and-build.yml)
   - [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
   - [`docs/design/alignment-plan.md` §15 Phase 6](../design/alignment-plan.md)
   - [`docs/design/gap-analysis.md` §1/§4 P1-14](../design/gap-analysis.md)

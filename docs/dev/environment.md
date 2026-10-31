@@ -212,7 +212,6 @@ F:\Code\tauri.net\
     adr/                        # 架构决策记录
   .github/workflows/
     ci.yml                      # PR 门禁 + 三平台自测试 matrix
-    ci-macos.yml                # macOS 真机 app-bundle 门禁
     release.yml                 # tag 触发:pack / build / publish / release
 ```
 
