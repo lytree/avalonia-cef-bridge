@@ -167,13 +167,17 @@ PR / 分支门禁(`.github/workflows/ci.yml`):
 3. `Tarui.Architecture.Tests --require-package` 校验
 4. 外部 NuGet 消费者冒烟
 5. 版本一致性
-6. `eng/test-all.ps1 -BaselineCount 21`
+6. `tarui info` 清单完整性
 7. `Tarui.Architecture.Tests` 反射门禁
 8. `pnpm lint` + `pnpm build`
+
+自测试(`self-tests` job,matrix 三平台独立执行):
+
+- Ubuntu / Windows / macOS 各自 `dotnet build -c Release` 后跑 `eng/test-all.ps1 -BaselineCount 24`
+- 平台不支持的套件由 `.requires-os.txt` 自动 skipped
 
 macOS 真机门禁(`.github/workflows/ci-macos.yml`):
 
 - `plutil -lint` + `plutil -extract CFBundleURLTypes`
 - `tar -tzf` / `tar -xOf` archive round-trip
 - `shasum -a 256 -c` 自校验
-- `Tarui.DeepLink.Tests` / `Tarui.Ipc.Tests` / `Tarui.Shell.Tests` 在 Apple Silicon .NET 10 上不退化

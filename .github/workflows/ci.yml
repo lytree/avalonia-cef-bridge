@@ -3,6 +3,8 @@ name: ci
 # PR 门禁（docs/dev-workflow-design.md §10，不变量）。
 #   dotnet build 0 警告 → 全部可执行自测试 = 0 → Tarui.Architecture.Tests
 #   → 新增包门禁（dotnet pack + 版本一致性）→ pnpm lint + pnpm build。
+# 自测试统一放在 self-tests job：同一份 eng/test-all.ps1 以 matrix 在 ubuntu / windows / macos
+# 三个平台各跑一遍，平台相关的套件由 .requires-os.txt 自行跳过；构建、打包与架构门禁只做一次。
 # 2026-08：仓库默认分支为 master；改 push/pull_request 监听 master，并允许 workflow_dispatch 手动验证。
 on:
   push:
@@ -23,8 +25,8 @@ defaults:
     shell: pwsh
 
 jobs:
-  dotnet:
-    name: dotnet build & tests
+  build-and-pack:
+    name: dotnet build, pack & gates
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -104,8 +106,9 @@ jobs:
           if ($pkg -ne $tarui) { throw "Version mismatch: Directory.Build.props=$tarui package.json=$pkg" }
           Write-Host "Versions consistent: $tarui"
 
-      - name: Run self-tests (eng/test-all.ps1)
-        run: ./eng/test-all.ps1 -BaselineCount 24
+      - name: tarui info (manifest sanity)
+        run: |
+          dotnet run --project src/tarui-cli/Tarui.Cli.csproj -c Release --no-build -- --config examples/demo/tarui.app.json info
 
       - name: Architecture gate (Tarui.Architecture.Tests)
         run: dotnet run --project tests/Tarui.Architecture.Tests/Tarui.Architecture.Tests.csproj -c Release --no-build
@@ -116,9 +119,16 @@ jobs:
           path: artifacts/nuget/*.nupkg
           retention-days: 5
 
-  windows-desktop-tests:
-    name: windows desktop self-tests
-    runs-on: windows-latest
+  self-tests:
+    name: self-tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # 三个平台互不阻塞：一个平台失败仍要看另外两个的结果。
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
     steps:
       - uses: actions/checkout@v6
 
@@ -129,13 +139,15 @@ jobs:
           cache-dependency-path: tarui.net.slnx
 
       - name: Restore (NuGet.Config)
-        run: dotnet restore tests/Tarui.Shell.Desktop.Tests/Tarui.Shell.Desktop.Tests.csproj --configfile NuGet.Config
+        run: dotnet restore tarui.net.slnx --configfile NuGet.Config
 
-      - name: Build desktop test project
-        run: dotnet build tests/Tarui.Shell.Desktop.Tests/Tarui.Shell.Desktop.Tests.csproj -c Release --no-restore --nologo
+      - name: Build (0 warnings/errors)
+        run: dotnet build tarui.net.slnx -c Release --no-restore --nologo
 
-      - name: Run desktop self-tests
-        run: dotnet run --project tests/Tarui.Shell.Desktop.Tests/Tarui.Shell.Desktop.Tests.csproj -c Release --no-build
+      # 全部 Tarui.*.Tests 顺序执行；需要桌面窗口的套件由 .requires-os.txt 在本平台自动 skipped。
+      # 不依赖 CEF runtime：套件只构造选项对象与 fake，不加载原生 CEF。
+      - name: Run all self-tests (eng/test-all.ps1)
+        run: ./eng/test-all.ps1 -BaselineCount 24
 
   web:
     name: web lint & build

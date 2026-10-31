@@ -6,15 +6,26 @@
 
 PR / 分支门禁:
 
-1. `actions/setup-dotnet@v4` 安装 .NET 10.0.x latestPatch。
+`build-and-pack` job(Ubuntu,单平台一次):
+
+1. `actions/setup-dotnet@v5` 安装 .NET 10.0.x。
 2. `dotnet restore` + `dotnet build -c Release` 0 警告。
 3. `dotnet pack` 产出 `artifacts/nuget/*.nupkg` 与 `.snupkg`,校验存在。
 4. `Tarui.Architecture.Tests --require-package` 对 `Tarui.WebView.CefGlueNext` 包做组件包内容门禁。
 5. 外部 NuGet 消费者冒烟(还原 + 构建)。
 6. 版本一致性:`Directory.Build.props#TaruiVersion` == `@lytree/api/package.json#version`。
-7. `eng/test-all.ps1 -BaselineCount 21` 全量自测试。
+7. `tarui info` 清单完整性。
 8. `Tarui.Architecture.Tests`(无参)反射门禁。
-9. `pnpm install --frozen-lockfile` + `pnpm lint` + `pnpm build`。
+
+`self-tests` job(matrix:`ubuntu-latest` / `windows-latest` / `macos-latest`):
+
+1. 每个平台各自 `dotnet restore` + `dotnet build -c Release`。
+2. `eng/test-all.ps1 -BaselineCount 24` 全量自测试;平台不支持的套件由 `.requires-os.txt` 自动 skipped。
+3. `fail-fast: false`,三个平台独立报错,互不阻塞。
+
+`web` job(Ubuntu):
+
+1. `pnpm install --frozen-lockfile` + `pnpm lint` + `pnpm build`。
 
 ## 2. macOS 真机 CI(`.github/workflows/ci-macos.yml`)
 
@@ -30,8 +41,9 @@ macOS runner(`macos-14`)独立门禁,详细见 [`../adr/0002-macos-real-build-pi
 8. `plutil -lint` + `plutil -extract CFBundleURLTypes xml1` 校验 `Info.plist`。
 9. `tar -tzf` / `tar -xOf` archive round-trip。
 10. `shasum -a 256 -c` 自校验。
-11. `Tarui.DeepLink.Tests` / `Tarui.Ipc.Tests` / `Tarui.Shell.Tests` 在 Apple Silicon .NET 10 上不退化。
-12. 上传 `installers-macos-osx-arm64` artifact(retention 7 天)。
+11. 上传 `installers-macos-osx-arm64` artifact(retention 7 天)。
+
+自测试不在此 job 重复执行,统一由 `ci.yml` 的 `self-tests` matrix 在 macOS 上跑全量。
 
 ## 3. Release 工作流(`.github/workflows/release.yml`)
 

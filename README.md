@@ -150,8 +150,8 @@ finally { CefGlueNextAvaloniaRuntime.Shutdown(); }
 
 GitHub Actions 自动化集成与发布门禁:
 
-- `.github/workflows/ci.yml` —— PR / 分支门禁:`dotnet build` 0 警告、`Tarui.WebView.CefGlueNext` 包/nuspec 校验、外部 NuGet 消费者 restore/build 冒烟、所有自测试、`Tarui.Architecture.Tests`、版本一致性(`Directory.Build.props` == `@lytree/api`)、`pnpm lint` + `pnpm build`。
-- `.github/workflows/ci-macos.yml` —— macOS 真机门禁:`tarui build --bundle app-bundle` 产物结构校验 + `Tarui.DeepLink.Tests` / `Tarui.Ipc.Tests` / `Tarui.Shell.Tests` 在 Apple Silicon .NET 10 上不退化。
+- `.github/workflows/ci.yml` —— PR / 分支门禁:`dotnet build` 0 警告、`Tarui.WebView.CefGlueNext` 包/nuspec 校验、外部 NuGet 消费者 restore/build 冒烟、`Tarui.Architecture.Tests`、版本一致性(`Directory.Build.props` == `@lytree/api`)、`pnpm lint` + `pnpm build`;全部自测试由 `self-tests` job 以 matrix 在 Ubuntu / Windows / macOS 三个平台各自独立执行。
+- `.github/workflows/ci-macos.yml` —— macOS 真机门禁:`tarui build --bundle app-bundle` 产物结构校验(plutil / tar / shasum);自测试已统一在 `ci.yml` 的 macOS matrix 中执行。
 - `.github/workflows/release.yml` —— tag `tarui-v<version>`(或手动触发):在推送 NuGet 包之前执行同样的组件包与外部消费者门禁,发布 `@lytree/api`,在 Windows (`zip;msix`)、macOS (osx-arm64 `.app.tar.gz`)、Linux (linux-x64 self-contained `zip`) 三个 runner 上并行构建,所有产物由 `softprops/action-gh-release` 上传到带产物的 GitHub Release。
 
 发布密钥保存在 GitHub `release` 环境。NuGet 发布使用 [trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)(OIDC,无需长期 API key);`@lytree/api` 通过 [provenance](https://docs.npmjs.com/generating-provenance-statements)(OIDC)发布到 npm —— **无需长期 API key**。

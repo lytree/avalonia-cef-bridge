@@ -202,16 +202,9 @@ jobs:
           echo '--- verify by re-shasuming ---'
           shasum -a 256 -c "$SHA_FILE"
 
-      - name: DeepLink validation (cold argv -> DeepLinkService.Deliver -> deeplink://tarui event)
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Run the self-tests whose names mention DeepLink / Channel on macOS — proves the runtime
-          # DeepLinkService + Channel binding path is intact on Apple Silicon.
-          dotnet run --project tests/Tarui.DeepLink.Tests/Tarui.DeepLink.Tests.csproj -c Release --no-build
-          dotnet run --project tests/Tarui.Ipc.Tests/Tarui.Ipc.Tests.csproj -c Release --no-build
-          dotnet run --project tests/Tarui.Shell.Tests/Tarui.Shell.Tests.csproj -c Release --no-build
-          dotnet run --project tests/Tarui.Shell.Desktop.Tests/Tarui.Shell.Desktop.Tests.csproj -c Release --no-build
+      # 自测试不在这里重复执行：ci.yml 的 self-tests matrix 已在 macos-latest 上跑完整
+      # eng/test-all.ps1（含 Tarui.DeepLink.Tests / Tarui.Ipc.Tests / Tarui.Shell.Tests /
+      # Tarui.Shell.Desktop.Tests）。本 job 只负责 app-bundle 产物链路。
 
       - name: Upload macOS bundle artifacts
         if: success() || failure()
