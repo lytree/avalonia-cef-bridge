@@ -36,8 +36,8 @@ dotnet build tarui.net.slnx --no-restore
 ./eng/test-all.ps1 -BaselineCount 21
 dotnet run --project tests/Tarui.Architecture.Tests --no-build
 
-# 跑仓库内 Demo
-dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj
+# 跑仓库内 Demo(多目标项目需指定框架)
+dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj --framework net10.0
 ```
 
 详细步骤见 [`environment.md`](environment.md);前端工具链初始化见 [`frontend-sdk.md`](frontend-sdk.md)。

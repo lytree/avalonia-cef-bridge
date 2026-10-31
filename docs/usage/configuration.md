@@ -211,7 +211,7 @@
 ```powershell
 # 启用 Debug 日志
 $env:TARUI_LOG_LEVEL__DEFAULT = "Debug"
-dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj
+dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj --framework net10.0
 
 # CEF 自身日志
 $env:TARUI_WEB_LOG_FILE = "C:\temp\cef.log"

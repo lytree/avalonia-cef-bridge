@@ -121,8 +121,8 @@ cd ..
 # 架构门禁
 dotnet run --project tests/Tarui.Architecture.Tests --no-build
 
-# 跑仓库内 Demo
-dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj
+# 跑仓库内 Demo(多目标项目,必须用 --framework 选择 net10.0)
+dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj --framework net10.0
 ```
 
 ## 4. Linux 初始化(以 Ubuntu 22.04+ 为例)
@@ -298,6 +298,6 @@ dotnet nuget locals all --clear
 - [ ] `cd web; pnpm build` 成功
 - [ ] `./eng/test-all.ps1 -BaselineCount 21` 全部通过
 - [ ] `dotnet run --project tests/Tarui.Architecture.Tests -c Release --no-build` 通过
-- [ ] `dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj` 弹出主窗口
+- [ ] `dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj --framework net10.0` 弹出主窗口
 
 任何一项不通过都不要继续往下做;返回错误信息对照 §8 排查。

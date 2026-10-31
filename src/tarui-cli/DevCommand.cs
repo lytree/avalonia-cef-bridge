@@ -40,9 +40,11 @@ internal sealed class DevCommand
                     .ConfigureAwait(false);
             }
 
-            var appArguments = options.NoWatch
-                ? new[] { "run", "--project", desktopProject }
-                : new[] { "watch", "run", "--project", desktopProject };
+            var appArguments = BuildAppArguments(
+                desktopProject,
+                options.NoWatch,
+                RuntimeIdentifier.ForCurrentPlatform());
+
             _console.Section();
             _console.Info($"Starting desktop app: dotnet {string.Join(' ', appArguments)}");
             await using var appSession = ProcessSession.Start(
@@ -68,6 +70,26 @@ internal sealed class DevCommand
                 await webSession.StopAsync().ConfigureAwait(false);
             }
         }
+    }
+
+    /// <summary>
+    /// Builds the <c>dotnet run</c> / <c>dotnet watch</c> arguments for the desktop project. A multi-target
+    /// project (portable TFM plus a Windows TFM) needs an explicit framework, matching the flavor that
+    /// <c>tarui build</c> would publish for the same runtime identifier.
+    /// </summary>
+    internal static IReadOnlyList<string> BuildAppArguments(string desktopProject, bool noWatch, string rid)
+    {
+        var arguments = new List<string>(
+            noWatch
+                ? ["run", "--project", desktopProject]
+                : ["watch", "run", "--project", desktopProject]);
+        var targetFramework = BuildCommand.ResolveTargetFramework(desktopProject, rid);
+        if (targetFramework is not null)
+        {
+            arguments.AddRange(["--framework", targetFramework]);
+        }
+
+        return arguments;
     }
 
     private async Task<ProcessSession> StartDevServerAsync(

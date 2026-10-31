@@ -28,7 +28,7 @@ cd web
 pnpm build
 cd ..
 $env:TARUI_WEB_MODE = "scheme"
-dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj
+dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj --framework net10.0
 ```
 
 Scheme 模式服务 `tarui://localhost/index.html`;`tarui build` 把 `web/dist` 复制到发布输出。

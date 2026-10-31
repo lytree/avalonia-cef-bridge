@@ -22,11 +22,11 @@
 
 ```powershell
 # 主进程 stdout/stderr
-dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj --verbosity normal
+dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj --framework net10.0 --verbosity normal
 
 # CEF 子进程(CEF 自己 fork,日志走 CefSettings.LogFile)
 $env:TARUI_WEB_LOG_FILE = "C:\temp\cef.log"
-dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj
+dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj --framework net10.0
 
 # 远程日志(由 plugin:log 转发到 MEL)
 # LogLevel: Information / Debug

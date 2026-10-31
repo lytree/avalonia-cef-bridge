@@ -7,8 +7,14 @@
 `examples/demo/` 是仓库内的组合根,它通过 `ProjectReference` 直接链向 `src/`,所以永远跟踪最新源码。
 
 ```powershell
-# 一键跑起来(Demo.Desktop 内部会调度 pnpm dev)
-dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj
+# 先构建演示前端(输出到 examples/demo/web/dist,构建时随内容复制进 Demo 输出目录)
+cd examples/demo/web
+pnpm install --frozen-lockfile
+pnpm build
+cd ../../..
+
+# 跑起来(Demo.Desktop 是多目标项目,必须显式指定框架)
+dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj --framework net10.0
 ```
 
 启动后:

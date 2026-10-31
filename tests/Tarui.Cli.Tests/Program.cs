@@ -11,6 +11,7 @@ internal static class Program
         {
             Parser();
             TargetFrameworkSelection();
+            DevArgumentsSelectFrameworkForMultiTargetProjects();
             ManifestLoading();
             ManifestValidation();
             PathResolution();
@@ -89,6 +90,56 @@ internal static class Program
             """);
         Assert(BuildCommand.ResolveTargetFramework(single, "osx-arm64") == "net10.0",
             "Single-flavor projects must publish their only framework.");
+    }
+
+    /// <summary>
+    /// Startup via `tarui dev` must mirror the publish-time flavor choice: a dual-target project needs
+    /// an explicit `--framework`, otherwise `dotnet run`/`dotnet watch` refuses to start.
+    /// </summary>
+    private static void DevArgumentsSelectFrameworkForMultiTargetProjects()
+    {
+        using var directory = TempDirectory.Create();
+        var dual = Path.Combine(directory.Path, "Dual.csproj");
+        File.WriteAllText(dual, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFrameworks>net10.0;net10.0-windows10.0.19041.0</TargetFrameworks>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var windows = DevCommand.BuildAppArguments(dual, noWatch: true, rid: "win-x64");
+        Assert(windows[0] == "run" && windows.Contains("--framework"),
+            "A dual-target project must launch with an explicit framework.");
+        Assert(windows[^1] == "net10.0-windows10.0.19041.0",
+            "Windows startup must select the Windows flavor.");
+        Assert(!windows.Contains("watch"),
+            "--no-watch must keep dotnet run instead of dotnet watch.");
+
+        var portable = DevCommand.BuildAppArguments(dual, noWatch: false, rid: "linux-x64");
+        Assert(portable[0] == "watch" && portable[1] == "run",
+            "The default dev flow must go through dotnet watch.");
+        Assert(portable[^1] == "net10.0",
+            "Non-Windows startup must select the portable flavor.");
+
+        var single = Path.Combine(directory.Path, "Single.csproj");
+        File.WriteAllText(single, """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+        var singleFlavor = DevCommand.BuildAppArguments(single, noWatch: true, rid: "osx-arm64");
+        Assert(singleFlavor[^1] == "net10.0",
+            "A single-flavor project must pin its only framework.");
+
+        var unreadable = DevCommand.BuildAppArguments(
+            Path.Combine(directory.Path, "Missing.csproj"),
+            noWatch: true,
+            rid: "win-x64");
+        Assert(unreadable.Count == 3 && !unreadable.Contains("--framework"),
+            "An unreadable project must fall back to the project default framework.");
     }
 
     private static void ParsesHelpAndVersion()

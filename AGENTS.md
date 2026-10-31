@@ -65,7 +65,7 @@ dotnet restore tarui.net.slnx --configfile NuGet.Config
 dotnet build tarui.net.slnx --no-restore
 dotnet run --project tests/Tarui.Ipc.Tests --no-build
 dotnet run --project tests/Tarui.Architecture.Tests --no-build
-dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj
+dotnet run --project examples/demo/Demo.Desktop/Demo.Desktop.csproj --framework net10.0
 ```
 
 提交较大改动前，应运行全部 `tests/Tarui.*.Tests` 可执行项目。前端命令从 `web/` 运行：
