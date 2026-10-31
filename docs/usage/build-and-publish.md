@@ -148,30 +148,31 @@ chmod +x my-app
 
 `.github/workflows/release.yml`(tag `tarui-v<version>` 或手动触发):
 
-1. `pack-and-build` job(Windows `win-x64`,`zip;msix`)
-2. `pack-and-build-macos` job(`macos-14`,`app-bundle`)
-3. `pack-and-build-linux` job(`ubuntu-latest`,`zip`,self-contained)
-4. 推 NuGet(OIDC trusted publishing,需 `NUGET_USER` secret)
-5. 推 npm `@lytree/api`(OIDC provenance,需 `NPM_USER` 关联的 trusted-publisher 配置)
-6. `release` job 下载所有产物到 `dist-*`,`Where-Object` 白名单接受 `*.zip` / `*.msix` / `*.app.tar.gz` / `*.gz`,`softprops/action-gh-release` 上传到带产物的 GitHub Release
+1. 版本单一性门禁(`Directory.Build.props` / `@lytree/api` / `tarui.app.json`)
+2. 三平台并行,每个平台独立:自测试 → `dotnet pack` → Demo 打包
+   - `pack-and-build` job(Windows `win-x64`,`zip;msix`,含包门禁)
+   - `pack-and-build-macos` job(`macos-14`,`app-bundle`)
+   - `pack-and-build-linux` job(`ubuntu-latest`,`zip`,self-contained)
+3. 推 NuGet(OIDC trusted publishing,需 `NUGET_USER` secret)
+4. 推 npm `@lytree/api`(OIDC provenance,需 `NPM_USER` 关联的 trusted-publisher 配置)
+5. `release` job 下载所有产物到 `dist-*`,`Where-Object` 白名单接受 `*.zip` / `*.msix` / `*.app.tar.gz` / `*.gz`,`softprops/action-gh-release` 上传到带产物的 GitHub Release
+
+三个平台的测试、pack 与 Demo 打包全部成功后才推送 NuGet / npm 并创建 Release。
 
 Release notes 提示 macOS 包未签名/未公证;MSIX 未签名(无证书时)。
 
 ## 7. 门禁
 
-仓库不再有独立 CI 工作流;提交前在本地执行门禁,发布时由 `release.yml#validate` 重复包级检查。
+仓库不再有独立 CI 工作流;提交前在本地执行门禁,发布时由 `release.yml` 在三平台各自复跑。
 
 本地门禁:
 
 - `dotnet build tarui.net.slnx -c Release`:0 警告
-- `./eng/test-all.ps1 -BaselineCount 24`:全量自测试
+- `./eng/test-all.ps1 -BaselineCount 21`:全量自测试
 - `web/`: `pnpm lint` + `pnpm build`
 
-发布门禁(`validate`,Ubuntu):
+发布门禁:
 
-1. `dotnet pack` 产出 `artifacts/nuget/*.nupkg`
-2. `Tarui.Architecture.Tests --require-package` 校验
-3. 外部 NuGet 消费者冒烟
-4. 版本一致性
-5. `tarui info` 清单完整性
-6. `Tarui.Architecture.Tests` 反射门禁
+1. `validate`(Ubuntu):版本单一性(`Directory.Build.props` / `@lytree/api` / `tarui.app.json`)
+2. 每个平台 job 独立:0 警告构建 → `eng/test-all.ps1 -BaselineCount 21` → `dotnet pack`
+3. Windows 额外:`Tarui.Architecture.Tests --require-package` 校验 + 外部 NuGet 消费者冒烟

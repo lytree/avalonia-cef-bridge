@@ -2,8 +2,9 @@ name: release
 
 # 发布流水线（docs/dev-workflow-design.md §6.3 / §10，W0–W5 共同交付）。
 #   触发：push tag `tarui-v{version}`（推荐，版本单源）或手动 dispatch。
-#   流程：门禁 → 三平台并行（pack-and-build 调用 ./_pack-and-build.yml reusable workflow，
-#         windows 跑 zip+msix、macOS 跑 osx-arm64 .app、linux 跑 linux-x64 self-contained zip）
+#   流程：版本单一性命中 → 三平台并行（每平台独立：dotnet build 0 警告 →
+#         eng/test-all.ps1 自测试 → dotnet pack → tarui build 产出平台 Demo，
+#         其中 windows 额外跑包门禁：架构 --require-package + 外部 NuGet 消费者冒烟）
 #         → NuGet 拓扑序推送（--skip-duplicate）→ @lytree/api npm publish
 #         → softprops/action-gh-release 上传全部产物到 GitHub Release。
 #   密钥：GitHub Environments `release` + OIDC 预留（§12）。见 README「发布」节。
@@ -34,19 +35,13 @@ env:
 
 jobs:
   validate:
-    name: 发布前门禁
+    name: 版本单一性门禁
     runs-on: ubuntu-latest
     environment: release
     outputs:
       version: ${{ steps.vars.outputs.version }}
     steps:
       - uses: actions/checkout@v6
-
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: 10.0.x
-          cache: true
-          cache-dependency-path: tarui.net.slnx
 
       - name: Tag version
         id: vars
@@ -58,61 +53,6 @@ jobs:
             $v = $env:GITHUB_REF_NAME -replace '^tarui-v', ''
           }
           Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$v"
-
-      - name: Restore & build (0 warnings/errors)
-        run: |
-          dotnet restore tarui.net.slnx --configfile NuGet.Config
-          dotnet build tarui.net.slnx -c Release --no-restore
-
-      - name: Pack packages for release validation
-        run: dotnet pack tarui.net.slnx -c Release --no-build --nologo -o artifacts/nuget
-
-      - name: Tarui.WebView.CefGlueNext package gate
-        run: |
-          $package = Get-ChildItem artifacts/nuget/Tarui.WebView.CefGlueNext.*.nupkg |
-            Where-Object { $_.Name -notlike '*.symbols.nupkg' } |
-            Sort-Object LastWriteTimeUtc -Descending |
-            Select-Object -First 1
-          if (-not $package) { throw 'Tarui.WebView.CefGlueNext package was not produced.' }
-          dotnet run --project tests/Tarui.Architecture.Tests/Tarui.Architecture.Tests.csproj -c Release --no-build -- --require-package --package $package.FullName
-
-      - name: External NuGet consumer smoke
-        run: |
-          $package = Get-ChildItem artifacts/nuget/Tarui.WebView.CefGlueNext.*.nupkg |
-            Where-Object { $_.Name -notlike '*.symbols.nupkg' } |
-            Sort-Object LastWriteTimeUtc -Descending |
-            Select-Object -First 1
-          $version = [regex]::Match($package.BaseName, '^Tarui\.WebView\.CefGlueNext\.(.+)$').Groups[1].Value
-          $consumer = Join-Path $env:RUNNER_TEMP 'tarui-webview-cefglue-next-consumer'
-          Remove-Item $consumer -Recurse -Force -ErrorAction SilentlyContinue
-          dotnet new classlib --framework net10.0 --output $consumer --no-restore
-          @"
-          <Project Sdk="Microsoft.NET.Sdk">
-            <PropertyGroup>
-              <TargetFramework>net10.0</TargetFramework>
-              <Nullable>enable</Nullable>
-              <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-            </PropertyGroup>
-            <ItemGroup>
-              <PackageReference Include="Tarui.WebView.CefGlueNext" Version="$version" />
-            </ItemGroup>
-          </Project>
-          "@ | Set-Content (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj')
-          @"
-          using Avalonia.Controls;
-          using Tarui.WebView.CefGlueNext;
-
-          public static class ConsumerSmoke
-          {
-              public static Control CreateControl() => new CefGlueNextAvaloniaWebView();
-              public static bool DispatchSubprocess(string[] args) => CefGlueNextAvaloniaRuntime.RunSubProcess(args, false);
-          }
-          "@ | Set-Content (Join-Path $consumer 'Class1.cs')
-          dotnet restore (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj') --source (Join-Path (Get-Location) 'artifacts/nuget') --source https://api.nuget.org/v3/index.json
-          dotnet build (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj') -c Release --no-restore --nologo
-
-      - name: Run self-tests (eng/test-all.ps1)
-        run: ./eng/test-all.ps1 -BaselineCount 21
 
       - name: Version consistency (Directory.Build.props == @lytree/api == tarui.app.json)
         id: version-check
@@ -237,7 +177,7 @@ jobs:
 
 
   pack-and-build:
-    name: pack + demo build + cli build (windows zip+msix)
+    name: 自测试 → pack → demo bundle (windows zip+msix)
     needs: validate
     uses: ./.github/workflows/_pack-and-build.yml
     with:
@@ -249,6 +189,8 @@ jobs:
       installer_path: examples/demo/dist/
       nuget_artifact: nuget-packages
       enable_signing: 'true'
+      baseline_count: '21'
+      package_gate: 'true'
       version: ${{ needs.validate.outputs.version }}
     secrets:
       WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
@@ -258,7 +200,7 @@ jobs:
 
 
   pack-and-build-macos:
-    name: pack + macOS app bundle (osx-arm64)
+    name: 自测试 → pack → demo app bundle (osx-arm64)
     needs: validate
     uses: ./.github/workflows/_pack-and-build.yml
     with:
@@ -272,12 +214,13 @@ jobs:
         examples/demo/dist/demo-*.app.tar.gz.sha256
       nuget_artifact: nuget-packages-macos
       plutil_check: 'true'
+      baseline_count: '21'
       version: ${{ needs.validate.outputs.version }}
     # macOS 无需 WINDOWS_CERT_* —— reusable workflow 的 secrets 全部 required: false，直接省略。
 
 
   pack-and-build-linux:
-    name: pack + Linux self-contained zip (linux-x64)
+    name: 自测试 → pack → demo zip (linux-x64)
     needs: validate
     uses: ./.github/workflows/_pack-and-build.yml
     with:
@@ -289,6 +232,7 @@ jobs:
       installer_path: examples/demo/dist/demo-*.zip
       nuget_artifact: nuget-packages-linux
       smoke_test_zip: 'true'
+      baseline_count: '21'
       version: ${{ needs.validate.outputs.version }}
 
 

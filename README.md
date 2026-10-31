@@ -150,7 +150,7 @@ finally { CefGlueNextAvaloniaRuntime.Shutdown(); }
 
 GitHub Actions 自动化集成与发布门禁:
 
-- `.github/workflows/release.yml` —— 唯一自动化工作流,tag `tarui-v<version>`(或手动触发):先跑发布门禁,三个平台打包全部成功后推送 NuGet 与 `@lytree/api`,最后发布 GitHub Release。
+- `.github/workflows/release.yml` —— 唯一自动化工作流,tag `tarui-v<version>`(或手动触发):三个平台各自独立跑自测试 → pack → Demo 打包,全部成功后才推送 NuGet 与 `@lytree/api`,最后发布 GitHub Release。
 
 发布密钥保存在 GitHub `release` 环境。NuGet 发布使用 [trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing)(OIDC,无需长期 API key);`@lytree/api` 通过 [provenance](https://docs.npmjs.com/generating-provenance-statements)(OIDC)发布到 npm —— **无需长期 API key**。
 

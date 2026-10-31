@@ -4,8 +4,9 @@ name: _pack-and-build
 # 调用方（release.yml）传入 RID/bundle/cef_runtime_id 等参数，
 # 内部负责：setup-dotnet/setup-node/pnpm、demo 前端 frozen install、
 # 可选 CEF runtime 安装（windows/linux 装，macOS 不装，走 MacOsBundleBuilder）、
-# 可选 Authenticode 签名配置、dotnet pack、tarui build、产物 smoke-test、
-# upload installers + nuget-packages artifact。
+# 可选 Authenticode 签名配置、dotnet build 0 警告、eng/test-all.ps1 自测试、
+# dotnet pack、可选包门禁（架构 --require-package + 外部消费者冒烟）、
+# tarui build、产物 smoke-test、upload installers + nuget-packages artifact。
 #
 # 公共入参：
 #   os                — 'windows' | 'macos' | 'linux'（决定默认 shell、Authenticode、scratch manifest 等开关）
@@ -19,6 +20,8 @@ name: _pack-and-build
 #   smoke_test_zip    — 'true'/'false'，linux 上验证 zip 含 demo 入口
 #   plutil_check      — 'true'/'false'，macOS 上 lint Info.plist + CFBundleURLTypes
 #   enable_signing    — 'true'/'false'，仅 windows 且配置了 WINDOWS_CERT_* 密钥时启用
+#   baseline_count    — eng/test-all.ps1 的 -BaselineCount（默认 21，三平台一致）
+#   package_gate      — 'true'/'false'，pack 后跑 Tarui.WebView.CefGlueNext 包门禁与外部 NuGet 消费者冒烟
 #
 # 公共输出：
 #   version — `validate` job 的 tag version（透传给子步骤，与 release.yml 命名一致）
@@ -75,6 +78,16 @@ on:
         required: false
         type: string
         default: 'false'
+      baseline_count:
+        description: 'eng/test-all.ps1 的 -BaselineCount 阈值'
+        required: false
+        type: string
+        default: '21'
+      package_gate:
+        description: 'true 时在 pack 后跑 Tarui.WebView.CefGlueNext 包门禁与外部 NuGet 消费者冒烟'
+        required: false
+        type: string
+        default: 'false'
       version:
         description: 'Tag version (e.g. "0.5.2"); echoed back as an output so downstream jobs can chain'
         required: true
@@ -99,7 +112,7 @@ on:
 
 jobs:
   pack-and-build:
-    name: pack + demo build + cli build (${{ inputs.os }} ${{ inputs.rid }}, ${{ inputs.bundle_csv }})
+    name: self-tests + pack + demo bundle (${{ inputs.os }} ${{ inputs.rid }}, ${{ inputs.bundle_csv }})
     runs-on: ${{ inputs.os == 'macos' && 'macos-14' || inputs.os == 'windows' && 'windows-latest' || 'ubuntu-latest' }}
     environment: release
     defaults:
@@ -198,14 +211,71 @@ jobs:
           $manifest | ConvertTo-Json -Depth 10 | Set-Content $manifestPath
           Write-Host 'Signing configured.'
 
+      - name: Restore & build (0 warnings/errors)
+        shell: pwsh
+        run: |
+          dotnet restore tarui.net.slnx --configfile NuGet.Config
+          dotnet build tarui.net.slnx -c Release --no-restore
+
+      - name: Run self-tests (eng/test-all.ps1)
+        shell: pwsh
+        run: ./eng/test-all.ps1 -BaselineCount ${{ inputs.baseline_count }}
+
       - name: dotnet pack (artifacts/nuget)
         env:
           VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           if [ -z "$VERSION" ]; then echo "::error::VERSION is empty"; exit 1; fi
-          dotnet restore tarui.net.slnx --configfile NuGet.Config
           dotnet pack tarui.net.slnx -c Release --no-restore --nologo -o artifacts/nuget
+
+      - name: Tarui.WebView.CefGlueNext package gate
+        if: ${{ inputs.package_gate == 'true' }}
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem artifacts/nuget/Tarui.WebView.CefGlueNext.*.nupkg |
+            Where-Object { $_.Name -notlike '*.symbols.nupkg' } |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+          if (-not $package) { throw 'Tarui.WebView.CefGlueNext package was not produced.' }
+          dotnet run --project tests/Tarui.Architecture.Tests/Tarui.Architecture.Tests.csproj -c Release --no-build -- --require-package --package $package.FullName
+
+      - name: External NuGet consumer smoke
+        if: ${{ inputs.package_gate == 'true' }}
+        shell: pwsh
+        run: |
+          $package = Get-ChildItem artifacts/nuget/Tarui.WebView.CefGlueNext.*.nupkg |
+            Where-Object { $_.Name -notlike '*.symbols.nupkg' } |
+            Sort-Object LastWriteTimeUtc -Descending |
+            Select-Object -First 1
+          $version = [regex]::Match($package.BaseName, '^Tarui\.WebView\.CefGlueNext\.(.+)$').Groups[1].Value
+          $consumer = Join-Path $env:RUNNER_TEMP 'tarui-webview-cefglue-next-consumer'
+          Remove-Item $consumer -Recurse -Force -ErrorAction SilentlyContinue
+          dotnet new classlib --framework net10.0 --output $consumer --no-restore
+          @"
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>net10.0</TargetFramework>
+              <Nullable>enable</Nullable>
+              <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+            </PropertyGroup>
+            <ItemGroup>
+              <PackageReference Include="Tarui.WebView.CefGlueNext" Version="$version" />
+            </ItemGroup>
+          </Project>
+          "@ | Set-Content (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj')
+          @"
+          using Avalonia.Controls;
+          using Tarui.WebView.CefGlueNext;
+
+          public static class ConsumerSmoke
+          {
+              public static Control CreateControl() => new CefGlueNextAvaloniaWebView();
+              public static bool DispatchSubprocess(string[] args) => CefGlueNextAvaloniaRuntime.RunSubProcess(args, false);
+          }
+          "@ | Set-Content (Join-Path $consumer 'Class1.cs')
+          dotnet restore (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj') --source (Join-Path (Get-Location) 'artifacts/nuget') --source https://api.nuget.org/v3/index.json
+          dotnet build (Join-Path $consumer 'Tarui.WebView.CefGlueNext.Consumer.csproj') -c Release --no-restore --nologo
 
       - name: Build cli + demo bundle (${{ inputs.bundle_csv }}, ${{ inputs.rid }})
         env:
