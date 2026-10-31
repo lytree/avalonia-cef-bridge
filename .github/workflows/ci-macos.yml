@@ -202,7 +202,7 @@ jobs:
           echo '--- verify by re-shasuming ---'
           shasum -a 256 -c "$SHA_FILE"
 
-      # 自测试不在这里重复执行：ci.yml 的 self-tests matrix 已在 macos-latest 上跑完整
+      # 自测试不在这里重复执行：ci.yml 的 build-and-test matrix 已在 macos-latest 上跑完整
       # eng/test-all.ps1（含 Tarui.DeepLink.Tests / Tarui.Ipc.Tests / Tarui.Shell.Tests /
       # Tarui.Shell.Desktop.Tests）。本 job 只负责 app-bundle 产物链路。
 

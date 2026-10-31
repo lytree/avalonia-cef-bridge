@@ -4,26 +4,25 @@
 
 ## 1. CI 工作流(`.github/workflows/ci.yml`)
 
-PR / 分支门禁:
+PR / 分支门禁分两段执行:先三平台构建 + 自测试,全部通过后才进入打包与架构门禁。
 
-`build-and-pack` job(Ubuntu,单平台一次):
-
-1. `actions/setup-dotnet@v5` 安装 .NET 10.0.x。
-2. `dotnet restore` + `dotnet build -c Release` 0 警告。
-3. `dotnet pack` 产出 `artifacts/nuget/*.nupkg` 与 `.snupkg`,校验存在。
-4. `Tarui.Architecture.Tests --require-package` 对 `Tarui.WebView.CefGlueNext` 包做组件包内容门禁。
-5. 外部 NuGet 消费者冒烟(还原 + 构建)。
-6. 版本一致性:`Directory.Build.props#TaruiVersion` == `@lytree/api/package.json#version`。
-7. `tarui info` 清单完整性。
-8. `Tarui.Architecture.Tests`(无参)反射门禁。
-
-`self-tests` job(matrix:`ubuntu-latest` / `windows-latest` / `macos-latest`):
+第一段 `build-and-test` job(matrix:`ubuntu-latest` / `windows-latest` / `macos-latest`):
 
 1. 每个平台各自 `dotnet restore` + `dotnet build -c Release`。
 2. `eng/test-all.ps1 -BaselineCount 24` 全量自测试;平台不支持的套件由 `.requires-os.txt` 自动 skipped。
 3. `fail-fast: false`,三个平台独立报错,互不阻塞。
 
-`web` job(Ubuntu):
+第二段 `pack-and-gates` job(Ubuntu,`needs: build-and-test`):
+
+1. 三平台全部通过后启动;矩阵工作区不共享,因此本 job 重新 `dotnet restore` + `dotnet build -c Release`。
+2. `dotnet pack` 产出 `artifacts/nuget/*.nupkg` 与 `.snupkg`,校验存在。
+3. `Tarui.Architecture.Tests --require-package` 对 `Tarui.WebView.CefGlueNext` 包做组件包内容门禁。
+4. 外部 NuGet 消费者冒烟(还原 + 构建)。
+5. 版本一致性:`Directory.Build.props#TaruiVersion` == `@lytree/api/package.json#version`。
+6. `tarui info` 清单完整性。
+7. `Tarui.Architecture.Tests`(无参)反射门禁。
+
+`web` job(Ubuntu,与平台无关,独立并行):
 
 1. `pnpm install --frozen-lockfile` + `pnpm lint` + `pnpm build`。
 
@@ -43,7 +42,7 @@ macOS runner(`macos-14`)独立门禁,详细见 [`../adr/0002-macos-real-build-pi
 10. `shasum -a 256 -c` 自校验。
 11. 上传 `installers-macos-osx-arm64` artifact(retention 7 天)。
 
-自测试不在此 job 重复执行,统一由 `ci.yml` 的 `self-tests` matrix 在 macOS 上跑全量。
+自测试不在此 job 重复执行,统一由 `ci.yml` 的 `build-and-test` matrix 在 macOS 上跑全量。
 
 ## 3. Release 工作流(`.github/workflows/release.yml`)
 

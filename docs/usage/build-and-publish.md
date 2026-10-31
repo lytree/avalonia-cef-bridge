@@ -160,21 +160,26 @@ Release notes 提示 macOS 包未签名/未公证;MSIX 未签名(无证书时)�
 
 ## 7. CI 与发布门禁
 
-PR / 分支门禁(`.github/workflows/ci.yml`):
+PR / 分支门禁(`.github/workflows/ci.yml`)分两段执行:
 
-1. `dotnet build` 0 警告
-2. `dotnet pack` 产出 `artifacts/nuget/*.nupkg`
-3. `Tarui.Architecture.Tests --require-package` 校验
-4. 外部 NuGet 消费者冒烟
-5. 版本一致性
-6. `tarui info` 清单完整性
-7. `Tarui.Architecture.Tests` 反射门禁
-8. `pnpm lint` + `pnpm build`
+第一段 `build-and-test`(matrix:Ubuntu / Windows / macOS 三平台独立执行):
 
-自测试(`self-tests` job,matrix 三平台独立执行):
-
-- Ubuntu / Windows / macOS 各自 `dotnet build -c Release` 后跑 `eng/test-all.ps1 -BaselineCount 24`
+- 各平台 `dotnet build -c Release` 0 警告
+- 各平台跑 `eng/test-all.ps1 -BaselineCount 24`
 - 平台不支持的套件由 `.requires-os.txt` 自动 skipped
+
+第二段 `pack-and-gates`(`needs: build-and-test`,三平台全部通过后才启动):
+
+1. `dotnet pack` 产出 `artifacts/nuget/*.nupkg`
+2. `Tarui.Architecture.Tests --require-package` 校验
+3. 外部 NuGet 消费者冒烟
+4. 版本一致性
+5. `tarui info` 清单完整性
+6. `Tarui.Architecture.Tests` 反射门禁
+
+`web` job(Ubuntu,与平台无关,独立并行):
+
+- `pnpm lint` + `pnpm build`
 
 macOS 真机门禁(`.github/workflows/ci-macos.yml`):
 
