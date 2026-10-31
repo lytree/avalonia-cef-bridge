@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\webview\Tarui.WebView.Avalonia\Tarui.WebView.Avalonia.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Tarui.Shell.Desktop.Tests" />
     <InternalsVisibleTo Include="Tarui.Shell.Tests" />
   </ItemGroup>
 </Project>

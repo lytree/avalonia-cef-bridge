@@ -10,6 +10,7 @@
 - `Program.cs` 内 `Main` 串联多个行为用例,使用 `RunCase("BehaviorsName", () => { ... })` 一类 helper,**断言失败必须抛带说明的异常**。
 - 测试名用 `PascalCase` 行为描述,如 `DeniesCommandsOutsideCapability`、`RoutesWindowCloseRequestToWebview`。
 - 受宿主环境约束的用例放 `.requires-env.txt`(每行一个 ENV 名),未设置时 `eng/test-all.ps1` 标记为 skipped,不计入基线。
+- 只能在特定操作系统运行的套件放 `.requires-os.txt`(每行一个 `windows` / `macos` / `linux`),当前平台不在列表时整项目 skipped,例如需要真实桌面窗口的 `Tarui.Shell.Desktop.Tests`。
 - 命名空间使用文件范围,4 空格缩进,异步方法以 `Async` 结尾。
 
 ## 2. 自测试模板
@@ -109,7 +110,8 @@ describe('@lytree/api/window', () => {
 
 - `Tarui.Ipc.Tests` —— CommandRouter / CapabilitySet / Channel
 - `Tarui.Plugins.Tests` —— 插件组合 + 路由器
-- `Tarui.Shell.Tests` / `Tarui.Hosting.Tests` —— Shell 组合 + Host 生命周期
+- `Tarui.Shell.Tests` / `Tarui.Hosting.Tests` —— Shell 组合 + Host 生命周期(跨平台)
+- `Tarui.Shell.Desktop.Tests` —— 真实 `ShellWindow` 构造、挂载与销毁(仅 Windows / macOS,`.requires-os.txt` 门禁)
 - `Tarui.Architecture.Tests` —— 反射 / 扫描门禁
 - `Tarui.Bindings.Tests` —— 生成命令契约 ↔ `@lytree/api` 的 `invoke('…')` 字面量双向漂移门禁
 - `Tarui.WebView.Tests` —— CefGlue 适配 + Scheme 安全规则

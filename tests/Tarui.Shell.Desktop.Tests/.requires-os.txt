@@ -1,0 +1,4 @@
+# 需要真实桌面窗口平台（Avalonia Win32 / macOS 窗口后端）。
+# Linux CI runner 无 X server，无法初始化 Avalonia X11 平台，由 eng/test-all.ps1 跳过本套件。
+windows
+macos

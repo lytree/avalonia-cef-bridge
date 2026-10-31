@@ -6,6 +6,8 @@
     - 发现 tests/<name>.Tests/<name>.Tests.csproj，按字母顺序逐个 dotnet run。
     - 每个项目目录可选放置 .requires-env.txt（每行一个 ENV 名称）；
       若任一 ENV 未设置，则视为该测试受宿主环境约束，计为 skipped。
+    - 每个项目目录可选放置 .requires-os.txt（每行一个平台名：windows / macos / linux）；
+      当前平台不在列表中时跳过该项目，用于只在桌面窗口平台可运行的测试套件。
     - 任一项目运行失败立即停止（$ErrorActionPreference = 'Stop'）。
     - 通过数 < -BaselineCount 时抛出错误，捕获"意外删除测试"的回归。
 
@@ -68,6 +70,20 @@ foreach ($csproj in $projects) {
         if ($missing.Count -gt 0) {
             Write-Host "[skip] $projectName (missing env: $($missing -join ', '))"
             $skipped.Add([pscustomobject]@{ Project = $projectName; Reason = "missing env: $($missing -join ', ')" })
+            continue
+        }
+    }
+
+    $requiresOsFile = Join-Path $dir '.requires-os.txt'
+    if (Test-Path -LiteralPath $requiresOsFile) {
+        $currentOs = if ($IsWindows) { 'windows' } elseif ($IsMacOS) { 'macos' } else { 'linux' }
+        $supported = @(Get-Content -LiteralPath $requiresOsFile |
+            ForEach-Object { $_.Trim().ToLowerInvariant() } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and -not $_.StartsWith('#') })
+        if ($supported -notcontains $currentOs) {
+            $reason = "requires os: $($supported -join ', ') (current: $currentOs)"
+            Write-Host "[skip] $projectName ($reason)"
+            $skipped.Add([pscustomobject]@{ Project = $projectName; Reason = $reason })
             continue
         }
     }
