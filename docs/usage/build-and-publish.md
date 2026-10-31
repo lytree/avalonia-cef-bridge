@@ -150,14 +150,15 @@ chmod +x my-app
 
 1. 版本单一性门禁(`Directory.Build.props` / `@lytree/api` / `tarui.app.json`)
 2. 三平台并行,每个平台独立:自测试 → `dotnet pack` → Demo 打包
-   - `pack-and-build` job(Windows `win-x64`,`zip;msix`,含包门禁)
+   - `pack-and-build` job(Windows `win-x64`,`zip;msix`)
    - `pack-and-build-macos` job(`macos-14`,`app-bundle`)
    - `pack-and-build-linux` job(`ubuntu-latest`,`zip`,self-contained)
-3. 推 NuGet(OIDC trusted publishing,需 `NUGET_USER` secret)
-4. 推 npm `@lytree/api`(OIDC provenance,需 `NPM_USER` 关联的 trusted-publisher 配置)
-5. `release` job 下载所有产物到 `dist-*`,`Where-Object` 白名单接受 `*.zip` / `*.msix` / `*.app.tar.gz` / `*.gz`,`softprops/action-gh-release` 上传到带产物的 GitHub Release
+3. `package-gate` job(架构 `--require-package` + 外部 NuGet 消费者冒烟)
+4. 推 NuGet(OIDC trusted publishing,需 `NUGET_USER` secret)
+5. 推 npm `@lytree/api`(OIDC provenance,需 `NPM_USER` 关联的 trusted-publisher 配置)
+6. `release` job 下载所有产物到 `dist-*`,`Where-Object` 白名单接受 `*.zip` / `*.msix` / `*.app.tar.gz` / `*.gz`,`softprops/action-gh-release` 上传到带产物的 GitHub Release
 
-三个平台的测试、pack 与 Demo 打包全部成功后才推送 NuGet / npm 并创建 Release。
+三个平台的测试、pack 与 Demo 打包全部成功且包门禁通过后,才推送 NuGet / npm 并创建 Release。
 
 Release notes 提示 macOS 包未签名/未公证;MSIX 未签名(无证书时)。
 
@@ -175,4 +176,4 @@ Release notes 提示 macOS 包未签名/未公证;MSIX 未签名(无证书时)�
 
 1. `validate`(Ubuntu):版本单一性(`Directory.Build.props` / `@lytree/api` / `tarui.app.json`)
 2. 每个平台 job 独立:0 警告构建 → `eng/test-all.ps1 -BaselineCount 21` → `dotnet pack`
-3. Windows 额外:`Tarui.Architecture.Tests --require-package` 校验 + 外部 NuGet 消费者冒烟
+3. `package-gate`(Ubuntu):`Tarui.Architecture.Tests --require-package` 校验 + 外部 NuGet 消费者冒烟

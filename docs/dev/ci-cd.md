@@ -8,13 +8,14 @@ tag `tarui-v<version>`(或 manual trigger):
 
 1. 校验 tag 格式 + 版本单一性(`Directory.Build.props` / `@lytree/api` / `tarui.app.json`)。
 2. 三平台并行，每个平台独立执行 `dotnet build`(0 警告)→ `./eng/test-all.ps1` 自测试 → `dotnet pack` → `tarui build` 产出平台 Demo:
-   - `pack-and-build` job(Windows `win-x64`,`bundle.targets: zip;msix`)额外跑包门禁(架构 `--require-package` + 外部 NuGet 消费者冒烟)。
+   - `pack-and-build` job(Windows `win-x64`,`bundle.targets: zip;msix`)。
    - `pack-and-build-macos` job(`macos-14`,`bundle.targets: app-bundle`)。
    - `pack-and-build-linux` job(`ubuntu-latest`,`bundle.targets: zip`,self-contained)。
-   三者全部成功后才进入发布。
-3. 推 NuGet(OIDC trusted publishing,需 `NUGET_USER` secret)。
-4. 推 npm `@lytree/api`(OIDC provenance,需 `NPM_USER` 关联的 trusted-publisher 配置)。
-5. `release` job 下载 Windows / macOS / Linux 产物到 `dist-*`,`Where-Object` 白名单接受 `*.zip` / `*.msix` / `*.app.tar.gz` / `*.gz`,`softprops/action-gh-release` 上传到带产物的 GitHub Release。
+   三者全部成功后才进入后续阶段。
+3. `package-gate` job(Ubuntu,下载 Windows 的 nupkg)跑包门禁:架构 `--require-package` + 外部 NuGet 消费者冒烟。
+4. 推 NuGet(OIDC trusted publishing,需 `NUGET_USER` secret)。
+5. 推 npm `@lytree/api`(OIDC provenance,需 `NPM_USER` 关联的 trusted-publisher 配置)。
+6. `release` job 下载 Windows / macOS / Linux 产物到 `dist-*`,`Where-Object` 白名单接受 `*.zip` / `*.msix` / `*.app.tar.gz` / `*.gz`,`softprops/action-gh-release` 上传到带产物的 GitHub Release。
 
 Release notes 模板提示 macOS 包未签名/未公证;MSIX 未签名(无证书时)。
 
